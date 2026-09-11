@@ -28,3 +28,5 @@ bun run build
 - A manual sync is an explicit maintainer action; public traffic never calls Are.na.
 
 See [AGENTS.md](AGENTS.md) for the implementation contract shared by Codex and Claude Code.
+
+See [docs/design.md](docs/design.md) for the light-only visual and interaction contract.

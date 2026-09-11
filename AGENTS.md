@@ -1,6 +1,6 @@
 # Archivist implementation contract
 
-This file is the source of truth for coding agents. Read `docs/PRD.md` and `docs/ARCHITECTURE.md` before changing product code. `CLAUDE.md` deliberately points here instead of repeating it.
+This file is the source of truth for coding agents. Read `docs/PRD.md`, `docs/ARCHITECTURE.md`, and `docs/design.md` before changing product code. `CLAUDE.md` deliberately points here instead of repeating it.
 
 ## Product boundary
 
