@@ -1,0 +1,19 @@
+{
+	"languages": {
+		"JavaScript": {
+			"language_servers": ["eslint", "!biome", "..."],
+			"formatter": { "language_server": { "name": "eslint" } },
+			"format_on_save": "on"
+		},
+		"TypeScript": {
+			"language_servers": ["eslint", "!biome", "..."],
+			"formatter": { "language_server": { "name": "eslint" } },
+			"format_on_save": "on"
+		},
+		"Svelte": {
+			"language_servers": ["eslint", "!biome", "..."],
+			"formatter": { "language_server": { "name": "eslint" } },
+			"format_on_save": "on"
+		}
+	}
+}
