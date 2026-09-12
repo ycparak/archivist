@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { ARCHIVE_BLOCK_TYPES } from '$lib/domain/archive';
 	import {
+		ARCHIVE_BLOCK_TYPES,
 		ARCHIVE_SEARCH_PARAM,
 		readArchiveSearchStateFromEntries,
 		toArchiveSearchHref,
@@ -23,9 +23,8 @@
 		state.mode === 'lexical' || state.mode === 'semantic' ? state.mode : ''
 	);
 
-	function handleSubmit(event: SubmitEvent) {
-		const form = event.currentTarget as HTMLFormElement;
-		const entries = [...new FormData(form)].filter(
+	function handleSubmit(event: SubmitEvent & { currentTarget: HTMLFormElement }) {
+		const entries = [...new FormData(event.currentTarget)].filter(
 			(entry): entry is [string, string] => typeof entry[1] === 'string'
 		);
 		event.preventDefault();
@@ -33,14 +32,7 @@
 	}
 </script>
 
-<form
-	class="search-form"
-	method="GET"
-	action="/"
-	role="search"
-	data-sveltekit-keepfocus
-	onsubmit={handleSubmit}
->
+<form class="search-form" method="GET" action="/" role="search" onsubmit={handleSubmit}>
 	<div class="search-row">
 		<label class="visually-hidden" for="archive-query">Search the archive</label>
 		<input
@@ -57,11 +49,9 @@
 	<div class="controls">
 		<div class="control">
 			<label for="archive-mode">Ranking</label>
-			<select id="archive-mode" name={ARCHIVE_SEARCH_PARAM.mode}>
+			<select id="archive-mode" name={ARCHIVE_SEARCH_PARAM.mode} value={selectedMode}>
 				{#each rankingModes as option (option.value)}
-					<option value={option.value} selected={option.value === selectedMode}>
-						{option.label}
-					</option>
+					<option value={option.value}>{option.label}</option>
 				{/each}
 			</select>
 		</div>
@@ -140,7 +130,7 @@
 	}
 
 	.search-row button:hover {
-		background: var(--color-accent-strong);
+		background: var(--color-accent-hover);
 	}
 
 	.controls {

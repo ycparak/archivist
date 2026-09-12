@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ARCHIVE_BLOCK_TYPES, archiveBlockSchema, toSearchDocument } from './archive';
+import { archiveBlockSchema, toSearchDocument } from './archive';
+import { ARCHIVE_BLOCK_TYPES } from './search';
 
 describe('toSearchDocument', () => {
 	it('builds stable searchable text without inventing image content', () => {

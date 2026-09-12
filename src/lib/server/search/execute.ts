@@ -22,7 +22,11 @@ export function reportSearchUnavailable(report: SearchUnavailableReport): void {
 }
 
 function deduplicateById(results: SearchResult[]): SearchResult[] {
-	return [...new Map(results.map((result) => [result.id, result])).values()];
+	const byId = new Map<string, SearchResult>();
+	for (const result of results) {
+		if (!byId.has(result.id)) byId.set(result.id, result);
+	}
+	return [...byId.values()];
 }
 
 export async function executeArchiveSearch(

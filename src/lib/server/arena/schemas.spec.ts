@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ARCHIVE_BLOCK_TYPES } from '$lib/domain/archive';
+import { ARCHIVE_BLOCK_TYPES } from '$lib/domain/search';
 import {
 	arenaChannelContentsResponseSchema,
 	arenaContentItemSchema,

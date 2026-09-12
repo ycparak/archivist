@@ -49,13 +49,13 @@ describe('executeArchiveSearch', () => {
 		});
 	});
 
-	it('deduplicates results by block id', async () => {
+	it('keeps the highest-ranked copy when both rankings return the same block', async () => {
 		const outcome = await executeArchiveSearch(
 			new URLSearchParams('q=felt'),
 			() =>
 				repository([
 					result(),
-					result({ title: 'Duplicate from the other ranking' }),
+					result({ title: 'The same block, ranked lower by the other query' }),
 					result({ id: 'block:2' })
 				]),
 			undefined,
@@ -63,10 +63,7 @@ describe('executeArchiveSearch', () => {
 		);
 
 		expect(outcome.kind).toBe('ok');
-		expect(outcome.kind === 'ok' && outcome.results.map((row) => row.id)).toEqual([
-			'block:1',
-			'block:2'
-		]);
+		expect(outcome.kind === 'ok' && outcome.results).toEqual([result(), result({ id: 'block:2' })]);
 	});
 
 	it('reports an invalid request without building a repository or a correlation ID', async () => {

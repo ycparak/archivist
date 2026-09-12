@@ -41,6 +41,19 @@ describe('resolveSearchConfig', () => {
 		});
 	});
 
+	it('falls back when a platform binding is present but empty', () => {
+		expect(
+			resolveSearchConfig(
+				{ TURBOPUFFER_API_KEY: '', TURBOPUFFER_REGION: '', TURBOPUFFER_NAMESPACE: '' },
+				fallback
+			)
+		).toEqual({
+			apiKey: 'fallback-key',
+			region: 'fallback-region',
+			namespace: 'fallback-namespace'
+		});
+	});
+
 	it('defaults the namespace when neither environment names one', () => {
 		expect(
 			resolveSearchConfig(undefined, {
