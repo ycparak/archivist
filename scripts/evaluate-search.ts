@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises';
+import { ARCHIVE_SEARCH_PARAM } from '$lib/domain/search';
+import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 import { parseArchiveSearchRequest } from '$lib/server/search/request';
 import {
 	matchesEvaluationCase,
@@ -7,7 +9,6 @@ import {
 } from '$lib/server/search/evaluation';
 import { TurbopufferSearchRepository } from '$lib/server/search/repository';
 
-const DEFAULT_NAMESPACE = 'arena-blocks-v1';
 const apiKey = process.env.TURBOPUFFER_API_KEY;
 const region = process.env.TURBOPUFFER_REGION;
 
@@ -17,12 +18,14 @@ if (!apiKey || !region) {
 }
 
 function toSearchParams(testCase: SearchEvaluationCase): URLSearchParams {
-	const params = new URLSearchParams({ mode: testCase.mode });
-	if (testCase.q) params.set('q', testCase.q);
-	for (const channel of testCase.channel ?? []) params.append('channel', channel);
-	for (const type of testCase.type ?? []) params.append('type', type);
-	if (testCase.from) params.set('from', testCase.from);
-	if (testCase.to) params.set('to', testCase.to);
+	const params = new URLSearchParams({ [ARCHIVE_SEARCH_PARAM.mode]: testCase.mode });
+	if (testCase.q) params.set(ARCHIVE_SEARCH_PARAM.query, testCase.q);
+	for (const channel of testCase.channel ?? []) {
+		params.append(ARCHIVE_SEARCH_PARAM.channel, channel);
+	}
+	for (const type of testCase.type ?? []) params.append(ARCHIVE_SEARCH_PARAM.type, type);
+	if (testCase.from) params.set(ARCHIVE_SEARCH_PARAM.from, testCase.from);
+	if (testCase.to) params.set(ARCHIVE_SEARCH_PARAM.to, testCase.to);
 	return params;
 }
 

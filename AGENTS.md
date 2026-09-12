@@ -12,10 +12,11 @@ This is an **agent router**: concise context loaded every session, read by both 
 
 Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, Turbopuffer (search datastore), Are.na V3 (source of truth for content).
 
-- `src/lib/domain/`: framework-free domain types and transformations.
+- `src/lib/domain/`: framework-free domain types and transformations. This code ships to the browser, so keep it free of Zod schemas, provider shapes, and any runtime validation library — put those behind `src/lib/server/`.
 - `src/lib/server/arena/`: Are.na transport and pagination only.
 - `src/lib/server/indexing/`: normalization, document construction, and sync orchestration.
 - `src/lib/server/search/`: search request validation, Turbopuffer adapter, and result mapping.
+- `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
 - `src/routes/`: HTTP and UI composition only. Provider calls and ranking expressions do not belong in route files.
 
 Full technical detail: [docs/architecture.md](./docs/architecture.md).
@@ -66,6 +67,7 @@ All docs except this file, `CLAUDE.md`, `TODOS.md`, and `CHANGELOG.md` live in `
 ## Search Invariants
 
 - Use the `search_text` schema in `docs/architecture.md` for both BM25 and native embeddings.
+- `src/lib/domain/search.ts` owns the URL search grammar (parameter names, the implicit-mode rule, the date format). The server parser and the UI both consume it; do not restate a parameter name anywhere else.
 - Hybrid means one Turbopuffer `multiQuery` with BM25 + native ANN and `rerank_by: ['RRF']`; do not implement ad-hoc score arithmetic in the UI.
 - Filter only `block_type`, `channel_slugs`, and `connected_at` in V1.
 - Schema changes that alter an existing Turbopuffer attribute's type require a new versioned namespace. Record that migration as an ADR in `SPECs/`.
@@ -104,10 +106,12 @@ Run after a meaningful change and fix failures before handoff:
 bun run check   # wrangler types, svelte-kit sync, svelte-check (TypeScript)
 bun run lint    # prettier --check, eslint
 bun run test    # vitest
-bun run build   # wrangler types --check, vite build
+bun run build   # wrangler types, vite build
 ```
 
-`wrangler types` is pinned to `--env-file=.env.example`, not your local `.env`. Wrangler infers `Env`'s plain-var shape from whatever env file it reads — pointing it at your real `.env` bakes your local var set into the committed `worker-configuration.d.ts`, which then fails `wrangler types --check` in CI (no `.env` there) the moment your local keys differ from a clean checkout. Don't drop the flag when touching these scripts.
+`worker-configuration.d.ts` is generated, not committed. `check` and `build` regenerate it through `bun run gen` before type-checking. Wrangler's output depends on machine state twice over: it infers `Env`'s plain-var shape from whichever env file it reads, and it emits a `Cloudflare.GlobalProps` block only when the built Worker entry (`.svelte-kit/cloudflare/_worker.js`) already exists. A committed copy plus `wrangler types --check` therefore cannot hold: the file a contributor generates after building never matches the one CI generates before building.
+
+`wrangler types` stays pinned to `--env-file=.env.example`, not your local `.env`, so `Env` is identical everywhere regardless of which keys you happen to have. Don't drop the flag when touching these scripts.
 
 `bun run check` type-checks `scripts/` (the manual CLI entrypoints, e.g. `bun run sync`) as a second, separate `tsc --noEmit --project scripts/tsconfig.json` step after `svelte-check`. `scripts/` isn't in `svelte-check`'s scope (its generated tsconfig only covers `src/`/`test/`/`tests/`) and needs Node globals (`process`) that the root `tsconfig.json` deliberately excludes from `types` — leaking Node globals into `src/`, which is Cloudflare Workers code, would be a real correctness hazard, not just noise. Keep new CLI scripts under `scripts/` so this coverage applies to them automatically.
 
