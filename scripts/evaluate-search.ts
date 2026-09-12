@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { ARCHIVE_SEARCH_PARAM } from '$lib/domain/search';
-import { DEFAULT_NAMESPACE } from '$lib/server/search/config';
+import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 import { parseArchiveSearchRequest } from '$lib/server/search/request';
 import {
 	matchesEvaluationCase,
