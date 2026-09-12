@@ -1,6 +1,16 @@
 import type Turbopuffer from '@turbopuffer/turbopuffer';
 
 /**
+ * Required on every write once a namespace has a vector-producing attribute (verified live:
+ * writing without it fails with "distance_metric must be specified for write to namespace with a
+ * vector", even though `search_text`'s vector is auto-embedded, not hand-supplied). Cosine
+ * distance is the conventional choice for comparing text embeddings. Exported alongside the
+ * schema since both the write path (batch upsert) and the future ANN query path need the same
+ * value — the namespace's distance metric is fixed at creation and can't differ between them.
+ */
+export const archiveDistanceMetric: Turbopuffer.DistanceMetric = 'cosine_distance';
+
+/**
  * The first write creates the namespace schema. Breaking type/model changes require a new namespace.
  * `search_text` is intentionally the only semantic and full-text field.
  */

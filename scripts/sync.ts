@@ -1,13 +1,29 @@
 import { syncArchive } from '$lib/server/indexing/sync';
 
+const DEFAULT_NAMESPACE = 'arena-blocks-v1';
+
 const accessToken = process.env.ARENA_ACCESS_TOKEN;
 if (!accessToken) {
 	console.error('ARENA_ACCESS_TOKEN is not set. Copy .env.example to .env and fill it in.');
 	process.exit(1);
 }
 
+const apiKey = process.env.TURBOPUFFER_API_KEY;
+const region = process.env.TURBOPUFFER_REGION;
+if (!apiKey || !region) {
+	console.error(
+		'TURBOPUFFER_API_KEY and TURBOPUFFER_REGION must both be set. Copy .env.example to .env and fill them in.'
+	);
+	process.exit(1);
+}
+const namespace = process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE;
+
 try {
-	const { summary } = await syncArchive({ accessToken, log: console.log });
+	const { summary } = await syncArchive({
+		accessToken,
+		turbopuffer: { apiKey, region, namespace },
+		log: console.log
+	});
 
 	console.log('');
 	console.log('Sync summary:');
@@ -22,9 +38,8 @@ try {
 	console.log(`  Blocks fetched:      ${summary.blocksFetched}`);
 	console.log(`  Items skipped:       ${summary.itemsSkipped} (nested channels, not blocks)`);
 	console.log(`  Unique blocks:       ${summary.uniqueBlocks} (after dedup across channels)`);
-	console.log('');
 	console.log(
-		'Not yet persisted to Turbopuffer — schema creation and batch upsert are a separate TODO (see TODOS.md).'
+		`  Upserted:            ${summary.documentsUpserted} document(s) into "${namespace}" across ${summary.upsertBatches} batch(es)`
 	);
 } catch (error) {
 	console.error('Sync failed:', error instanceof Error ? error.message : error);
