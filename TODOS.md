@@ -8,7 +8,6 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ### Slice 1 — ingest one real channel
 
-- [ ] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`).
 - [ ] `toSearchDocument` normalizer covering all supported block shapes, with tests.
 - [ ] Manual `bun run sync` command for configured `ARENA_CHANNEL_SLUGS`.
 - [ ] Turbopuffer schema creation (`search_text` full-text + native embed, per `docs/architecture.md`) and batch upsert.
@@ -36,7 +35,7 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ## In Progress
 
-_(none)_
+- [ ] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`). See [SPECs/Agent/worksheet-arena-page-client.md](./SPECs/Agent/worksheet-arena-page-client.md).
 
 ## Done
 
