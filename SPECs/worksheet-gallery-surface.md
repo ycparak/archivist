@@ -163,6 +163,53 @@ It would relax a guard Slice 2 added deliberately, and the form no longer produc
   `docs/svelte-guidelines.md` (components boundary, the GET-form caveat, `navigating` shape, no
   route announcer, SSR markup testing, MCP CLI fallback), `CHANGELOG.md`, `TODOS.md`.
 
+## Implementation review
+
+Three personas (SvelteKit/Frontend; Systems Architect; QA) reviewed commit `a369e80` with fresh
+context. Four P1s, all fixed here:
+
+- **Zod shipped to the browser (architect).** Moving `SearchResult` out of the server contract took
+  its Zod schema into `src/lib/domain/search.ts`, and `ARCHIVE_BLOCK_TYPES` sat in the Zod-bearing
+  `archive.ts`, so the home page retained the whole Zod runtime. Measured: the page's client chunk
+  was 95,613 bytes. The domain now carries the plain `SearchResult` type and the block-type
+  vocabulary; `searchResultSchema` lives in `contracts.ts` typed as `z.ZodType<SearchResult>` so the
+  two cannot drift. The chunk is now 11,440 bytes with no Zod in it.
+- **The ranking select was DOM-owned (frontend).** `<option selected={…}>` writes only the content
+  attribute, which a browser ignores once the user has touched the select — so after one
+  interaction the control could disagree with the URL. Now `<select value={…}>`. Verified in a
+  browser: choose Exact words, submit, change to Best match, submit, press Back — the select reads
+  `lexical` again, matching the URL.
+- **The round-trip test did not test what the worksheet claimed (QA).** The recorded plan-review
+  resolution said states were driven through `toArchiveSearchHref` → `parseArchiveSearchRequest`;
+  the test actually drove `toArchiveSearchHref` → `readArchiveSearchState`, both in the same module,
+  and those two are deliberately non-inverse (the reader is lenient, the parser strict). So the one
+  guarantee the refactor exists to provide — every URL the UI can build is a request the server
+  accepts — was untested. `request.spec.ts` now drives seven UI states through the real parser,
+  including explicit browse with a query. No divergence existed; the guard was simply missing.
+- **Duplicate query parameters crashed hydration (frontend).** `?channel=a&channel=a` produced
+  duplicate keys in a keyed `{#each}`, which Svelte 5 throws on, silently degrading the page to the
+  no-JS path. `readArchiveSearchState` now collapses duplicates. Verified: no page errors, one chip.
+
+Also fixed: heading order skipped from `h1` to `h3` (the results list now has a visually-hidden
+`h2`); long unbreakable titles — Are.na upload filenames — overflowed the viewport at 320px
+(`overflow-wrap` plus `min-inline-size` on the grid item; verified with a 70-character filename);
+the primary button _lost_ contrast on hover (2.73:1 — it now darkens via a new
+`--color-accent-hover`, and `--color-text-tertiary` moved to grey-700 so card metadata and the
+status line clear AA — measured 8.37:1 and 5.57:1 in the browser); malformed dates are dropped by
+the reader rather than rendering an empty filter group; `data-sveltekit-keepfocus` was inert next to
+our own `preventDefault` and has been removed (`goto`'s `keepFocus` is what actually works);
+`SearchEnvironment` is pinned to `Pick<Env, …>` so a renamed variable fails type-check instead of
+503ing in production; the namespace default and the URL parameter names are imported by the scripts
+rather than restated; the page's status logic moved into a tested pure function; and the page sends
+`cache-control: no-store` on a failed search so an outage is not cached as content.
+
+One fix surfaced a real bug of its own: the new API-envelope test showed `deduplicateById` was
+keeping the _last_ copy of a duplicated block, i.e. the lower-ranked one. It now keeps the first.
+
+Not adopted: naming each active filter in the status text rather than counting them (a reasonable
+P3, but the count plus the query already varies per request); splitting `SearchUnavailableError` out
+of `repository.ts`; a jsdom test project (already a Slice 4 TODO).
+
 ### Manual verification
 
 Run against `bun run dev` with a temporary stubbed `load` (no Turbopuffer credentials exist in this

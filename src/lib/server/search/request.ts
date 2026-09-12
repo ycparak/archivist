@@ -1,6 +1,10 @@
 import { z } from 'zod';
-import { ARCHIVE_BLOCK_TYPES } from '$lib/domain/archive';
-import { ARCHIVE_RESULT_LIMIT, ARCHIVE_SEARCH_PARAM, defaultSearchMode } from '$lib/domain/search';
+import {
+	ARCHIVE_BLOCK_TYPES,
+	ARCHIVE_RESULT_LIMIT,
+	ARCHIVE_SEARCH_PARAM,
+	defaultSearchMode
+} from '$lib/domain/search';
 import { archiveSearchInputSchema, searchModeSchema, type ArchiveSearchInput } from './contracts';
 
 const DATE_END_TIME = 'T23:59:59.999Z';

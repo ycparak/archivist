@@ -90,6 +90,7 @@
 
 	.card-title {
 		margin: 0;
+		overflow-wrap: anywhere;
 		font-size: var(--text-size-md);
 		line-height: var(--leading-interface);
 		text-decoration: underline;
@@ -117,6 +118,7 @@
 
 	.card-meta {
 		display: flex;
+		overflow-wrap: anywhere;
 		flex-wrap: wrap;
 		gap: var(--space-2);
 		margin: 0;
@@ -132,6 +134,7 @@
 	}
 
 	.channel-link {
+		overflow-wrap: anywhere;
 		color: var(--color-text-tertiary);
 		font-family: var(--font-mono);
 		font-size: var(--text-size-meta);
@@ -141,9 +144,5 @@
 	.channel-link::before {
 		content: '#';
 		color: var(--color-border-emphasis);
-	}
-
-	.channel-link:hover {
-		color: var(--color-accent);
 	}
 </style>

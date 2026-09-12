@@ -3,5 +3,10 @@ import type { PageServerLoad } from './$types';
 import { createSearchRepository } from '$lib/server/search/config';
 import { executeArchiveSearch } from '$lib/server/search/execute';
 
-export const load: PageServerLoad = ({ url, platform }) =>
-	executeArchiveSearch(url.searchParams, () => createSearchRepository(platform?.env, env));
+export const load: PageServerLoad = async ({ url, platform, setHeaders }) => {
+	const outcome = await executeArchiveSearch(url.searchParams, () =>
+		createSearchRepository(platform?.env, env)
+	);
+	if (outcome.kind !== 'ok') setHeaders({ 'cache-control': 'no-store' });
+	return outcome;
+};
