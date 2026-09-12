@@ -1,3 +1,6 @@
 [mcp_servers.svelte]
 command = "npx"
 args = ["-y", "@sveltejs/mcp"]
+
+[mcp_servers.arena]
+url = "https://mcp.are.na/mcp"
