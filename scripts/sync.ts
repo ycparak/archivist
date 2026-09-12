@@ -1,3 +1,8 @@
+import { writeFile } from 'node:fs/promises';
+import {
+	buildChannelManifest,
+	serializeChannelManifest
+} from '$lib/server/indexing/channel-manifest';
 import { syncArchive } from '$lib/server/indexing/sync';
 import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 
@@ -18,11 +23,16 @@ if (!apiKey || !region) {
 const namespace = process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE;
 
 try {
-	const { summary } = await syncArchive({
+	const { channels, summary } = await syncArchive({
 		accessToken,
 		turbopuffer: { apiKey, region, namespace },
 		log: console.log
 	});
+
+	const manifest = buildChannelManifest(channels);
+	const manifestPath = new URL('../src/lib/server/indexing/channel-manifest.json', import.meta.url);
+	await writeFile(manifestPath, serializeChannelManifest(manifest));
+	console.log(`Wrote channel manifest: ${manifest.length} channel(s)`);
 
 	console.log('');
 	console.log('Sync summary:');

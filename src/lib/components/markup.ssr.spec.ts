@@ -43,16 +43,20 @@ function result(overrides: Partial<SearchResult> = {}): SearchResult {
 describe('SearchForm markup', () => {
 	it('submits to the archive surface with a GET so the URL stays the source of truth', () => {
 		const { body } = render(SearchForm, {
-			props: { state: state(), onnavigate: () => {} }
+			props: { state: state(), channels: [], onnavigate: () => {} }
 		});
 
 		expect(body).toContain('method="GET"');
 		expect(body).toContain('action="/"');
 	});
 
-	it('carries active channel filters as hidden fields so a submit cannot drop them', () => {
+	it('carries an active channel filter the manifest does not list as a hidden field so a submit cannot drop it', () => {
 		const { body } = render(SearchForm, {
-			props: { state: state({ channelSlugs: ['materials', 'type'] }), onnavigate: () => {} }
+			props: {
+				state: state({ channelSlugs: ['materials', 'type'] }),
+				channels: [],
+				onnavigate: () => {}
+			}
 		});
 
 		const hidden = [...body.matchAll(/<input\b[^>]*type="hidden"[^>]*>/g)].map((match) => match[0]);
@@ -61,6 +65,60 @@ describe('SearchForm markup', () => {
 			expect(hidden.some((field) => field.includes(`value="${slug}"`))).toBe(true);
 		}
 		expect(hidden.every((field) => field.includes('name="channel"'))).toBe(true);
+	});
+
+	it('lists every manifest channel as a checkbox, checking only the active ones', () => {
+		const { body } = render(SearchForm, {
+			props: {
+				state: state({ channelSlugs: ['materials'] }),
+				channels: [
+					{ slug: 'materials', title: 'Materials' },
+					{ slug: 'references', title: 'References' }
+				],
+				onnavigate: () => {}
+			}
+		});
+
+		const checkboxes = [...body.matchAll(/<input\b[^>]*type="checkbox"[^>]*>/g)].map(
+			(match) => match[0]
+		);
+		const channelCheckboxes = checkboxes.filter((field) => field.includes('name="channel"'));
+		expect(channelCheckboxes).toHaveLength(2);
+		const checked = channelCheckboxes.filter((field) => /\bchecked\b/.test(field));
+		expect(checked).toHaveLength(1);
+		expect(checked[0]).toContain('value="materials"');
+		expect(body).toContain('References');
+	});
+
+	it('still preserves a channel filter the manifest does not list, alongside listed ones', () => {
+		const { body } = render(SearchForm, {
+			props: {
+				state: state({ channelSlugs: ['materials', 'unlisted-channel'] }),
+				channels: [{ slug: 'materials', title: 'Materials' }],
+				onnavigate: () => {}
+			}
+		});
+
+		const hidden = [...body.matchAll(/<input\b[^>]*type="hidden"[^>]*>/g)].map((match) => match[0]);
+		expect(hidden).toHaveLength(1);
+		expect(hidden[0]).toContain('value="unlisted-channel"');
+
+		const checkboxes = [...body.matchAll(/<input\b[^>]*type="checkbox"[^>]*>/g)].map(
+			(match) => match[0]
+		);
+		const checkedChannel = checkboxes.filter(
+			(field) => field.includes('name="channel"') && /\bchecked\b/.test(field)
+		);
+		expect(checkedChannel).toHaveLength(1);
+		expect(checkedChannel[0]).toContain('value="materials"');
+	});
+
+	it('renders no channel fieldset when the manifest is empty', () => {
+		const { body } = render(SearchForm, {
+			props: { state: state(), channels: [], onnavigate: () => {} }
+		});
+
+		expect(body).not.toContain('Channel');
 	});
 
 	it('rebuilds the same URL from what the form submits, filters included', () => {
@@ -107,6 +165,7 @@ describe('SearchForm markup', () => {
 					from: '2024-01-02',
 					to: '2024-01-31'
 				}),
+				channels: [],
 				onnavigate: () => {}
 			}
 		});
@@ -121,7 +180,7 @@ describe('SearchForm markup', () => {
 
 	it('associates a label with every visible control', () => {
 		const { body } = render(SearchForm, {
-			props: { state: state(), onnavigate: () => {} }
+			props: { state: state(), channels: [], onnavigate: () => {} }
 		});
 
 		for (const id of ['archive-query', 'archive-mode', 'archive-from', 'archive-to']) {
@@ -132,7 +191,7 @@ describe('SearchForm markup', () => {
 
 	it('marks the checkbox for an active block type filter', () => {
 		const { body } = render(SearchForm, {
-			props: { state: state({ blockTypes: ['Image'] }), onnavigate: () => {} }
+			props: { state: state({ blockTypes: ['Image'] }), channels: [], onnavigate: () => {} }
 		});
 
 		const checkboxes = [...body.matchAll(/<input\b[^>]*type="checkbox"[^>]*>/g)].map(
@@ -145,7 +204,11 @@ describe('SearchForm markup', () => {
 
 	it('shows the ranking the URL asked for', () => {
 		const { body } = render(SearchForm, {
-			props: { state: state({ query: 'felt', mode: 'semantic' }), onnavigate: () => {} }
+			props: {
+				state: state({ query: 'felt', mode: 'semantic' }),
+				channels: [],
+				onnavigate: () => {}
+			}
 		});
 
 		expect(body).toMatch(/<option[^>]*value="semantic"[^>]*selected/);
