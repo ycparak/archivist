@@ -33,6 +33,9 @@ describe('handleSearchRequest', () => {
 			sourceUrl: 'https://example.test/felt',
 			arenaUrl: 'https://www.are.na/block/1',
 			imageUrl: 'https://images.are.na/felt.jpg',
+			imageAlt: 'A felt swatch',
+			imageWidth: 800,
+			imageHeight: 600,
 			sourceTitle: 'Example'
 		};
 
@@ -59,6 +62,9 @@ describe('handleSearchRequest', () => {
 			sourceUrl: null,
 			arenaUrl: 'https://www.are.na/block/1',
 			imageUrl: null,
+			imageAlt: null,
+			imageWidth: null,
+			imageHeight: null,
 			sourceTitle: null
 		};
 

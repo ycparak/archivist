@@ -50,6 +50,9 @@ function resultRow() {
 		source_url: 'https://example.com/felt',
 		arena_url: 'https://www.are.na/block/12',
 		image_url: 'https://example.com/felt.jpg',
+		image_alt: 'A felt swatch',
+		image_width: 800,
+		image_height: 600,
 		source_title: 'Example'
 	};
 }
@@ -130,6 +133,9 @@ describe('TurbopufferSearchRepository', () => {
 				sourceUrl: 'https://example.com/felt',
 				arenaUrl: 'https://www.are.na/block/12',
 				imageUrl: 'https://example.com/felt.jpg',
+				imageAlt: 'A felt swatch',
+				imageWidth: 800,
+				imageHeight: 600,
 				sourceTitle: 'Example'
 			}
 		]);

@@ -27,6 +27,9 @@ export type SearchResult = {
 	sourceUrl: string | null;
 	arenaUrl: string;
 	imageUrl: string | null;
+	imageAlt: string | null;
+	imageWidth: number | null;
+	imageHeight: number | null;
 	sourceTitle: string | null;
 };
 

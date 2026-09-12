@@ -8,11 +8,6 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ### Slice 4 — portfolio polish
 
-- [ ] Index `image.alt_text`, `width`, and `height` from Are.na's block image payload. The normalizer
-      currently discards all three (`src/lib/server/indexing/normalize.ts`), so result images use an
-      empty `alt` inside a link named by the block title, and a fixed aspect-ratio box instead of
-      real intrinsic dimensions. These are new unindexed attributes, so this needs a re-sync but not
-      a namespace version.
 - [ ] Give the UI a complete channel list. V1 can only offer channels present in the current
       results, because Turbopuffer has no facet we rely on over `channel_slugs` and a public request
       may never call Are.na. The intended shape is the sync command emitting a channel manifest.
@@ -30,6 +25,10 @@ _(none)_
 
 ## Done
 
+- [x] Slice 4 image metadata: index `image.alt_text`/`width`/`height` (from `image.large`, matching
+      the version `imageUrl` already uses), thread them through to `ResultCard` (real `alt` text
+      when Are.na has it, real intrinsic dimensions replacing the fixed 4:3 crop when it doesn't),
+      and re-sync. See [SPECs/worksheet-image-metadata-indexing.md](./SPECs/worksheet-image-metadata-indexing.md).
 - [x] Slice 4 about surface: `/about` page with concise notes on where the archive comes from, how
       the four search modes work, and how the app is built, linked from the home page. See
       [SPECs/worksheet-about-surface.md](./SPECs/worksheet-about-surface.md).
