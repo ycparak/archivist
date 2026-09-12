@@ -2,6 +2,10 @@ import { z } from 'zod';
 
 export const blockTypeSchema = z.string().trim().min(1);
 
+export const ARCHIVE_BLOCK_TYPES = ['Image', 'Link', 'Text', 'Attachment', 'Embed'] as const;
+
+export type ArchiveBlockType = (typeof ARCHIVE_BLOCK_TYPES)[number];
+
 export const archiveBlockSchema = z.object({
 	id: z.union([z.string(), z.number()]).transform(String),
 	type: blockTypeSchema,

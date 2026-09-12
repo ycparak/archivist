@@ -16,6 +16,7 @@ Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, Turbopuffer (sear
 - `src/lib/server/arena/`: Are.na transport and pagination only.
 - `src/lib/server/indexing/`: normalization, document construction, and sync orchestration.
 - `src/lib/server/search/`: search request validation, Turbopuffer adapter, and result mapping.
+- `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
 - `src/routes/`: HTTP and UI composition only. Provider calls and ranking expressions do not belong in route files.
 
 Full technical detail: [docs/architecture.md](./docs/architecture.md).
@@ -67,6 +68,7 @@ All docs except this file, `CLAUDE.md`, `TODOS.md`, and `CHANGELOG.md` live in `
 ## Search Invariants
 
 - Use the `search_text` schema in `docs/architecture.md` for both BM25 and native embeddings.
+- `src/lib/domain/search.ts` owns the URL search grammar (parameter names, the implicit-mode rule, the date format). The server parser and the UI both consume it; do not restate a parameter name anywhere else.
 - Hybrid means one Turbopuffer `multiQuery` with BM25 + native ANN and `rerank_by: ['RRF']`; do not implement ad-hoc score arithmetic in the UI.
 - Filter only `block_type`, `channel_slugs`, and `connected_at` in V1.
 - Schema changes that alter an existing Turbopuffer attribute's type require a new versioned namespace. Record that migration as an ADR in `SPECs/`.
