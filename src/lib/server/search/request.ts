@@ -1,16 +1,17 @@
 import { z } from 'zod';
+import { ARCHIVE_BLOCK_TYPES } from '$lib/domain/archive';
+import { ARCHIVE_RESULT_LIMIT, ARCHIVE_SEARCH_PARAM, defaultSearchMode } from '$lib/domain/search';
 import { archiveSearchInputSchema, searchModeSchema, type ArchiveSearchInput } from './contracts';
 
 const DATE_END_TIME = 'T23:59:59.999Z';
 const DATE_START_TIME = 'T00:00:00.000Z';
-const SERVER_RESULT_LIMIT = 24;
 
 const searchRequestSchema = z
 	.object({
 		mode: searchModeSchema,
 		query: z.string().trim().max(400),
 		channelSlugs: z.array(z.string().trim().min(1)).max(20),
-		blockTypes: z.array(z.string().trim().min(1)).max(20),
+		blockTypes: z.array(z.enum(ARCHIVE_BLOCK_TYPES)).max(20),
 		from: z.iso.date().optional(),
 		to: z.iso.date().optional()
 	})
@@ -50,16 +51,28 @@ function singleParam(searchParams: URLSearchParams, name: string): string | unde
 	return values[0];
 }
 
+function optionalParam(searchParams: URLSearchParams, name: string): string | undefined {
+	const value = singleParam(searchParams, name);
+	return value?.trim() ? value : undefined;
+}
+
+function repeatedParams(searchParams: URLSearchParams, name: string): string[] {
+	return searchParams
+		.getAll(name)
+		.map((value) => value.trim())
+		.filter(Boolean);
+}
+
 export function parseArchiveSearchRequest(searchParams: URLSearchParams): ArchiveSearchInput {
-	const query = singleParam(searchParams, 'q') ?? '';
-	const explicitMode = singleParam(searchParams, 'mode');
+	const query = singleParam(searchParams, ARCHIVE_SEARCH_PARAM.query) ?? '';
+	const explicitMode = optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.mode);
 	const raw = {
-		mode: explicitMode ?? (query.trim() ? 'hybrid' : 'browse'),
+		mode: explicitMode ?? defaultSearchMode(query),
 		query,
-		channelSlugs: searchParams.getAll('channel'),
-		blockTypes: searchParams.getAll('type'),
-		from: singleParam(searchParams, 'from'),
-		to: singleParam(searchParams, 'to')
+		channelSlugs: repeatedParams(searchParams, ARCHIVE_SEARCH_PARAM.channel),
+		blockTypes: repeatedParams(searchParams, ARCHIVE_SEARCH_PARAM.type),
+		from: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.from),
+		to: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.to)
 	};
 	const parsed = searchRequestSchema.safeParse(raw);
 	if (!parsed.success) throw new SearchRequestValidationError(parsed.error);
@@ -68,6 +81,6 @@ export function parseArchiveSearchRequest(searchParams: URLSearchParams): Archiv
 		...parsed.data,
 		from: parsed.data.from ? new Date(`${parsed.data.from}${DATE_START_TIME}`) : undefined,
 		to: parsed.data.to ? new Date(`${parsed.data.to}${DATE_END_TIME}`) : undefined,
-		limit: SERVER_RESULT_LIMIT
+		limit: ARCHIVE_RESULT_LIMIT
 	});
 }

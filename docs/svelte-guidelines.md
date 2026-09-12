@@ -16,11 +16,16 @@ These mirror the architecture boundaries in [`AGENTS.md`](../AGENTS.md) — this
 - `src/lib/domain/`: plain TypeScript, no Svelte imports, no SvelteKit imports. If a domain file needs `$state`, it belongs somewhere else.
 - `src/lib/server/`: server-only. Never import a `src/lib/server/**` module from a `.svelte` file or any code that ships to the client — SvelteKit's server-only enforcement will fail the build, and that failure is correct, not a false positive to work around.
 - `src/routes/`: composition only. A `+page.svelte` renders `SearchResult`-shaped data from its `load` function; it does not call Turbopuffer, Are.na, or construct ranking expressions itself. A `+page.server.ts` / `+server.ts` calls into `src/lib/server/search/` or `src/lib/server/indexing/` rather than reimplementing adapter logic inline.
+- `src/lib/components/`: shared presentation components. Client-safe by definition — never import `$lib/server/**` from one, not even a type. Types the UI needs (`SearchResult`, `ArchiveSearchState`) live in `src/lib/domain/`.
 
 ## Data Loading
 
 - Fetch and validate in `+page.server.ts` / `+server.ts` `load`/handler functions. Validate untrusted input (query params, request bodies) with Zod at that boundary, per the Quality bar in `AGENTS.md`.
 - Keep URL search params as the source of truth for browse/search/filter state (`?q=&mode=&channel=&type=&from=&to=`) so state survives reload and is linkable. Don't shadow that state in a separate client store that can drift from the URL.
+- Use a plain `<form method="GET">` for URL-backed search state. SvelteKit intercepts GET submissions and navigates client-side, so the same markup works with and without JavaScript.
+  **A GET submit replaces the entire query string with the form's own fields.** Any URL state that is not a control in that form — an active `channel` filter set from a result card, say — must be rendered as a hidden input, or submitting the form silently drops it.
+- `navigating` from `$app/state` is an object whose _properties_ are null when idle; it is never itself null. (`$navigating` from the deprecated `$app/stores` behaves the opposite way — a common miswrite.)
+- SvelteKit does not announce route changes. A page that swaps its content in place owns that announcement: keep a `role="status"` live region in the initial SSR markup, outside any `aria-busy` subtree (changes inside one are not announced), and make its text vary per request — identical text is not re-announced.
 - Return only the fields the UI needs (`SearchResult`, not raw Turbopuffer rows or raw Are.na payloads) from `load` functions.
 
 ## Components
@@ -33,6 +38,7 @@ These mirror the architecture boundaries in [`AGENTS.md`](../AGENTS.md) — this
 
 - Unit test normalizers, filter builders, and search-result mappers in `src/lib/domain/` and `src/lib/server/` with Vitest — colocate as `*.spec.ts` next to the source file (see `src/lib/domain/archive.spec.ts`).
 - Test behavior (given this input, this output/shape), not internal implementation details.
+- There is no component/browser test project. Markup contracts that matter (a form's `method`/`action`, hidden fields carrying URL state, `for`/`id` label association, `alt`, the live region) can still be asserted in the node project by server-rendering a component with `render()` from `svelte/server` — see `src/lib/components/markup.ssr.spec.ts`. Genuinely interactive behavior (focus, announcement, reflow) stays manual; record what was checked in the task's worksheet.
 
 ## Use the Svelte MCP Server
 
@@ -41,3 +47,4 @@ This project configures the official Svelte MCP server for both Claude Code (`.m
 - **Before writing an unfamiliar Svelte 5 / SvelteKit pattern** (a rune you haven't used in this codebase, a `load` function edge case, an adapter-specific API), use the server's documentation tool to pull the current official docs instead of relying on training data — Svelte 5's APIs changed enough from Svelte 4 that pretrained knowledge is a common source of subtly wrong code.
 - **Before finalizing a non-trivial Svelte component or `.svelte.ts` change**, run the server's autofixer tool against the code. It catches the common classes of mistakes AI-generated Svelte code tends to make (stale Svelte 4 idioms, incorrect rune usage, reactivity mistakes) that type-checking and lint alone won't always flag.
 - Prefer the MCP server's answer over guessing when the two disagree with what you remember about Svelte/SvelteKit APIs — it reflects the pinned version in `package.json`, not a generic latest.
+- The server fetches `svelte.dev` at startup, so in a sandbox whose network policy blocks that host the documentation tool is unavailable. The autofixer still works through the package's CLI (`npx -y @sveltejs/mcp svelte-autofixer "<code>"`), which prints its findings before the docs fetch fails. When the docs tool is unreachable, read the pinned sources under `node_modules/@sveltejs/kit/` rather than relying on pretrained knowledge.

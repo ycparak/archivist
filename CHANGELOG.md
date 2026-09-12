@@ -4,6 +4,18 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- Added the search-first home page: a gallery of original Are.na blocks with a search box, ranking
+  choice (best match, exact words, related ideas), block-type and connected-date filters, and
+  channel filters you add by clicking a channel on a result. All of it lives in the URL
+  (`?q=&mode=&channel=&type=&from=&to=`), so a search is shareable, survives reload, and works with
+  the browser's back button. The page works without JavaScript.
+- Result cards show the block's own title, description, type, source, channels, and connected date,
+  and link to the original block on Are.na. Untitled blocks are labelled by their own type; nothing
+  about a block is invented. Images reserve their space before loading, so the grid does not jump.
+- Added loading, no-result, unreadable-search, and search-unavailable states. An unavailable search
+  keeps your query and filters on screen and shows a reference you can quote to the maintainer.
+- `GET /api/search` now treats blank parameters as omitted (`?q=&from=` is the same as no filter),
+  and rejects a `type` outside Are.na's five block types instead of returning an empty result.
 - Added `GET /api/search` backed by the server-only Turbopuffer repository. It supports browse,
   lexical, semantic, and hybrid/RRF retrieval; repeated channel/type filters; and inclusive
   connected-date bounds. Responses contain original Are.na block metadata only, while malformed
