@@ -54,6 +54,28 @@ function routedFetch(routes: Record<string, () => Response>) {
 	});
 }
 
+/** A Turbopuffer fetch mock that always succeeds, reporting however many rows were sent. */
+function okTurbopufferFetch() {
+	return vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+		const body = JSON.parse(init.body as string);
+		return jsonResponse({
+			status: 'OK',
+			message: 'ok',
+			rows_affected: body.upsert_rows?.length ?? 0,
+			billing: {}
+		});
+	});
+}
+
+function turbopufferConfig(fetchFn = okTurbopufferFetch()) {
+	return {
+		apiKey: 'k',
+		region: 'r',
+		namespace: 'archivist-test',
+		fetchFn: fetchFn as unknown as typeof fetch
+	};
+}
+
 describe('syncArchive', () => {
 	it('discovers channels, syncs each one, and returns normalized, deduplicated blocks', async () => {
 		const fetchFn = routedFetch({
@@ -67,7 +89,12 @@ describe('syncArchive', () => {
 			'/v3/channels/channel-b/contents': () => contentsResponse([textBlock(101)])
 		});
 
-		const { blocks, summary } = await syncArchive({ accessToken: 't', fetchFn, channelDelayMs: 0 });
+		const { blocks, summary } = await syncArchive({
+			accessToken: 't',
+			fetchFn,
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig()
+		});
 
 		expect(summary).toMatchObject({
 			channelsDiscovered: 2,
@@ -76,7 +103,9 @@ describe('syncArchive', () => {
 			blocksFetched: 2,
 			itemsSkipped: 0,
 			blocksNormalized: 2,
-			uniqueBlocks: 2
+			uniqueBlocks: 2,
+			documentsUpserted: 2,
+			upsertBatches: 1
 		});
 		expect(blocks.map((b) => b.id).sort()).toEqual(['100', '101']);
 	});
@@ -93,7 +122,12 @@ describe('syncArchive', () => {
 			'/v3/channels/channel-b/contents': () => contentsResponse([textBlock(100)])
 		});
 
-		const { blocks, summary } = await syncArchive({ accessToken: 't', fetchFn, channelDelayMs: 0 });
+		const { blocks, summary } = await syncArchive({
+			accessToken: 't',
+			fetchFn,
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig()
+		});
 
 		expect(summary.uniqueBlocks).toBe(1);
 		expect(blocks).toHaveLength(1);
@@ -117,7 +151,8 @@ describe('syncArchive', () => {
 		const { blocks: olderFirstBlocks } = await syncArchive({
 			accessToken: 't',
 			fetchFn: olderFirst,
-			channelDelayMs: 0
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig()
 		});
 		expect(olderFirstBlocks[0]?.connectedAt).toEqual(new Date(newer));
 
@@ -134,7 +169,8 @@ describe('syncArchive', () => {
 		const { blocks: newerFirstBlocks } = await syncArchive({
 			accessToken: 't',
 			fetchFn: newerFirst,
-			channelDelayMs: 0
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig()
 		});
 		expect(newerFirstBlocks[0]?.connectedAt).toEqual(new Date(newer));
 	});
@@ -156,7 +192,12 @@ describe('syncArchive', () => {
 				])
 		});
 
-		const { summary } = await syncArchive({ accessToken: 't', fetchFn, channelDelayMs: 0 });
+		const { summary } = await syncArchive({
+			accessToken: 't',
+			fetchFn,
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig()
+		});
 
 		expect(summary.itemsSkipped).toBe(1);
 		expect(summary.blocksFetched).toBe(1);
@@ -175,7 +216,12 @@ describe('syncArchive', () => {
 			'/v3/channels/good-channel/contents': () => contentsResponse([textBlock(100)])
 		});
 
-		const { blocks, summary } = await syncArchive({ accessToken: 't', fetchFn, channelDelayMs: 0 });
+		const { blocks, summary } = await syncArchive({
+			accessToken: 't',
+			fetchFn,
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig()
+		});
 
 		expect(summary.channelsSynced).toBe(1);
 		expect(summary.channelsFailed).toHaveLength(1);
@@ -201,8 +247,16 @@ describe('syncArchive', () => {
 			return new Response('nope', { status: 404 });
 		});
 
+		const turbopufferFetch = okTurbopufferFetch();
+
 		await expect(
-			syncArchive({ accessToken: 't', fetchFn, channelDelayMs: 0, maxLeadingChannelFailures: 3 })
+			syncArchive({
+				accessToken: 't',
+				fetchFn,
+				channelDelayMs: 0,
+				maxLeadingChannelFailures: 3,
+				turbopuffer: turbopufferConfig(turbopufferFetch)
+			})
 		).rejects.toThrow(/first 3 channels all failed/);
 
 		// The 4th channel is never requested — the sync stopped as soon as the breaker tripped.
@@ -211,6 +265,8 @@ describe('syncArchive', () => {
 			'/v3/channels/broken-2/contents',
 			'/v3/channels/broken-3/contents'
 		]);
+		// The sync never got as far as upserting anything.
+		expect(turbopufferFetch).not.toHaveBeenCalled();
 	});
 
 	it('does not trip the failure breaker once at least one channel has already succeeded', async () => {
@@ -233,7 +289,8 @@ describe('syncArchive', () => {
 			accessToken: 't',
 			fetchFn,
 			channelDelayMs: 0,
-			maxLeadingChannelFailures: 3
+			maxLeadingChannelFailures: 3,
+			turbopuffer: turbopufferConfig()
 		});
 
 		expect(summary.channelsSynced).toBe(1);
@@ -248,7 +305,17 @@ describe('syncArchive', () => {
 			'/v3/channels/channel-a/contents': () => contentsResponse([{ id: 1, type: 'Text' }])
 		});
 
-		await expect(syncArchive({ accessToken: 't', fetchFn, channelDelayMs: 0 })).rejects.toThrow();
+		const turbopufferFetch = okTurbopufferFetch();
+
+		await expect(
+			syncArchive({
+				accessToken: 't',
+				fetchFn,
+				channelDelayMs: 0,
+				turbopuffer: turbopufferConfig(turbopufferFetch)
+			})
+		).rejects.toThrow();
+		expect(turbopufferFetch).not.toHaveBeenCalled();
 	});
 
 	it('paces requests between channels using the injected delayFn, not just between pages', async () => {
@@ -264,7 +331,7 @@ describe('syncArchive', () => {
 		});
 		const delayFn = vi.fn().mockResolvedValue(undefined);
 
-		await syncArchive({ accessToken: 't', fetchFn, delayFn });
+		await syncArchive({ accessToken: 't', fetchFn, delayFn, turbopuffer: turbopufferConfig() });
 
 		// One pause between the two channels; none after the last one.
 		expect(delayFn).toHaveBeenCalledTimes(1);
@@ -279,9 +346,62 @@ describe('syncArchive', () => {
 		});
 		const log = vi.fn();
 
-		await syncArchive({ accessToken: 't', fetchFn, log, channelDelayMs: 0 });
+		await syncArchive({
+			accessToken: 't',
+			fetchFn,
+			log,
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig()
+		});
 
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('Discovered 1'));
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('channel-a'));
+		expect(log).toHaveBeenCalledWith(expect.stringContaining('Upserted 1'));
+	});
+
+	it('upserts the deduplicated blocks into Turbopuffer with the right shape and reports the result', async () => {
+		const fetchFn = routedFetch({
+			'/v3/me': () => meResponse(1, 'me'),
+			'/v3/users/1/contents': () => contentsResponse([ownedChannel(10, 'channel-a', 'Channel A')]),
+			'/v3/channels/channel-a/contents': () => contentsResponse([textBlock(100)])
+		});
+		const turbopufferFetch = okTurbopufferFetch();
+
+		const { summary } = await syncArchive({
+			accessToken: 't',
+			fetchFn,
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig(turbopufferFetch)
+		});
+
+		expect(summary.documentsUpserted).toBe(1);
+		expect(summary.upsertBatches).toBe(1);
+		expect(turbopufferFetch).toHaveBeenCalledTimes(1);
+
+		const [url, init] = turbopufferFetch.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe('https://r.turbopuffer.com/v2/namespaces/archivist-test');
+		const body = JSON.parse(init.body as string);
+		expect(body.distance_metric).toBe('cosine_distance');
+		expect(body.upsert_rows).toEqual([
+			expect.objectContaining({ id: 'block:100', block_type: 'Text' })
+		]);
+	});
+
+	it('does not attempt to upsert anything when no blocks were fetched', async () => {
+		const fetchFn = routedFetch({
+			'/v3/me': () => meResponse(1, 'me'),
+			'/v3/users/1/contents': () => contentsResponse([])
+		});
+		const turbopufferFetch = okTurbopufferFetch();
+
+		const { summary } = await syncArchive({
+			accessToken: 't',
+			fetchFn,
+			turbopuffer: turbopufferConfig(turbopufferFetch)
+		});
+
+		expect(summary.documentsUpserted).toBe(0);
+		expect(summary.upsertBatches).toBe(0);
+		expect(turbopufferFetch).not.toHaveBeenCalled();
 	});
 });
