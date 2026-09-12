@@ -39,6 +39,7 @@ _(none)_
 - [x] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`). `e60ec40`. See [SPECs/worksheet-arena-page-client.md](./SPECs/worksheet-arena-page-client.md).
 - [x] `toSearchDocument` normalizer covering all supported block shapes, with tests. `39cce35`. See [SPECs/worksheet-arena-block-normalizer.md](./SPECs/worksheet-arena-block-normalizer.md).
 - [x] Manual `bun run sync` command that discovers and syncs every channel the maintainer's Are.na account owns. `ec7a0b9`. See [SPECs/worksheet-sync-command.md](./SPECs/worksheet-sync-command.md).
+- [x] Turbopuffer schema creation (`search_text` full-text + native embed, per `docs/architecture.md`) and batch upsert. `97601ad`. See [SPECs/worksheet-turbopuffer-upsert.md](./SPECs/worksheet-turbopuffer-upsert.md).
 
 ## Needs Input
 
