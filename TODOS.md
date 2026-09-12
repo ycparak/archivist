@@ -8,10 +8,9 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ### Slice 1 — ingest one real channel
 
-- [ ] `toSearchDocument` normalizer covering all supported block shapes, with tests.
 - [ ] Manual `bun run sync` command that discovers and syncs every channel the maintainer's Are.na account owns (no configured channel list — see `docs/architecture.md#why-this-data-access-model` and `SPECs/adr-arena-sdk-and-discovery.md`). Needs a new `src/lib/server/arena/` method using `arena.me()` then `arena.users.contents(id, { type: 'Channel' })` / `paginateContents` (via `@aredotna/sdk`, not a hand-rolled fetch path).
 - [ ] Turbopuffer schema creation (`search_text` full-text + native embed, per `docs/architecture.md`) and batch upsert.
-- [ ] Verify a known block round-trips via a direct SDK query.
+- [ ] Verify a known block round-trips via a direct SDK query. Include an Embed and a filename-only Attachment block in the spot-check — confirm `toArchiveBlock`'s title fallback (`SPECs/worksheet-arena-block-normalizer.md`) matches what Are.na's own UI shows for those blocks; it's only been verified against hand-built fixtures so far.
 
 ### Slice 2 — search API and evaluation
 
