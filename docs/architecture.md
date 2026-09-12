@@ -30,7 +30,7 @@ V2 only: Mastra agent
 
 Use a **read-only personal access token** for the maintainer’s sync. Are.na documents personal tokens as the simplest route for personal scripts, and its read scope can access resources available to the owner without mutation. A public unauthenticated path can power a demo but can omit private/archive-specific content and is limited to 30 requests per minute; an authenticated free account is documented at 120 requests per minute. The token runs only in the manually invoked sync, never in a deployed public request.
 
-The project indexes an explicit `ARENA_CHANNEL_SLUGS` allowlist. This is intentional: it makes archive scope reviewable, avoids broad discovery/crawling, and makes a manual sync operationally predictable. The sync requests pages of at most 100, checkpoints progress, uses response rate-limit headers, backs off on 429, and upserts in batches. Do not send a live Are.na request for a visitor’s query.
+The sync auto-discovers scope: it resolves the maintainer's own user id (`GET /v3/me`), lists every channel that user owns (`GET /v3/users/{id}/contents?type=Channel`, paginated), and syncs each one's contents. This supersedes an earlier explicit `ARENA_CHANNEL_SLUGS` allowlist design — traded deliberately for convenience (no channel list to hand-maintain) after the maintainer requested it, at the cost of a reviewable, bounded scope. That tradeoff sits closer to what Are.na's Acceptable Use policy calls "systematic downloading" / "structured data harvesting," which already applies to any full-channel-history sync regardless of scope size; the mitigations already in place — manual/occasional invocation only, paced per-request delays, and proactive rate-limit throttling off `X-RateLimit-Remaining` (see `src/lib/server/arena/client.ts`) — matter more, not less, once scope is no longer human-reviewed per run. The sync requests pages of at most 100, checkpoints progress, uses response rate-limit headers, backs off on 429, and upserts in batches. Do not send a live Are.na request for a visitor's query.
 
 ## Turbopuffer namespace
 
@@ -86,8 +86,8 @@ RRF belongs in Turbopuffer, not in client code. It combines independently ranked
 
 ## Sync lifecycle
 
-1. Validate `ARENA_ACCESS_TOKEN`, `ARENA_CHANNEL_SLUGS`, Turbopuffer config, and the namespace schema.
-2. Fetch only configured channel pages; checkpoint each completed page locally.
+1. Validate `ARENA_ACCESS_TOKEN`, Turbopuffer config, and the namespace schema.
+2. Resolve the maintainer's own user id and discover every channel they own; fetch each channel's pages, checkpointing each completed page locally.
 3. Normalize blocks into stable documents; deduplicate by Are.na block ID while unioning channel membership.
 4. Upsert batched rows. Re-running the same sync is idempotent.
 5. Report fetched, normalized, upserted, skipped, and failed counts.

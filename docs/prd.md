@@ -34,15 +34,15 @@ When I have a visual reference or an idea in mind, help me find the original rel
 
 ## User stories
 
-| Priority | Story                                                                                          | Acceptance signal                                                                       |
-| -------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| P0       | As a visitor, I can browse recent archive blocks as a gallery.                                 | The home page has visual cards, an empty/loading state, and links to Are.na.            |
-| P0       | As a visitor, I can search exact words and phrases.                                            | A lexical query returns matching original blocks.                                       |
-| P0       | As a visitor, I can search by concept.                                                         | A semantic query returns relevant blocks whose available text differs from the wording. |
-| P0       | As a visitor, I can search with both signals.                                                  | Hybrid is the default and combines BM25 + ANN through Turbopuffer RRF.                  |
-| P0       | As a visitor, I can narrow results by channel, block type, and connected date.                 | Filters affect every retrieval mode and are represented in the URL.                     |
-| P0       | As a maintainer, I can manually sync configured channels with a read-only token.               | The command logs a compact summary and resumes safely after a rate-limit response.      |
-| P1       | As a visitor, I can open a result’s original Are.na block and see its source/channel metadata. | Cards use canonical block links and never fabricate archive metadata.                   |
+| Priority | Story                                                                                                                               | Acceptance signal                                                                                                           |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| P0       | As a visitor, I can browse recent archive blocks as a gallery.                                                                      | The home page has visual cards, an empty/loading state, and links to Are.na.                                                |
+| P0       | As a visitor, I can search exact words and phrases.                                                                                 | A lexical query returns matching original blocks.                                                                           |
+| P0       | As a visitor, I can search by concept.                                                                                              | A semantic query returns relevant blocks whose available text differs from the wording.                                     |
+| P0       | As a visitor, I can search with both signals.                                                                                       | Hybrid is the default and combines BM25 + ANN through Turbopuffer RRF.                                                      |
+| P0       | As a visitor, I can narrow results by channel, block type, and connected date.                                                      | Filters affect every retrieval mode and are represented in the URL.                                                         |
+| P0       | As a maintainer, I can manually sync every channel my Are.na account owns with a read-only token, with no channel list to maintain. | The command logs a compact summary, discovers owned channels automatically, and resumes safely after a rate-limit response. |
+| P1       | As a visitor, I can open a result’s original Are.na block and see its source/channel metadata.                                      | Cards use canonical block links and never fabricate archive metadata.                                                       |
 
 ## Experience
 
@@ -75,4 +75,4 @@ V2 adds an **Agent mode** for research-shaped questions, not a replacement for s
 - Choose a public application name and a stable URL before deployment.
 - Choose an open-source license before the first public push; this workspace intentionally does not assume a legal license choice.
 - Select the Turbopuffer region nearest the deployment/runtime; make it an environment setting, not a hard-coded product choice.
-- Choose explicitly which channel slugs are indexed. V1 does not infer an archive scope from every accessible channel.
+- ~~Choose explicitly which channel slugs are indexed.~~ Reversed: V1 auto-discovers and syncs every channel the maintainer's own Are.na account owns (no per-channel opt-out). Chosen for maintainer convenience over the earlier reviewable-allowlist design; see the tradeoff note in [docs/architecture.md](./architecture.md#why-this-data-access-model).
