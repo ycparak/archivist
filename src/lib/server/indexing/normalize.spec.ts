@@ -8,9 +8,10 @@ const markdown = { markdown: '**hi**', html: '<p>hi</p>', plain: 'hi' };
 const imageVersion = { src: 'https://example.com/v.jpg' };
 const image = {
 	src: 'https://example.com/original.jpg',
+	alt_text: 'A concrete window frame',
 	small: imageVersion,
 	medium: imageVersion,
-	large: { src: 'https://example.com/large.jpg' },
+	large: { src: 'https://example.com/large.jpg', width: 800, height: 600 },
 	square: imageVersion
 };
 const sharedFields = {
@@ -43,12 +44,32 @@ describe('toArchiveBlock', () => {
 		const block = toArchiveBlock({ ...sharedFields, type: 'Text', content: markdown }, channel);
 		expect(block.content).toBe('hi');
 		expect(block.imageUrl).toBeNull();
+		expect(block.imageAlt).toBeNull();
+		expect(block.imageWidth).toBeNull();
+		expect(block.imageHeight).toBeNull();
 	});
 
-	it('normalizes an Image block: no content, required image', () => {
+	it('normalizes an Image block: no content, required image, alt text and large-version dimensions', () => {
 		const block = toArchiveBlock({ ...sharedFields, type: 'Image', image }, channel);
 		expect(block.content).toBeNull();
 		expect(block.imageUrl).toBe('https://example.com/large.jpg');
+		expect(block.imageAlt).toBe('A concrete window frame');
+		expect(block.imageWidth).toBe(800);
+		expect(block.imageHeight).toBe(600);
+	});
+
+	it('falls back to null image metadata when Are.na supplies no alt text or dimensions', () => {
+		const bareImage = {
+			src: 'https://example.com/original.jpg',
+			small: imageVersion,
+			medium: imageVersion,
+			large: imageVersion,
+			square: imageVersion
+		};
+		const block = toArchiveBlock({ ...sharedFields, type: 'Image', image: bareImage }, channel);
+		expect(block.imageAlt).toBeNull();
+		expect(block.imageWidth).toBeNull();
+		expect(block.imageHeight).toBeNull();
 	});
 
 	it('normalizes a Link block with extracted content and a preview image', () => {
@@ -58,12 +79,17 @@ describe('toArchiveBlock', () => {
 		);
 		expect(block.content).toBe('hi');
 		expect(block.imageUrl).toBe('https://example.com/large.jpg');
+		expect(block.imageAlt).toBe('A concrete window frame');
+		expect(block.imageWidth).toBe(800);
 	});
 
 	it('normalizes a Link block with neither extracted content nor a preview image', () => {
 		const block = toArchiveBlock({ ...sharedFields, type: 'Link' }, channel);
 		expect(block.content).toBeNull();
 		expect(block.imageUrl).toBeNull();
+		expect(block.imageAlt).toBeNull();
+		expect(block.imageWidth).toBeNull();
+		expect(block.imageHeight).toBeNull();
 	});
 
 	it('normalizes an Attachment block: no content, optional preview image', () => {
@@ -75,12 +101,15 @@ describe('toArchiveBlock', () => {
 		);
 		expect(withPreview.content).toBeNull();
 		expect(withPreview.imageUrl).toBe('https://example.com/large.jpg');
+		expect(withPreview.imageAlt).toBe('A concrete window frame');
+		expect(withPreview.imageHeight).toBe(600);
 
 		const withoutPreview = toArchiveBlock(
 			{ ...sharedFields, type: 'Attachment', attachment },
 			channel
 		);
 		expect(withoutPreview.imageUrl).toBeNull();
+		expect(withoutPreview.imageAlt).toBeNull();
 	});
 
 	it('normalizes an Embed block: no content, optional thumbnail image', () => {
@@ -88,6 +117,9 @@ describe('toArchiveBlock', () => {
 		const block = toArchiveBlock({ ...sharedFields, type: 'Embed', embed, image }, channel);
 		expect(block.content).toBeNull();
 		expect(block.imageUrl).toBe('https://example.com/large.jpg');
+		expect(block.imageAlt).toBe('A concrete window frame');
+		expect(block.imageWidth).toBe(800);
+		expect(block.imageHeight).toBe(600);
 	});
 
 	it('falls back to the embed/attachment title field when the block itself has none', () => {

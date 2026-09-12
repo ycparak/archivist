@@ -19,6 +19,9 @@ const presentationAttributes = [
 	'source_url',
 	'arena_url',
 	'image_url',
+	'image_alt',
+	'image_width',
+	'image_height',
 	'source_title'
 ];
 
@@ -34,6 +37,9 @@ const turbopufferResultRowSchema = z.object({
 	source_url: z.url().nullable().optional(),
 	arena_url: z.url(),
 	image_url: z.url().nullable().optional(),
+	image_alt: z.string().nullable().optional(),
+	image_width: z.number().int().positive().nullable().optional(),
+	image_height: z.number().int().positive().nullable().optional(),
 	source_title: z.string().nullable().optional()
 });
 
@@ -109,6 +115,9 @@ function toSearchResult(row: Row): SearchResult {
 		sourceUrl: parsed.data.source_url ?? null,
 		arenaUrl: parsed.data.arena_url,
 		imageUrl: parsed.data.image_url ?? null,
+		imageAlt: parsed.data.image_alt ?? null,
+		imageWidth: parsed.data.image_width ?? null,
+		imageHeight: parsed.data.image_height ?? null,
 		sourceTitle: parsed.data.source_title ?? null
 	};
 }
