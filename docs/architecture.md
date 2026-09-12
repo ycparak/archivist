@@ -71,7 +71,7 @@ The initial native embedding model is `nvidia/nemotron-3-embed-8b` with 1024 dim
 }
 ```
 
-`shared` includes a result limit, presentation attributes, and an `And` filter built from the optional V1 filters. Lexical and semantic modes issue their respective single query. Browse does no text query: it orders matching records by `connected_at` descending. Keep candidate/result limits server-owned to prevent an expensive public-query knob.
+`shared` includes a result limit, presentation attributes, and an `And` filter built from the optional V1 filters. Lexical and semantic modes issue their respective single query. Browse does no text query: it orders matching records by `connected_at` descending. The endpoint selects hybrid when `q` is non-empty and `mode` is omitted; an empty request selects browse. Repeated `channel` or `type` parameters are ORed within their category, and categories compose with AND. Date-only `to` parameters include their full UTC day. Keep candidate/result limits server-owned to prevent an expensive public-query knob.
 
 RRF belongs in Turbopuffer, not in client code. It combines independently ranked lists without assuming BM25 and vector distance are numerically comparable.
 

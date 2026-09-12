@@ -1,7 +1,6 @@
 :root {
 	color-scheme: light;
 
-	/* Raw palette */
 	--color-white: #ffffff;
 	--color-black: #000000;
 	--color-grey-50: #f8f8f8;
@@ -22,7 +21,6 @@
 	--color-red-100: #fbeae9;
 	--color-red-1000: #d13415;
 
-	/* Semantic color aliases */
 	--color-background: var(--color-white);
 	--color-background-subtle: var(--color-grey-50);
 	--color-surface: var(--color-white);
@@ -44,7 +42,6 @@
 	--color-control-hover: var(--color-grey-100);
 	--color-selection: var(--color-green-100);
 
-	/* Typography */
 	--font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 	--font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	--font-weight-regular: 400;
@@ -64,7 +61,6 @@
 	--tracking-heading: -0.007em;
 	--tracking-copy: 0.005em;
 
-	/* Spacing: a compact scale with room for editorial page gutters */
 	--space-0: 0;
 	--space-1: 0.125rem;
 	--space-2: 0.25rem;
@@ -87,7 +83,6 @@
 	--content-width: 72rem;
 	--reading-width: 42rem;
 
-	/* Shape and control primitives */
 	--radius-sm: 0.25rem;
 	--radius-md: 0.5rem;
 	--radius-lg: 0.75rem;

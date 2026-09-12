@@ -82,6 +82,7 @@ All docs except this file, `CLAUDE.md`, `TODOS.md`, and `CHANGELOG.md` live in `
 - If a tradeoff is unavoidable, call it out explicitly and choose the option with the lowest long-term correctness and maintenance risk.
 - When a fix doesn't work after one iteration, add a debug log before changing the approach again. Don't iterate on guesses — let the runtime tell you which term is wrong.
 - TypeScript strictness is non-negotiable. Validate untrusted API/config input at the boundary with Zod.
+- Keep code comments exceptionally rare. Add one only when it records non-obvious reasoning, an external constraint, or a deliberate tradeoff that cannot be made clear through names and structure; never narrate what the code already says.
 - Add a focused unit test for every normalizer, filter builder, and search-result mapper. Test behavior, not private implementation details.
 - Use accessible native controls, URL-backed browse/search state, server-side data access, and responsive image dimensions.
 - Keep secrets server-only; do not log tokens, full raw API payloads, or user search queries.

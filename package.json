@@ -15,7 +15,8 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
 		"gen": "wrangler types --env-file=.env.example",
-		"sync": "bun run scripts/sync.ts"
+		"sync": "bun run scripts/sync.ts",
+		"evaluate:search": "bun run scripts/evaluate-search.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

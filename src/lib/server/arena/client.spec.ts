@@ -150,7 +150,6 @@ describe('ArenaClient.fetchChannelContentsPage', () => {
 		});
 
 		expect(result.data).toHaveLength(1);
-		// The SDK invokes the injected fetch with a `Request` object, not (url, init).
 		const [request] = fetchFn.mock.calls[0] as [Request];
 		expect(request.url).toBe(
 			'https://api.are.na/v3/channels/my-channel/contents?page=2&per=30&sort=created_at_desc'
@@ -207,8 +206,6 @@ describe('ArenaClient.fetchChannelContentsPage', () => {
 	});
 
 	it('propagates a network failure instead of swallowing it', async () => {
-		// The SDK wraps a rejected fetch in its own ArenaNetworkError, with the original error
-		// as `.cause` rather than in the message — assert on that instead of the message text.
 		const fetchFn = vi.fn().mockRejectedValue(new TypeError('network unreachable'));
 		const client = new ArenaClient({ accessToken: 't', fetchFn });
 
@@ -300,7 +297,6 @@ describe('paginateChannelContents', () => {
 
 		expect(pages).toHaveLength(2);
 		expect(fetchFn).toHaveBeenCalledTimes(2);
-		// One pacing delay between the two page requests, none after the last page.
 		expect(delayFn).toHaveBeenCalledTimes(1);
 		expect(delayFn).toHaveBeenCalledWith(250, undefined);
 	});
@@ -353,8 +349,6 @@ describe('paginateChannelContents', () => {
 	});
 
 	it('gives up after maxRetriesPerPage consecutive rate limits', async () => {
-		// mockImplementation (not mockResolvedValue) so each call gets its own unread Response body —
-		// the SDK reads the body even on an error response, and a shared instance can only be read once.
 		const fetchFn = vi
 			.fn()
 			.mockImplementation(
@@ -374,7 +368,6 @@ describe('paginateChannelContents', () => {
 		};
 
 		await expect(iterate()).rejects.toThrow(ArenaRateLimitError);
-		// initial attempt + 2 retries
 		expect(fetchFn).toHaveBeenCalledTimes(3);
 	});
 

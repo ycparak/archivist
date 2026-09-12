@@ -6,7 +6,6 @@ export interface TurbopufferConfig {
 	apiKey: string;
 	region: string;
 	namespace: string;
-	/** Injectable for tests; defaults to the global `fetch`. */
 	fetchFn?: typeof fetch;
 }
 
@@ -15,12 +14,7 @@ export interface UpsertResult {
 	rowsUpserted: number;
 }
 
-/**
- * Turbopuffer's native-embedding batch limit is account-tier-dependent — verified live against
- * the maintainer's real account: a batch of 500 was rejected with "cowardly refusing to embed a
- * large batch of documents(500). your batch limit is currently 256". 200 leaves headroom below
- * that observed cap without knowing whether it's a hard platform limit or specific to this tier.
- */
+/** Keep below the maintainer account's observed native-embedding batch cap of 256. */
 const DEFAULT_BATCH_SIZE = 200;
 const noop = () => {};
 
@@ -32,20 +26,6 @@ function chunk<T>(items: T[], size: number): T[][] {
 	return chunks;
 }
 
-/**
- * Batch-upserts documents into the archive's Turbopuffer namespace, creating the namespace and
- * its schema on the first write (per Turbopuffer: a namespace is implicitly created by its first
- * write). `SearchDocument`'s fields already match the namespace schema's attribute names one for
- * one, so each document is sent as a Turbopuffer row as-is — no separate mapping step.
- *
- * Fails loudly on any batch error rather than isolating per-batch failures (unlike per-channel
- * Are.na sync failures): every batch writes to the same namespace, so a failure here is most
- * likely systemic (auth, quota, a schema conflict) rather than specific to one batch's documents.
- * Earlier batches in the same call still committed real, billed writes before a later one failed —
- * `log` reports each batch as it completes so a failure's trail shows exactly how far it got,
- * since idempotent re-upserting the whole set is cheap but "how much of the archive is actually
- * live right now" isn't otherwise visible from a thrown error alone.
- */
 export async function upsertSearchDocuments(
 	documents: SearchDocument[],
 	config: TurbopufferConfig,

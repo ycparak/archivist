@@ -6,13 +6,6 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ## Up Next
 
-### Slice 2 — search API and evaluation
-
-- [ ] `SearchRepository` and `/api/search` (`src/lib/server/search/`).
-- [ ] Browse, lexical, semantic, hybrid modes; the three V1 filters (`block_type`, `channel_slugs`, `connected_at`).
-- [ ] Committed, non-private `tests/fixtures/search-cases.json` with ten query expectations.
-- [ ] Tests for request parsing, filter construction, document mapping, mode selection.
-
 ### Slice 3 — gallery surface
 
 - [ ] Search-first home page with URL-backed state (`?q=&mode=&channel=&type=&from=&to=`).
@@ -32,6 +25,7 @@ _(none)_
 
 ## Done
 
+- [x] Slice 2 search API and evaluation: `SearchRepository`, `/api/search`, four retrieval modes, V1 filters, public evaluation fixture, and focused tests. See [SPECs/worksheet-search-api.md](./SPECs/worksheet-search-api.md).
 - [x] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`). `e60ec40`. See [SPECs/worksheet-arena-page-client.md](./SPECs/worksheet-arena-page-client.md).
 - [x] `toSearchDocument` normalizer covering all supported block shapes, with tests. `39cce35`. See [SPECs/worksheet-arena-block-normalizer.md](./SPECs/worksheet-arena-block-normalizer.md).
 - [x] Manual `bun run sync` command that discovers and syncs every channel the maintainer's Are.na account owns. `ec7a0b9`. See [SPECs/worksheet-sync-command.md](./SPECs/worksheet-sync-command.md).

@@ -88,22 +88,17 @@ describe('upsertSearchDocuments', () => {
 		expect(firstBody.upsert_rows).toHaveLength(2);
 		expect(secondBody.upsert_rows).toHaveLength(1);
 
-		// schema/distance_metric must be sent on every batch, not just the first — Turbopuffer
-		// requires distance_metric on every write to a namespace with a vector attribute.
 		expect(secondBody.distance_metric).toBe('cosine_distance');
 		expect(secondBody.schema.search_text.embed.model).toBe('nvidia/nemotron-3-embed-8b');
 	});
 
 	it('propagates a batch write failure instead of swallowing it, and does not attempt later batches', async () => {
-		// A 400 (unlike 5xx/429) isn't auto-retried by the SDK, so this fails deterministically on
-		// the first attempt at the second batch instead of racing its internal retry/backoff.
 		const fetchFn = vi
 			.fn()
 			.mockResolvedValueOnce(okResponse(2))
 			.mockResolvedValueOnce(
 				new Response(JSON.stringify({ error: 'bad request' }), { status: 400 })
 			);
-		// 5 documents at batchSize 2 would need 3 batches (2, 2, 1) if all succeeded.
 		const documents = [
 			document('block:1'),
 			document('block:2'),
