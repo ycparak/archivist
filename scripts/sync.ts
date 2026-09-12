@@ -1,5 +1,5 @@
 import { syncArchive } from '$lib/server/indexing/sync';
-import { DEFAULT_NAMESPACE } from '$lib/server/search/config';
+import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 
 const accessToken = process.env.ARENA_ACCESS_TOKEN;
 if (!accessToken) {
