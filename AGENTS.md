@@ -107,6 +107,8 @@ bun run test    # vitest
 bun run build   # wrangler types --check, vite build
 ```
 
+`wrangler types` is pinned to `--env-file=.env.example`, not your local `.env`. Wrangler infers `Env`'s plain-var shape from whatever env file it reads — pointing it at your real `.env` bakes your local var set into the committed `worker-configuration.d.ts`, which then fails `wrangler types --check` in CI (no `.env` there) the moment your local keys differ from a clean checkout. Don't drop the flag when touching these scripts.
+
 ## Pull Request Hygiene
 
 - Keep the first V1 pull request to one vertical slice.
