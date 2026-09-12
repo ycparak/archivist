@@ -6,10 +6,6 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ## Up Next
 
-### Slice 1 — ingest one real channel
-
-- [ ] Verify a known block round-trips via a direct SDK query. Include an Embed and a filename-only Attachment block in the spot-check — confirm `toArchiveBlock`'s title fallback (`SPECs/worksheet-arena-block-normalizer.md`) matches what Are.na's own UI shows for those blocks; it's only been verified against hand-built fixtures so far.
-
 ### Slice 2 — search API and evaluation
 
 - [ ] `SearchRepository` and `/api/search` (`src/lib/server/search/`).
@@ -40,6 +36,7 @@ _(none)_
 - [x] `toSearchDocument` normalizer covering all supported block shapes, with tests. `39cce35`. See [SPECs/worksheet-arena-block-normalizer.md](./SPECs/worksheet-arena-block-normalizer.md).
 - [x] Manual `bun run sync` command that discovers and syncs every channel the maintainer's Are.na account owns. `ec7a0b9`. See [SPECs/worksheet-sync-command.md](./SPECs/worksheet-sync-command.md).
 - [x] Turbopuffer schema creation (`search_text` full-text + native embed, per `docs/architecture.md`) and batch upsert. `97601ad`. See [SPECs/worksheet-turbopuffer-upsert.md](./SPECs/worksheet-turbopuffer-upsert.md).
+- [x] Verify a known block round-trips via a direct SDK query (Embed + filename-only Attachment spot-checked against Are.na's own UI — no bug found). See [SPECs/worksheet-roundtrip-verification.md](./SPECs/worksheet-roundtrip-verification.md).
 
 ## Needs Input
 
