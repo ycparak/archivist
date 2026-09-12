@@ -1,8 +1,7 @@
 import type { SearchRepository } from './contracts';
+import { DEFAULT_NAMESPACE } from './namespace';
 import { TurbopufferSearchRepository } from './repository';
 import type { TurbopufferConfig } from './turbopuffer-client';
-
-export const DEFAULT_NAMESPACE = 'arena-blocks-v1';
 
 type SearchCredentials = Partial<
 	Pick<Env, 'TURBOPUFFER_API_KEY' | 'TURBOPUFFER_REGION' | 'TURBOPUFFER_NAMESPACE'>
