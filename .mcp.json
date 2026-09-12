@@ -3,10 +3,6 @@
 		"svelte": {
 			"command": "npx",
 			"args": ["-y", "@sveltejs/mcp"]
-		},
-		"arena": {
-			"type": "http",
-			"url": "https://mcp.are.na/mcp"
 		}
 	}
 }
