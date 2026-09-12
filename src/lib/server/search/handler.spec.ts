@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SearchRepository } from './contracts';
+import { searchSuccessResponseSchema, type SearchRepository, type SearchResult } from './contracts';
 import { handleSearchRequest } from './handler';
 import { SearchUnavailableError } from './repository';
 
@@ -20,6 +20,56 @@ describe('handleSearchRequest', () => {
 		expect(searchRepository.search).toHaveBeenCalledWith(
 			expect.objectContaining({ mode: 'hybrid', query: 'felt', limit: 24 })
 		);
+	});
+
+	it('serializes a populated result through the published success envelope', async () => {
+		const row: SearchResult = {
+			id: 'block:1',
+			title: 'Industrial felt',
+			description: 'Swatches',
+			blockType: 'Image',
+			channelSlugs: ['materials'],
+			connectedAt: '2024-01-02T00:00:00.000Z',
+			sourceUrl: 'https://example.test/felt',
+			arenaUrl: 'https://www.are.na/block/1',
+			imageUrl: 'https://images.are.na/felt.jpg',
+			sourceTitle: 'Example'
+		};
+
+		const response = await handleSearchRequest(
+			new URL('https://archivist.test/api/search?q=felt'),
+			() => repository([row]),
+			undefined,
+			() => {}
+		);
+
+		const body = await response.json();
+		expect(body).toEqual({ results: [row] });
+		expect(searchSuccessResponseSchema.parse(body).results[0]).toEqual(row);
+	});
+
+	it('deduplicates results by block id before they reach the client', async () => {
+		const row: SearchResult = {
+			id: 'block:1',
+			title: 'Industrial felt',
+			description: null,
+			blockType: 'Image',
+			channelSlugs: [],
+			connectedAt: null,
+			sourceUrl: null,
+			arenaUrl: 'https://www.are.na/block/1',
+			imageUrl: null,
+			sourceTitle: null
+		};
+
+		const response = await handleSearchRequest(
+			new URL('https://archivist.test/api/search?q=felt'),
+			() => repository([row, { ...row, title: 'Same block, other ranking' }]),
+			undefined,
+			() => {}
+		);
+
+		expect(await response.json()).toEqual({ results: [row] });
 	});
 
 	it('returns 400 before constructing a repository for invalid input', async () => {

@@ -60,8 +60,14 @@ semantic variables wherever possible:
 | Quiet and standard rules          | `--color-border-subtle`, `--color-border`             |
 | Emphasized rule                   | `--color-border-emphasis`                             |
 | Action or meaningful state        | `--color-accent`, `--color-accent-strong`             |
+| Hover for a filled accent control | `--color-accent-hover`                                |
 | Error                             | `--color-danger`, `--color-danger-subtle`             |
 | Native control surface            | `--color-control`, `--color-control-hover`            |
+
+Body, label, and metadata text must clear WCAG AA (4.5:1) against its surface. `--color-text-tertiary`
+is the quietest token allowed for real content; `--color-text-placeholder` and `--color-text-disabled`
+are for placeholder and disabled affordances only. A filled accent control darkens on hover
+(`--color-accent-hover`) rather than lightening, so its label does not lose contrast.
 
 Color must carry meaning. Pair accent color with text, shape, position, or an
 accessible label; never rely on color alone. Do not use green to imply that a
