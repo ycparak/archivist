@@ -1,6 +1,10 @@
+import {
+	createArena,
+	ArenaApiError as SdkArenaApiError,
+	ArenaRateLimitError as SdkArenaRateLimitError,
+	type Arena
+} from '@aredotna/sdk';
 import { arenaChannelContentsResponseSchema, type ArenaChannelContentsResponse } from './schemas';
-
-const ARENA_API_BASE_URL = 'https://api.are.na/v3';
 
 /** Are.na enforces `per` in [1, 100]; validated up front so a bad caller value fails loudly. */
 const MIN_PER_PAGE = 1;
@@ -18,6 +22,7 @@ export interface ArenaClientOptions {
 	accessToken: string;
 	/** Injectable for tests; defaults to the global `fetch`. */
 	fetchFn?: typeof fetch;
+	/** Passed straight through to `@aredotna/sdk`'s `createArena` — no `/v3` suffix (it adds that itself). Defaults to `https://api.are.na`. */
 	baseUrl?: string;
 }
 
@@ -127,15 +132,78 @@ export function computeProactiveWaitMs(
 	return Math.max(rateLimit.reset * 1000 - now(), 0);
 }
 
+const EMPTY_RATE_LIMIT_INFO: ArenaRateLimitInfo = {
+	limit: null,
+	remaining: null,
+	reset: null,
+	windowSeconds: null,
+	tier: null
+};
+
+/**
+ * The official SDK's own `Arena.rateLimit` doesn't capture `X-RateLimit-Remaining` (checked
+ * against its source — it only parses Limit/Reset/Tier/Window), which is what our proactive
+ * throttling in `computeProactiveWaitMs` needs. Wrapping the fetch we hand the SDK is the only
+ * way to see the full header set without forking it: this only ever reads headers off the
+ * response it's given and returns that response untouched.
+ */
+function wrapFetchForRateLimitTracking(fetchFn: typeof fetch): {
+	fetchFn: typeof fetch;
+	latest: () => ArenaRateLimitInfo;
+} {
+	let latest = EMPTY_RATE_LIMIT_INFO;
+	const wrapped: typeof fetch = async (input, init) => {
+		const response = await fetchFn(input, init);
+		latest = parseRateLimitInfo(response.headers);
+		return response;
+	};
+	return { fetchFn: wrapped, latest: () => latest };
+}
+
+/**
+ * Maps the SDK's normalized error classes to this module's own, so a caller never needs to
+ * import from `@aredotna/sdk` directly — the provider's error shape stays private to this
+ * adapter, per `AGENTS.md`'s "provider shapes never leak past their adapter module" rule.
+ *
+ * Deliberately doesn't delegate to the SDK's own `retry.respectRateLimits` option: that path only
+ * ever waits based on `X-RateLimit-Reset` with no floor and ignores `Retry-After` entirely (read
+ * from its source), which is weaker than `resolveRateLimitRetryDelayMs` below. Network errors
+ * (`ArenaNetworkError`) and anything else pass through unchanged — they aren't HTTP-status
+ * failures this adapter has a more specific type for.
+ */
+function mapSdkError(error: unknown, slug: string, page: number): unknown {
+	if (error instanceof SdkArenaRateLimitError) {
+		const retryAfterMs = error.response
+			? resolveRateLimitRetryDelayMs(error.response.headers)
+			: MIN_RATE_LIMIT_RETRY_MS;
+		return new ArenaRateLimitError(
+			`Rate limited fetching channel "${slug}" contents (page ${page})`,
+			retryAfterMs
+		);
+	}
+
+	if (error instanceof SdkArenaApiError) {
+		return new ArenaRequestError(
+			`Are.na request failed with status ${error.status} fetching channel "${slug}" contents (page ${page})`,
+			error.status
+		);
+	}
+
+	return error;
+}
+
 export class ArenaClient {
-	private readonly accessToken: string;
-	private readonly fetchFn: typeof fetch;
-	private readonly baseUrl: string;
+	private readonly arena: Arena;
+	private readonly latestRateLimit: () => ArenaRateLimitInfo;
 
 	constructor(options: ArenaClientOptions) {
-		this.accessToken = options.accessToken;
-		this.fetchFn = options.fetchFn ?? fetch;
-		this.baseUrl = options.baseUrl ?? ARENA_API_BASE_URL;
+		const { fetchFn, latest } = wrapFetchForRateLimitTracking(options.fetchFn ?? fetch);
+		this.arena = createArena({
+			token: options.accessToken,
+			fetch: fetchFn,
+			baseUrl: options.baseUrl
+		});
+		this.latestRateLimit = latest;
 	}
 
 	/** Fetches and validates a single page of a channel's contents (blocks + nested channels). */
@@ -147,34 +215,13 @@ export class ArenaClient {
 			throw new RangeError(`per must be between ${MIN_PER_PAGE} and ${MAX_PER_PAGE}, got ${per}`);
 		}
 
-		const url = new URL(`${this.baseUrl}/channels/${encodeURIComponent(slug)}/contents`);
-		url.searchParams.set('page', String(page));
-		url.searchParams.set('per', String(per));
-		if (sort) url.searchParams.set('sort', sort);
-
-		const response = await this.fetchFn(url, {
-			headers: { Authorization: `Bearer ${this.accessToken}` },
-			signal
-		});
-
-		if (response.status === 429) {
-			throw new ArenaRateLimitError(
-				`Rate limited fetching channel "${slug}" contents (page ${page})`,
-				resolveRateLimitRetryDelayMs(response.headers)
-			);
+		try {
+			const body = await this.arena.channels.contents(slug, { page, per, sort }, { signal });
+			const parsed = arenaChannelContentsResponseSchema.parse(body);
+			return { ...parsed, rateLimit: this.latestRateLimit() };
+		} catch (error) {
+			throw mapSdkError(error, slug, page);
 		}
-
-		if (!response.ok) {
-			throw new ArenaRequestError(
-				`Are.na request failed with status ${response.status} fetching channel "${slug}" contents (page ${page})`,
-				response.status
-			);
-		}
-
-		const rateLimit = parseRateLimitInfo(response.headers);
-		const body = await response.json();
-		const page_ = arenaChannelContentsResponseSchema.parse(body);
-		return { ...page_, rateLimit };
 	}
 }
 

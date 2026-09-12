@@ -69,7 +69,7 @@ and I fixed:
   declaring `attachment: blockAttachmentSchema` and `embed: blockEmbedSchema` as required, with
   a rejection test for each when the payload is missing.
 - **P2** — the worksheet's claim that Are.na has no `X-RateLimit-Remaining` header was wrong: the
-  *rendered* docs page omits it, but the OpenAPI spec's own `info.description` (fetched directly,
+  _rendered_ docs page omits it, but the OpenAPI spec's own `info.description` (fetched directly,
   more authoritative) documents it alongside `X-RateLimit-Bucket`/`Cost`/`Policy`. Corrected here
   and used it: `ArenaClient` now parses rate-limit headers on every response (`parseRateLimitInfo`),
   and `paginateChannelContents` proactively waits until the bucket resets once remaining budget
@@ -95,9 +95,24 @@ and I fixed:
 Second review pass (self, against the same checklist): clean — stays transport+pagination only,
 no domain/search leakage, `bun run check`/`lint`/`test`/`build` all pass.
 
+### Follow-up: SDK adoption and channel auto-discovery
+
+After this task shipped, the maintainer asked (a) to auto-discover every channel their account
+owns instead of maintaining `ARENA_CHANNEL_SLUGS`, and (b) whether `@aredotna/sdk` (Are.na's
+official TypeScript SDK) should be used instead of the hand-rolled `fetch` client above. Both are
+real decisions — see [SPECs/adr-arena-sdk-and-discovery.md](./adr-arena-sdk-and-discovery.md) for
+the full reasoning. Short version: yes to both, and `client.ts` now wraps `createArena()` instead
+of calling `fetch` directly, while keeping the Zod validation in `schemas.ts`, the pagination/
+backoff/proactive-throttle logic in `paginateChannelContents`, and the module's own error types
+unchanged — only what's underneath `fetchChannelContentsPage` changed. Re-ran the full validation
+suite after the rework; see Final state below.
+
 ### Final state
 
 - `bun run check`: 0 errors.
 - `bun run lint`: clean.
-- `bun run test`: 34/34 passing (3 files: existing `archive.spec.ts` + the two new arena spec files).
+- `bun run test`: 34/34 passing (3 files: existing `archive.spec.ts` + the two arena spec files;
+  updated after the `@aredotna/sdk` rework — the injected fetch mock now receives a `Request`
+  object per the SDK's calling convention, and network-failure assertions check `error.cause`
+  since the SDK wraps failures in its own `ArenaNetworkError`).
 - `bun run build`: succeeds.
