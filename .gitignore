@@ -6,6 +6,7 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+/worker-configuration.d.ts
 
 .DS_Store
 Thumbs.db
