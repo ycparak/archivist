@@ -145,11 +145,12 @@ describe('ArenaClient.fetchChannelContentsPage', () => {
 		});
 
 		expect(result.data).toHaveLength(1);
-		const [url, init] = fetchFn.mock.calls[0];
-		expect(String(url)).toBe(
+		// The SDK invokes the injected fetch with a `Request` object, not (url, init).
+		const [request] = fetchFn.mock.calls[0] as [Request];
+		expect(request.url).toBe(
 			'https://api.are.na/v3/channels/my-channel/contents?page=2&per=30&sort=created_at_desc'
 		);
-		expect(init.headers.Authorization).toBe('Bearer secret-token');
+		expect(request.headers.get('Authorization')).toBe('Bearer secret-token');
 	});
 
 	it('attaches parsed rate-limit info from the response headers', async () => {
@@ -201,10 +202,15 @@ describe('ArenaClient.fetchChannelContentsPage', () => {
 	});
 
 	it('propagates a network failure instead of swallowing it', async () => {
+		// The SDK wraps a rejected fetch in its own ArenaNetworkError, with the original error
+		// as `.cause` rather than in the message — assert on that instead of the message text.
 		const fetchFn = vi.fn().mockRejectedValue(new TypeError('network unreachable'));
 		const client = new ArenaClient({ accessToken: 't', fetchFn });
 
-		await expect(client.fetchChannelContentsPage('c')).rejects.toThrow('network unreachable');
+		const error = await client.fetchChannelContentsPage('c').catch((e) => e);
+		expect(error).toBeInstanceOf(Error);
+		expect(error.cause).toBeInstanceOf(TypeError);
+		expect(error.cause.message).toBe('network unreachable');
 	});
 });
 
@@ -280,9 +286,13 @@ describe('paginateChannelContents', () => {
 	});
 
 	it('gives up after maxRetriesPerPage consecutive rate limits', async () => {
+		// mockImplementation (not mockResolvedValue) so each call gets its own unread Response body —
+		// the SDK reads the body even on an error response, and a shared instance can only be read once.
 		const fetchFn = vi
 			.fn()
-			.mockResolvedValue(new Response('', { status: 429, headers: { 'Retry-After': '1' } }));
+			.mockImplementation(
+				async () => new Response('', { status: 429, headers: { 'Retry-After': '1' } })
+			);
 		const client = new ArenaClient({ accessToken: 't', fetchFn });
 		const delayFn = vi.fn().mockResolvedValue(undefined);
 
