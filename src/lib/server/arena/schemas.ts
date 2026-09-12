@@ -1,0 +1,144 @@
+import { z } from 'zod';
+
+/**
+ * Wire-shape schemas for the Are.na V3 API, verified against the live OpenAPI spec at
+ * https://api.are.na/v3/openapi.json (the rendered docs page at are.na/developers/explore lags
+ * behind it — e.g. it omits `X-RateLimit-Remaining`, which the spec's own `info.description`
+ * documents). Field names intentionally mirror the API response (snake_case) — this module is a
+ * transport boundary, not the normalized domain shape. See `src/lib/domain/archive.ts` for that.
+ *
+ * A field the spec marks nullable-but-not-required may be entirely absent from the JSON, not
+ * just `null` — those are modeled `.nullable().optional()`, not just `.nullable()`, so an
+ * omitted key doesn't fail the whole page's parse.
+ */
+
+const markdownContentSchema = z.object({
+	markdown: z.string(),
+	html: z.string(),
+	plain: z.string()
+});
+
+const blockImageVersionSchema = z.object({
+	src: z.url(),
+	src_2x: z.url().optional(),
+	width: z.number().nullable().optional(),
+	height: z.number().nullable().optional()
+});
+
+const blockImageSchema = z.object({
+	src: z.url(),
+	alt_text: z.string().nullable().optional(),
+	blurhash: z.string().nullable().optional(),
+	width: z.number().nullable().optional(),
+	height: z.number().nullable().optional(),
+	small: blockImageVersionSchema,
+	medium: blockImageVersionSchema,
+	large: blockImageVersionSchema,
+	square: blockImageVersionSchema
+});
+
+const blockSourceSchema = z.object({
+	url: z.url(),
+	title: z.string().nullable().optional()
+});
+
+const blockAttachmentSchema = z.object({
+	url: z.url(),
+	filename: z.string().nullable().optional(),
+	content_type: z.string().nullable().optional(),
+	file_size: z.number().nullable().optional(),
+	file_extension: z.string().nullable().optional()
+});
+
+const blockEmbedSchema = z.object({
+	url: z.url().nullable().optional(),
+	html: z.string().nullable().optional(),
+	title: z.string().nullable().optional(),
+	width: z.number().nullable().optional(),
+	height: z.number().nullable().optional(),
+	thumbnail_url: z.url().nullable().optional()
+});
+
+const embeddedConnectionSchema = z.object({
+	connected_at: z.coerce.date()
+});
+
+const baseContentItemFieldsSchema = z.object({
+	id: z.number(),
+	title: z.string().nullable().optional(),
+	description: markdownContentSchema.nullable().optional(),
+	source: blockSourceSchema.nullable().optional(),
+	created_at: z.coerce.date(),
+	connection: embeddedConnectionSchema
+});
+
+export const arenaTextBlockSchema = baseContentItemFieldsSchema.extend({
+	type: z.literal('Text'),
+	content: markdownContentSchema
+});
+
+export const arenaImageBlockSchema = baseContentItemFieldsSchema.extend({
+	type: z.literal('Image'),
+	image: blockImageSchema
+});
+
+export const arenaLinkBlockSchema = baseContentItemFieldsSchema.extend({
+	type: z.literal('Link'),
+	image: blockImageSchema.nullable().optional(),
+	content: markdownContentSchema.nullable().optional()
+});
+
+export const arenaAttachmentBlockSchema = baseContentItemFieldsSchema.extend({
+	type: z.literal('Attachment'),
+	attachment: blockAttachmentSchema,
+	image: blockImageSchema.nullable().optional()
+});
+
+export const arenaEmbedBlockSchema = baseContentItemFieldsSchema.extend({
+	type: z.literal('Embed'),
+	embed: blockEmbedSchema,
+	image: blockImageSchema.nullable().optional()
+});
+
+/**
+ * A sub-channel nested inside another channel's contents. Not a block — the normalizer (a
+ * separate TODO) is expected to skip these; this client still needs to parse them rather than
+ * fail the whole page when one shows up.
+ */
+export const arenaChannelItemSchema = z.object({
+	id: z.number(),
+	type: z.literal('Channel'),
+	slug: z.string(),
+	title: z.string(),
+	connection: embeddedConnectionSchema
+});
+
+export const arenaContentItemSchema = z.discriminatedUnion('type', [
+	arenaTextBlockSchema,
+	arenaImageBlockSchema,
+	arenaLinkBlockSchema,
+	arenaAttachmentBlockSchema,
+	arenaEmbedBlockSchema,
+	arenaChannelItemSchema
+]);
+
+export type ArenaContentItem = z.infer<typeof arenaContentItemSchema>;
+export type ArenaBlockItem = Exclude<ArenaContentItem, { type: 'Channel' }>;
+
+const paginationMetaSchema = z.object({
+	current_page: z.number(),
+	next_page: z.number().nullable(),
+	per_page: z.number(),
+	total_pages: z.number(),
+	total_count: z.number(),
+	has_more_pages: z.boolean()
+});
+
+export type ArenaPaginationMeta = z.infer<typeof paginationMetaSchema>;
+
+export const arenaChannelContentsResponseSchema = z.object({
+	data: z.array(arenaContentItemSchema),
+	meta: paginationMetaSchema
+});
+
+export type ArenaChannelContentsResponse = z.infer<typeof arenaChannelContentsResponseSchema>;
