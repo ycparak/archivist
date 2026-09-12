@@ -2,7 +2,7 @@
 
 Task backlog and work-in-progress tracking. See [`docs/workflows/agent-loop.md`](./docs/workflows/agent-loop.md) for how to work this list.
 
-Seeded from [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) — vertical slices, smallest first. Keep this list current: move items between sections as you work, don't let it drift from reality.
+Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — vertical slices, smallest first. Keep this list current: move items between sections as you work, don't let it drift from reality.
 
 ## Up Next
 
@@ -11,7 +11,7 @@ Seeded from [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) — v
 - [ ] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`).
 - [ ] `toSearchDocument` normalizer covering all supported block shapes, with tests.
 - [ ] Manual `bun run sync` command for configured `ARENA_CHANNEL_SLUGS`.
-- [ ] Turbopuffer schema creation (`search_text` full-text + native embed, per `docs/ARCHITECTURE.md`) and batch upsert.
+- [ ] Turbopuffer schema creation (`search_text` full-text + native embed, per `docs/architecture.md`) and batch upsert.
 - [ ] Verify a known block round-trips via a direct SDK query.
 
 ### Slice 2 — search API and evaluation
