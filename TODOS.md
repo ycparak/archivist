@@ -39,7 +39,7 @@ _(none)_
 
 ## Done
 
-- [x] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`). `e60ec40`. See [SPECs/Agent/worksheet-arena-page-client.md](./SPECs/Agent/worksheet-arena-page-client.md).
+- [x] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`). `e60ec40`. See [SPECs/worksheet-arena-page-client.md](./SPECs/worksheet-arena-page-client.md).
 
 ## Needs Input
 
