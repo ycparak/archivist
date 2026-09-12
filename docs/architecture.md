@@ -73,6 +73,10 @@ The initial native embedding model is `nvidia/nemotron-3-embed-8b` with 1024 dim
 
 `shared` includes a result limit, presentation attributes, and an `And` filter built from the optional V1 filters. Lexical and semantic modes issue their respective single query. Browse does no text query: it orders matching records by `connected_at` descending. The endpoint selects hybrid when `q` is non-empty and `mode` is omitted; an empty request selects browse. Repeated `channel` or `type` parameters are ORed within their category, and categories compose with AND. Date-only `to` parameters include their full UTC day. Keep candidate/result limits server-owned to prevent an expensive public-query knob.
 
+Blank parameters are treated as omitted (`?q=&mode=&from=&to=` is the same request as `/`), because an HTML form submits every field whether or not it was filled in. Malformed non-blank values still fail: an unknown `mode`, a `type` outside the five Are.na block types, and a date that is not `YYYY-MM-DD` each return 400 rather than silently returning nothing.
+
+V1 has no channel enumeration. Turbopuffer offers no facet we rely on over the `channel_slugs` array attribute, and a public request may never call Are.na, so the UI can only offer the channels that results actually carry. A complete channel list would come from the sync command emitting a channel manifest, not from a request-time provider call.
+
 RRF belongs in Turbopuffer, not in client code. It combines independently ranked lists without assuming BM25 and vector distance are numerically comparable.
 
 ## Reliability and security

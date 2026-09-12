@@ -98,6 +98,91 @@
 - The channel filter has no global channel list. Accepted for V1 and recorded as a
   follow-up TODO rather than inventing a facet source.
 
+## Plan review
+
+Three reviewers (SvelteKit/Frontend, Systems Architect, QA) ran against the plan above. What
+changed as a result — all of it is in the implementation:
+
+- **The form would have wiped active channel filters (P1, frontend).** A GET submit replaces the
+  whole query string with the form's own fields, and channels are not form controls. Active
+  channels now render as hidden inputs, asserted in `markup.ssr.spec.ts`, and verified in a real
+  browser (submitting with a channel filter keeps it in the URL).
+- **Clearing the query would have 400'd (P1, frontend + QA).** The mode control's default option
+  now submits `""`, which the parser reads as "no mode" and resolves to browse. The parser's
+  existing guard is untouched: an explicitly chosen exact-words/related-ideas ranking with no query
+  is still a 400, which with JS cannot be reached (the canonical href drops a ranking that cannot
+  apply) and without JS renders the invalid state with the filters preserved.
+- **Two owners of the URL grammar (P1, architect + QA + frontend).** `src/lib/domain/search.ts` now
+  owns parameter names, the implicit-mode rule, and the date format; `request.ts` consumes them. A
+  round-trip test drives a table of states through `toArchiveSearchHref` → `parseArchiveSearchRequest`.
+- **`ArchiveSearchState` vs `ArchiveSearchInput` (P1, architect).** `executeArchiveSearch` returns
+  the view state alongside results, so there is one mapping, tested, rather than a parallel type.
+- **`/api/search` contract tests must survive the split (P1, QA).** `handler.spec.ts` is unchanged
+  and still drives `handleSearchRequest` at the `Response` level; outcome-level tests were added
+  beside it, including repeated-parameter → invalid, no repository construction and no correlation
+  ID on the 400 path, and a misconfigured service reported as `providerStatus: null`.
+- **Blank-normalization could have swallowed malformed input (P1, QA).** It drops only
+  whitespace-only values; `mode=fuzzy`, `from=not-a-date`, `from=2024-13-45`, `from=2024-1-2`,
+  `from=2024-01-02T00:00:00Z`, and a leading-space date all still 400, each with a test.
+- **`type` was open-ended (P2, architect).** `?type=Photo` used to return an empty gallery; it is
+  now a 400 against the five-type closed set, with a drift test next to the Are.na schema.
+- **Silent unavailability (P2, architect).** The logger is now the default reporter rather than a
+  no-op, so omitting it cannot lose a 503.
+- **The `alt=""` rationale was factually wrong (P2, architect + frontend).** Are.na _does_ expose
+  `image.alt_text`, `width`, and `height`; our normalizer discards them. `alt=""` inside a
+  title-named link stays the right V1 call, but the reason is our indexing choice, and indexing
+  them is now a Slice 4 TODO.
+- Also adopted: dedupe results by id before a keyed `{#each}`; a text-forward card for blocks with
+  no image; `resolve()` on internal hrefs and `rel="external"` on Are.na links; a reader-facing
+  ranking label instead of retrieval jargon; honest "showing the first 24" wording; pure state
+  transitions (`withChannel`, `withoutChannel`, …) tested rather than inline in components;
+  `resolveSearchConfig` split out so environment precedence is observable in a test; `kind` rather
+  than `status` for the outcome discriminant.
+
+Not adopted: demoting an explicit non-browse mode with a blank query to browse (QA's option (a)).
+It would relax a guard Slice 2 added deliberately, and the form no longer produces that URL.
+
 ## Result
 
-_(filled in after implementation)_
+- Added `src/routes/+page.server.ts`, a rewritten `src/routes/+page.svelte`, and
+  `src/lib/components/` (`SearchForm`, `ResultCard`, `ActiveFilters`, `ArchiveMessage`, `format.ts`).
+  The old placeholder page's hardcoded dark palette is gone; everything reads tokens.
+- Added `src/lib/domain/search.ts` as the URL-grammar and search-vocabulary owner (state type, mode
+  and block-type vocabularies, href builder, lenient reader, pure state transitions, `SearchResult`
+  moved here from the server contract so components never import `$lib/server/**`).
+- Added `src/lib/server/search/execute.ts` (`executeArchiveSearch`, transport-neutral) and
+  `config.ts` (`resolveSearchConfig` / `createSearchRepository`). `handler.ts` is now only the JSON
+  mapper; both the page and `/api/search` share one parser, one error policy, and one sanitized
+  correlation-ID path.
+- Tests: 150 pass (was 100). New coverage for the URL round trip, state transitions, blank-value
+  and malformed-value parsing, outcome shapes, environment resolution, date/title formatting, the
+  block-type drift between the Are.na schema and the UI vocabulary, and server-rendered markup
+  contracts.
+- Docs: `AGENTS.md` (components directory, grammar-ownership invariant), `docs/architecture.md`
+  (blank parameters, closed type set, why V1 has no channel enumeration),
+  `docs/svelte-guidelines.md` (components boundary, the GET-form caveat, `navigating` shape, no
+  route announcer, SSR markup testing, MCP CLI fallback), `CHANGELOG.md`, `TODOS.md`.
+
+### Manual verification
+
+Run against `bun run dev` with a temporary stubbed `load` (no Turbopuffer credentials exist in this
+environment), driving a real Chromium. The stub was removed afterwards; the real load was then
+re-verified against the running dev server.
+
+- Tab order: query → Search → ranking → five type checkboxes → date inputs → chips → cards. No
+  positive `tabindex`, no trap.
+- Submitting with `channel=materials` active produced `?q=concrete&channel=materials` — the filter
+  survives, which is the bug the plan would have shipped.
+- Focus stays on the search input across a submit (`keepFocus`), so the live region is the only
+  announcement: mid-navigation it reads `Searching for “concrete”…` (the _pending_ query, not the
+  stale one), the grid carries `aria-busy="true"` and dims to 0.5, and the region sits outside that
+  subtree. After it settles: `Showing the first 24 blocks for “concrete”.`
+- No horizontal overflow at 320px or 1280px; the grid reflows to one column and controls stack.
+- Unavailable, no-result, and unreadable-search states all keep the form and its values on screen;
+  the unavailable state shows the correlation ID in mono.
+- Real (unstubbed) load with no credentials renders the unavailable state and logs only
+  `{ correlationId, providerStatus }` — no query text, no token. `/api/search?q=felt` returns 503
+  with a correlation ID; `/api/search?type=Photo` returns 400.
+- Not verified here: a screen reader, and results from a live Turbopuffer namespace (no
+  credentials). The evaluation pass over real data stays a Slice 4 item.
+- Validation: `bun run check`, `bun run lint`, `bun run test`, `bun run build` all pass.

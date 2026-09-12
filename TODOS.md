@@ -9,22 +9,29 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 ### Slice 4 — portfolio polish
 
 - [ ] Concise architecture notes on the product's about surface.
+- [ ] Index `image.alt_text`, `width`, and `height` from Are.na's block image payload. The normalizer
+      currently discards all three (`src/lib/server/indexing/normalize.ts`), so result images use an
+      empty `alt` inside a link named by the block title, and a fixed aspect-ratio box instead of
+      real intrinsic dimensions. These are new unindexed attributes, so this needs a re-sync but not
+      a namespace version.
+- [ ] Give the UI a complete channel list. V1 can only offer channels present in the current
+      results, because Turbopuffer has no facet we rely on over `channel_slugs` and a public request
+      may never call Are.na. The intended shape is the sync command emitting a channel manifest.
 - [ ] Edge rate limiting and basic error telemetry before public deployment.
 - [ ] Full quality suite (`bun run check && bun run lint && bun run test && bun run build`) and manual pass over the evaluation queries.
+- [ ] Consider a second vitest project (`jsdom` + `@testing-library/svelte`) for interactive
+      component behavior. `vite.config.ts` already reserves the slot by excluding
+      `src/**/*.svelte.spec.ts` from the node project. Server-rendered markup assertions
+      (`src/lib/components/markup.ssr.spec.ts`) cover the static contract today; focus, live-region
+      announcement, and reflow remain manual.
 
 ## In Progress
 
-### Slice 3 — gallery surface
-
-- [ ] Search-first home page with URL-backed state (`?q=&mode=&channel=&type=&from=&to=`).
-- [ ] Responsive result cards, loading, no-result, and unavailable-service states.
-- [ ] Safe image dimensions/alt behavior; links go to the original Are.na block.
-- [ ] Keyboard behavior and narrow-screen layout confirmed.
-
-See [SPECs/worksheet-gallery-surface.md](./SPECs/worksheet-gallery-surface.md).
+_(none)_
 
 ## Done
 
+- [x] Slice 3 gallery surface: URL-backed search-first home page, result cards, loading/no-result/invalid/unavailable states, and the shared `executeArchiveSearch` seam behind both the page and `/api/search`. See [SPECs/worksheet-gallery-surface.md](./SPECs/worksheet-gallery-surface.md).
 - [x] Slice 2 search API and evaluation: `SearchRepository`, `/api/search`, four retrieval modes, V1 filters, public evaluation fixture, and focused tests. See [SPECs/worksheet-search-api.md](./SPECs/worksheet-search-api.md).
 - [x] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`). `e60ec40`. See [SPECs/worksheet-arena-page-client.md](./SPECs/worksheet-arena-page-client.md).
 - [x] `toSearchDocument` normalizer covering all supported block shapes, with tests. `39cce35`. See [SPECs/worksheet-arena-block-normalizer.md](./SPECs/worksheet-arena-block-normalizer.md).
