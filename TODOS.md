@@ -35,11 +35,11 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ## In Progress
 
-- [ ] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`). See [SPECs/Agent/worksheet-arena-page-client.md](./SPECs/Agent/worksheet-arena-page-client.md).
+_(none)_
 
 ## Done
 
-_(none yet — project is pre-V1)_
+- [x] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`). `e60ec40`. See [SPECs/Agent/worksheet-arena-page-client.md](./SPECs/Agent/worksheet-arena-page-client.md).
 
 ## Needs Input
 
