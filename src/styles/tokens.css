@@ -18,6 +18,7 @@
 	--color-green-100: #a5f4cf;
 	--color-green-700: #01b461;
 	--color-green-1000: #015a31;
+	--color-green-1100: #013d21;
 	--color-red-100: #fbeae9;
 	--color-red-1000: #d13415;
 
@@ -27,7 +28,7 @@
 	--color-surface-raised: var(--color-grey-50);
 	--color-text: var(--color-grey-1000);
 	--color-text-secondary: var(--color-grey-800);
-	--color-text-tertiary: var(--color-grey-600);
+	--color-text-tertiary: var(--color-grey-700);
 	--color-text-placeholder: var(--color-grey-500);
 	--color-text-disabled: var(--color-grey-400);
 	--color-text-inverse: var(--color-white);
@@ -36,6 +37,7 @@
 	--color-border-emphasis: var(--color-grey-300);
 	--color-accent: var(--color-green-1000);
 	--color-accent-strong: var(--color-green-700);
+	--color-accent-hover: var(--color-green-1100);
 	--color-danger: var(--color-red-1000);
 	--color-danger-subtle: var(--color-red-100);
 	--color-control: var(--color-grey-50);

@@ -5,10 +5,10 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
-		"build": "wrangler types --check --env-file=.env.example && vite build",
+		"build": "bun run gen && vite build",
 		"preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
-		"prepare": "svelte-kit sync || echo ''",
-		"check": "wrangler types --check --env-file=.env.example && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit --project scripts/tsconfig.json",
+		"prepare": "wrangler types --env-file=.env.example || echo ''; svelte-kit sync || echo ''",
+		"check": "bun run gen && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit --project scripts/tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",

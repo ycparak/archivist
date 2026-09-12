@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ARCHIVE_BLOCK_TYPES } from '$lib/domain/search';
 import { searchModeSchema } from './contracts';
 
 export const searchEvaluationCaseSchema = z.object({
@@ -6,7 +7,7 @@ export const searchEvaluationCaseSchema = z.object({
 	mode: searchModeSchema,
 	q: z.string().min(1).optional(),
 	channel: z.array(z.string().min(1)).min(1).optional(),
-	type: z.array(z.string().min(1)).min(1).optional(),
+	type: z.array(z.enum(ARCHIVE_BLOCK_TYPES)).min(1).optional(),
 	from: z.iso.date().optional(),
 	to: z.iso.date().optional(),
 	expectedBlockIds: z.array(z.string())

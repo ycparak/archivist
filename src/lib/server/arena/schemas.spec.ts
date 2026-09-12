@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ARCHIVE_BLOCK_TYPES } from '$lib/domain/search';
 import {
 	arenaChannelContentsResponseSchema,
 	arenaContentItemSchema,
@@ -232,5 +233,15 @@ describe('arenaOwnedChannelsResponseSchema', () => {
 			}
 		});
 		expect(response.data).toHaveLength(1);
+	});
+});
+
+describe('archive block vocabulary', () => {
+	it('matches the block types the UI offers as filters', () => {
+		const schemaBlockTypes = arenaContentItemSchema.options
+			.map((option) => option.shape.type.value)
+			.filter((blockType) => blockType !== 'Channel');
+
+		expect([...schemaBlockTypes].sort()).toEqual([...ARCHIVE_BLOCK_TYPES].sort());
 	});
 });
