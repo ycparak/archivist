@@ -1,7 +1,7 @@
 # Archivist design direction
 
 This document is the visual and interaction contract for Archivist. Read it with
-the [product requirements](./PRD.md), [technical architecture](./ARCHITECTURE.md),
+the [product requirements](./prd.md), [technical architecture](./architecture.md),
 and [`AGENTS.md`](../AGENTS.md) before adding or changing UI.
 
 ## Product stance

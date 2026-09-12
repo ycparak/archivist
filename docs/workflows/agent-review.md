@@ -31,10 +31,10 @@ Activate only the personas relevant to the changed surface area. Each persona ow
   Owned docs: `docs/svelte-guidelines.md`.
 
 - **Search & Retrieval Expert**: Turbopuffer schema and query correctness, hybrid `multiQuery`/RRF usage, filter construction, namespace-versioning discipline for attribute-type changes.
-  Owned docs: `docs/ARCHITECTURE.md` (Turbopuffer namespace, Retrieval behavior), the Search invariants section of `AGENTS.md`.
+  Owned docs: `docs/architecture.md` (Turbopuffer namespace, Retrieval behavior), the Search invariants section of `AGENTS.md`.
 
 - **Data/Sync Expert**: Are.na V3 transport and pagination correctness, rate-limit/backoff handling, normalization and deduplication in `src/lib/server/indexing/`, sync idempotency.
-  Owned docs: `docs/ARCHITECTURE.md` (Sync lifecycle, Why this data-access model).
+  Owned docs: `docs/architecture.md` (Sync lifecycle, Why this data-access model).
 
 - **Systems Architect**: ownership boundaries between `src/lib/domain/`, `src/lib/server/*/`, and `src/routes/`; wrong-layer placement (provider calls or ranking logic leaking into routes); product-boundary drift (V1 scope creep).
   Owned docs: `AGENTS.md` (Product boundary, Architecture boundaries, Search invariants).
@@ -71,7 +71,7 @@ If there are no findings, explicitly say so and list residual risks/testing gaps
 - Product boundary respected: no generated collections, summaries, tags, OCR, link crawling, auth, accounts, analytics, background queues, or chat UI introduced into V1 without an explicit human decision to start V2.
 - Correct ownership: `src/lib/domain/` stays framework-free, `src/lib/server/` stays server-only and provider-shape-private, `src/routes/` stays composition-only.
 - Provider API shapes (Are.na, Turbopuffer) never leak past their adapter module — UI and route code consume `SearchResult`, never raw rows/payloads.
-- Turbopuffer attribute-type changes are versioned into a new namespace with an ADR in `docs/adr/`, never an in-place type change.
+- Turbopuffer attribute-type changes are versioned into a new namespace with an ADR in `SPECs/`, never an in-place type change.
 - Hybrid ranking uses Turbopuffer's `multiQuery` + `rerank_by: ['RRF']`; no ad-hoc score arithmetic in application code.
 - Untrusted input (query params, Are.na responses) validated with Zod at the boundary.
 - Secrets stay server-only; no tokens, full raw API payloads, or user search queries in logs.

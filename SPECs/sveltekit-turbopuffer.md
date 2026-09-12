@@ -1,4 +1,4 @@
-# ADR 0001: SvelteKit and Turbopuffer native hybrid retrieval
+# ADR: SvelteKit and Turbopuffer native hybrid retrieval
 
 **Status:** Accepted
 
