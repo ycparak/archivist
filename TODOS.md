@@ -8,7 +8,6 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ### Slice 4 — portfolio polish
 
-- [ ] Concise architecture notes on the product's about surface.
 - [ ] Index `image.alt_text`, `width`, and `height` from Are.na's block image payload. The normalizer
       currently discards all three (`src/lib/server/indexing/normalize.ts`), so result images use an
       empty `alt` inside a link named by the block title, and a fixed aspect-ratio box instead of
@@ -31,6 +30,9 @@ _(none)_
 
 ## Done
 
+- [x] Slice 4 about surface: `/about` page with concise notes on where the archive comes from, how
+      the four search modes work, and how the app is built, linked from the home page. See
+      [SPECs/worksheet-about-surface.md](./SPECs/worksheet-about-surface.md).
 - [x] Slice 3 gallery surface: URL-backed search-first home page, result cards, loading/no-result/invalid/unavailable states, and the shared `executeArchiveSearch` seam behind both the page and `/api/search`. See [SPECs/worksheet-gallery-surface.md](./SPECs/worksheet-gallery-surface.md).
 - [x] Slice 2 search API and evaluation: `SearchRepository`, `/api/search`, four retrieval modes, V1 filters, public evaluation fixture, and focused tests. See [SPECs/worksheet-search-api.md](./SPECs/worksheet-search-api.md).
 - [x] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`). `e60ec40`. See [SPECs/worksheet-arena-page-client.md](./SPECs/worksheet-arena-page-client.md).

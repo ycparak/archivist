@@ -4,6 +4,8 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- Added an `/about` page with concise notes on where the archive comes from, how the four search
+  modes work, and how the app is built. Linked from the home page ("How this works").
 - Added the search-first home page: a gallery of original Are.na blocks with a search box, ranking
   choice (best match, exact words, related ideas), block-type and connected-date filters, and
   channel filters you add by clicking a channel on a result. All of it lives in the URL

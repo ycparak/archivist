@@ -49,6 +49,7 @@
 			Search one maintainer’s Are.na archive by exact words or by idea. Every result is an original
 			block and links back to Are.na.
 		</p>
+		<p class="meta"><a href={resolve('/about')}>How this works</a></p>
 	</header>
 
 	<SearchForm {state} onnavigate={navigate} />
