@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { arenaChannelContentsResponseSchema, arenaContentItemSchema } from './schemas';
+import {
+	arenaChannelContentsResponseSchema,
+	arenaContentItemSchema,
+	arenaMeSchema,
+	arenaOwnedChannelSchema,
+	arenaOwnedChannelsResponseSchema
+} from './schemas';
 
 const markdown = { markdown: '**hi**', html: '<p>hi</p>', plain: 'hi' };
 const connection = { connected_at: '2023-01-15T10:30:00Z' };
@@ -180,5 +186,54 @@ describe('arenaChannelContentsResponseSchema', () => {
 		expect(response.data).toHaveLength(2);
 		expect(response.data.map((item) => item.type)).toEqual(['Text', 'Channel']);
 		expect(response.meta.has_more_pages).toBe(true);
+	});
+});
+
+describe('arenaMeSchema', () => {
+	it('parses just the fields discovery needs from /v3/me', () => {
+		expect(
+			arenaMeSchema.parse({ id: 558206, slug: 'yusuf-parak', email: 'ignored@example.com' })
+		).toEqual({
+			id: 558206,
+			slug: 'yusuf-parak'
+		});
+	});
+});
+
+describe('arenaOwnedChannelSchema', () => {
+	it('parses a channel from user-contents discovery without requiring a connection field', () => {
+		const channel = arenaOwnedChannelSchema.parse({
+			id: 5650061,
+			type: 'Channel',
+			slug: 'discover-earth',
+			title: '❋ Discover Earth',
+			// Real API responses include many more fields (owner, counts, _links, ...) — verified
+			// live that none of them, including `connection`, are required for this endpoint.
+			owner: { id: 1 },
+			counts: { blocks: 3 }
+		});
+		expect(channel).toEqual({
+			id: 5650061,
+			type: 'Channel',
+			slug: 'discover-earth',
+			title: '❋ Discover Earth'
+		});
+	});
+});
+
+describe('arenaOwnedChannelsResponseSchema', () => {
+	it('parses a page of discovered channels', () => {
+		const response = arenaOwnedChannelsResponseSchema.parse({
+			data: [{ id: 1, type: 'Channel', slug: 'a', title: 'A' }],
+			meta: {
+				current_page: 1,
+				next_page: null,
+				per_page: 50,
+				total_pages: 1,
+				total_count: 1,
+				has_more_pages: false
+			}
+		});
+		expect(response.data).toHaveLength(1);
 	});
 });

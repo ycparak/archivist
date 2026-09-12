@@ -4,7 +4,14 @@ import {
 	ArenaRateLimitError as SdkArenaRateLimitError,
 	type Arena
 } from '@aredotna/sdk';
-import { arenaChannelContentsResponseSchema, type ArenaChannelContentsResponse } from './schemas';
+import {
+	arenaChannelContentsResponseSchema,
+	arenaMeSchema,
+	arenaOwnedChannelsResponseSchema,
+	type ArenaChannelContentsResponse,
+	type ArenaMe,
+	type ArenaOwnedChannelsResponse
+} from './schemas';
 
 /** Are.na enforces `per` in [1, 100]; validated up front so a bad caller value fails loudly. */
 const MIN_PER_PAGE = 1;
@@ -33,6 +40,12 @@ export interface FetchChannelContentsPageOptions {
 	signal?: AbortSignal;
 }
 
+export interface FetchOwnedChannelsPageOptions {
+	page?: number;
+	per?: number;
+	signal?: AbortSignal;
+}
+
 /**
  * Read budget for the bucket that served the response. Per the OpenAPI spec's `info.description`
  * (more current than the rendered docs page, which omits `X-RateLimit-Remaining`), these headers
@@ -49,6 +62,10 @@ export interface ArenaRateLimitInfo {
 }
 
 export type ArenaChannelContentsPage = ArenaChannelContentsResponse & {
+	rateLimit: ArenaRateLimitInfo;
+};
+
+export type ArenaOwnedChannelsPage = ArenaOwnedChannelsResponse & {
 	rateLimit: ArenaRateLimitInfo;
 };
 
@@ -170,26 +187,32 @@ function wrapFetchForRateLimitTracking(fetchFn: typeof fetch): {
  * from its source), which is weaker than `resolveRateLimitRetryDelayMs` below. Network errors
  * (`ArenaNetworkError`) and anything else pass through unchanged — they aren't HTTP-status
  * failures this adapter has a more specific type for.
+ *
+ * `context` is a human-readable phrase describing the request (e.g. `fetching current user`),
+ * shared across every operation this client exposes.
  */
-function mapSdkError(error: unknown, slug: string, page: number): unknown {
+function mapSdkError(error: unknown, context: string): unknown {
 	if (error instanceof SdkArenaRateLimitError) {
 		const retryAfterMs = error.response
 			? resolveRateLimitRetryDelayMs(error.response.headers)
 			: MIN_RATE_LIMIT_RETRY_MS;
-		return new ArenaRateLimitError(
-			`Rate limited fetching channel "${slug}" contents (page ${page})`,
-			retryAfterMs
-		);
+		return new ArenaRateLimitError(`Rate limited ${context}`, retryAfterMs);
 	}
 
 	if (error instanceof SdkArenaApiError) {
 		return new ArenaRequestError(
-			`Are.na request failed with status ${error.status} fetching channel "${slug}" contents (page ${page})`,
+			`Are.na request failed with status ${error.status} ${context}`,
 			error.status
 		);
 	}
 
 	return error;
+}
+
+function assertValidPer(per: number): void {
+	if (per < MIN_PER_PAGE || per > MAX_PER_PAGE) {
+		throw new RangeError(`per must be between ${MIN_PER_PAGE} and ${MAX_PER_PAGE}, got ${per}`);
+	}
 }
 
 export class ArenaClient {
@@ -206,29 +229,59 @@ export class ArenaClient {
 		this.latestRateLimit = latest;
 	}
 
+	/** Resolves the token's own account — the starting point for channel discovery. */
+	async me(): Promise<ArenaMe> {
+		try {
+			const body = await this.arena.me();
+			return arenaMeSchema.parse(body);
+		} catch (error) {
+			throw mapSdkError(error, 'fetching current user');
+		}
+	}
+
 	/** Fetches and validates a single page of a channel's contents (blocks + nested channels). */
 	async fetchChannelContentsPage(
 		slug: string,
 		{ page = 1, per = 50, sort, signal }: FetchChannelContentsPageOptions = {}
 	): Promise<ArenaChannelContentsPage> {
-		if (per < MIN_PER_PAGE || per > MAX_PER_PAGE) {
-			throw new RangeError(`per must be between ${MIN_PER_PAGE} and ${MAX_PER_PAGE}, got ${per}`);
-		}
+		assertValidPer(per);
 
 		try {
 			const body = await this.arena.channels.contents(slug, { page, per, sort }, { signal });
 			const parsed = arenaChannelContentsResponseSchema.parse(body);
 			return { ...parsed, rateLimit: this.latestRateLimit() };
 		} catch (error) {
-			throw mapSdkError(error, slug, page);
+			throw mapSdkError(error, `fetching channel "${slug}" contents (page ${page})`);
+		}
+	}
+
+	/** Fetches and validates a single page of channels owned by the given user (discovery). */
+	async fetchOwnedChannelsPage(
+		userId: number,
+		{ page = 1, per = 50, signal }: FetchOwnedChannelsPageOptions = {}
+	): Promise<ArenaOwnedChannelsPage> {
+		assertValidPer(per);
+
+		try {
+			const body = await this.arena.users.contents(
+				userId,
+				{ page, per, type: 'Channel' },
+				{ signal }
+			);
+			const parsed = arenaOwnedChannelsResponseSchema.parse(body);
+			return { ...parsed, rateLimit: this.latestRateLimit() };
+		} catch (error) {
+			throw mapSdkError(error, `fetching owned channels for user ${userId} (page ${page})`);
 		}
 	}
 }
 
-export interface PaginateChannelContentsOptions extends FetchChannelContentsPageOptions {
+export interface PaginateOptions {
+	per?: number;
+	signal?: AbortSignal;
 	/**
 	 * Pause between successive page requests. Are.na's own guidance is 200-500ms between
-	 * sequential calls; default errs gentle since this walks an entire channel in one pass.
+	 * sequential calls; default errs gentle since this walks a whole resource in one pass.
 	 */
 	requestDelayMs?: number;
 	maxRetriesPerPage?: number;
@@ -241,12 +294,20 @@ export interface PaginateChannelContentsOptions extends FetchChannelContentsPage
 	rateLimitSafetyMargin?: number;
 }
 
+export interface PaginateChannelContentsOptions extends PaginateOptions {
+	sort?: ArenaContentSort;
+}
+
 const DEFAULT_REQUEST_DELAY_MS = 300;
 const DEFAULT_MAX_RETRIES_PER_PAGE = 5;
 const DEFAULT_RATE_LIMIT_SAFETY_MARGIN = 1;
 
-/** Sleeps for `ms`, but resolves immediately if `signal` is already (or becomes) aborted. */
-function delay(ms: number, signal?: AbortSignal): Promise<void> {
+/**
+ * Sleeps for `ms`, but resolves immediately if `signal` is already (or becomes) aborted. Exported
+ * so callers pacing requests *across* multiple paginated resources (e.g. one delay per channel
+ * synced, not just between pages within one channel) can reuse the same abort-aware behavior.
+ */
+export function delay(ms: number, signal?: AbortSignal): Promise<void> {
 	if (signal?.aborted) return Promise.resolve();
 	return new Promise((resolve) => {
 		const timer = setTimeout(resolve, ms);
@@ -257,31 +318,36 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
+interface PageLike {
+	meta: { has_more_pages: boolean; next_page: number | null };
+	rateLimit: ArenaRateLimitInfo;
+}
+
 /**
- * Walks every page of a channel's contents, oldest-to-configured-sort-order, honoring 429
- * backoff, slowing proactively as the rate-limit budget runs low, and pacing requests. Intended
- * for the maintainer's manual, occasional sync — not for a request made on behalf of a visitor.
+ * Shared pagination engine behind both `paginateChannelContents` and `paginateOwnedChannels`:
+ * fetches page 1..N via `fetchPage`, honoring 429 backoff, slowing proactively as the rate-limit
+ * budget runs low, pacing requests, and stopping cleanly on `has_more_pages: false` or abort.
+ * Intended for the maintainer's manual, occasional sync — not a request made on a visitor's behalf.
  */
-export async function* paginateChannelContents(
-	client: ArenaClient,
-	slug: string,
+async function* paginate<T extends PageLike>(
+	fetchPage: (page: number, per: number, signal?: AbortSignal) => Promise<T>,
 	{
 		per = 50,
-		sort,
 		signal,
 		requestDelayMs = DEFAULT_REQUEST_DELAY_MS,
 		maxRetriesPerPage = DEFAULT_MAX_RETRIES_PER_PAGE,
 		delayFn = delay,
 		rateLimitSafetyMargin = DEFAULT_RATE_LIMIT_SAFETY_MARGIN
-	}: PaginateChannelContentsOptions = {}
-): AsyncGenerator<ArenaChannelContentsPage> {
+	}: PaginateOptions = {}
+): AsyncGenerator<T> {
 	let page = 1;
 
 	while (true) {
 		const response = await fetchPageWithRetry(
-			client,
-			slug,
-			{ page, per, sort, signal },
+			fetchPage,
+			page,
+			per,
+			signal,
 			maxRetriesPerPage,
 			delayFn
 		);
@@ -297,25 +363,50 @@ export async function* paginateChannelContents(
 	}
 }
 
-async function fetchPageWithRetry(
-	client: ArenaClient,
-	slug: string,
-	options: FetchChannelContentsPageOptions,
+async function fetchPageWithRetry<T extends PageLike>(
+	fetchPage: (page: number, per: number, signal?: AbortSignal) => Promise<T>,
+	page: number,
+	per: number,
+	signal: AbortSignal | undefined,
 	maxRetries: number,
 	delayFn: (ms: number, signal?: AbortSignal) => Promise<void>
-): Promise<ArenaChannelContentsPage> {
+): Promise<T> {
 	let attempt = 0;
 
 	while (true) {
 		try {
-			return await client.fetchChannelContentsPage(slug, options);
+			return await fetchPage(page, per, signal);
 		} catch (error) {
 			if (error instanceof ArenaRateLimitError && attempt < maxRetries) {
 				attempt += 1;
-				await delayFn(error.retryAfterMs, options.signal);
+				await delayFn(error.retryAfterMs, signal);
 				continue;
 			}
 			throw error;
 		}
 	}
+}
+
+/** Walks every page of a channel's contents, oldest-to-configured-sort-order. */
+export function paginateChannelContents(
+	client: ArenaClient,
+	slug: string,
+	{ sort, ...options }: PaginateChannelContentsOptions = {}
+): AsyncGenerator<ArenaChannelContentsPage> {
+	return paginate(
+		(page, per, signal) => client.fetchChannelContentsPage(slug, { page, per, sort, signal }),
+		options
+	);
+}
+
+/** Walks every page of channels owned by the given user (channel discovery). */
+export function paginateOwnedChannels(
+	client: ArenaClient,
+	userId: number,
+	options: PaginateOptions = {}
+): AsyncGenerator<ArenaOwnedChannelsPage> {
+	return paginate(
+		(page, per, signal) => client.fetchOwnedChannelsPage(userId, { page, per, signal }),
+		options
+	);
 }

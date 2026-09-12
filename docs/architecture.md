@@ -88,7 +88,7 @@ RRF belongs in Turbopuffer, not in client code. It combines independently ranked
 
 1. Validate `ARENA_ACCESS_TOKEN`, Turbopuffer config, and the namespace schema.
 2. Resolve the maintainer's own user id and discover every channel they own; fetch each channel's pages, checkpointing each completed page locally.
-3. Normalize blocks into stable documents; deduplicate by Are.na block ID while unioning channel membership.
+3. Normalize blocks into stable documents; deduplicate by Are.na block ID while unioning channel membership. `connected_at` is a per-channel connection timestamp, not stable block metadata — when the same block is connected to more than one channel, keep the most recent `connected_at` across those channels, matching browse mode's newest-first ordering. Every other field comes from the block resource itself and doesn't need this treatment.
 4. Upsert batched rows. Re-running the same sync is idempotent.
 5. Report fetched, normalized, upserted, skipped, and failed counts.
 

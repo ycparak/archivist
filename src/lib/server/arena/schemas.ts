@@ -142,3 +142,32 @@ export const arenaChannelContentsResponseSchema = z.object({
 });
 
 export type ArenaChannelContentsResponse = z.infer<typeof arenaChannelContentsResponseSchema>;
+
+export const arenaMeSchema = z.object({
+	id: z.number(),
+	slug: z.string()
+});
+
+export type ArenaMe = z.infer<typeof arenaMeSchema>;
+
+/**
+ * A channel returned from `GET /v3/users/{id}/contents?type=Channel` (channel discovery). Unlike
+ * `arenaChannelItemSchema`, this has no `connection` field — verified live: a channel appearing in
+ * a *user's* contents doesn't carry one (the API only attaches `connection` when a channel is
+ * returned as part of *another channel's* contents, per the OpenAPI spec).
+ */
+export const arenaOwnedChannelSchema = z.object({
+	id: z.number(),
+	type: z.literal('Channel'),
+	slug: z.string(),
+	title: z.string()
+});
+
+export type ArenaOwnedChannel = z.infer<typeof arenaOwnedChannelSchema>;
+
+export const arenaOwnedChannelsResponseSchema = z.object({
+	data: z.array(arenaOwnedChannelSchema),
+	meta: paginationMetaSchema
+});
+
+export type ArenaOwnedChannelsResponse = z.infer<typeof arenaOwnedChannelsResponseSchema>;
