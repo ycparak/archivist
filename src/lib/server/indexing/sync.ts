@@ -1,4 +1,4 @@
-import type { ArchiveBlock } from '$lib/domain/archive';
+import { toSearchDocument, type ArchiveBlock } from '$lib/domain/archive';
 import {
 	ArenaClient,
 	ArenaRequestError,
@@ -6,10 +6,15 @@ import {
 	paginateChannelContents,
 	paginateOwnedChannels
 } from '$lib/server/arena/client';
+import {
+	upsertSearchDocuments,
+	type TurbopufferConfig
+} from '$lib/server/search/turbopuffer-client';
 import { toArchiveBlock } from './normalize';
 
 export interface SyncOptions {
 	accessToken: string;
+	turbopuffer: TurbopufferConfig;
 	/** Injectable for tests; defaults to the global `fetch`. */
 	fetchFn?: typeof fetch;
 	signal?: AbortSignal;
@@ -49,6 +54,8 @@ export interface SyncSummary {
 	blocksNormalized: number;
 	/** After deduplicating by block id and unioning channel membership. */
 	uniqueBlocks: number;
+	documentsUpserted: number;
+	upsertBatches: number;
 }
 
 const noop = () => {};
@@ -89,10 +96,9 @@ function mergeBlock(blocksById: Map<string, ArchiveBlock>, block: ArchiveBlock):
 
 /**
  * Discovers every channel the token's account owns, walks each one's contents, normalizes every
- * block, and deduplicates by block id while unioning channel membership — the first three steps
- * of `docs/architecture.md`'s Sync lifecycle. Does not persist anything: Turbopuffer schema
- * creation and batch upsert are a separate TODO, so this returns the deduplicated blocks for a
- * caller to do that with next.
+ * block, deduplicates by block id while unioning channel membership, and batch-upserts the result
+ * into Turbopuffer — the full Sync lifecycle from `docs/architecture.md`. Re-running the same sync
+ * is idempotent: every upsert overwrites the document at that id entirely.
  *
  * A channel that fails with an Are.na transport error (e.g. one of the account's ~100+ channels
  * returning a 403/404, or exhausting its rate-limit retries) is recorded in `summary.channelsFailed`
@@ -100,7 +106,9 @@ function mergeBlock(blocksById: Map<string, ArchiveBlock>, block: ArchiveBlock):
  * consecutive channels fail before any have succeeded (see that option's doc). Anything that
  * *isn't* a transport failure — a schema validation error, a bug in `toArchiveBlock` — propagates
  * and fails the whole sync loudly instead of being isolated per channel; only a failure this
- * module can attribute to "this one channel had a problem" belongs in the per-channel bucket. See
+ * module can attribute to "this one channel had a problem" belongs in the per-channel bucket.
+ * Turbopuffer write failures are never isolated this way either — every batch writes to the same
+ * namespace, so a failure there is systemic, not specific to one batch's documents. See
  * `SPECs/worksheet-sync-command.md` for the fuller reasoning.
  */
 export async function syncArchive(
@@ -108,6 +116,7 @@ export async function syncArchive(
 ): Promise<{ blocks: ArchiveBlock[]; summary: SyncSummary }> {
 	const {
 		accessToken,
+		turbopuffer,
 		fetchFn,
 		signal,
 		log = noop,
@@ -124,7 +133,9 @@ export async function syncArchive(
 		blocksFetched: 0,
 		itemsSkipped: 0,
 		blocksNormalized: 0,
-		uniqueBlocks: 0
+		uniqueBlocks: 0,
+		documentsUpserted: 0,
+		upsertBatches: 0
 	};
 
 	const me = await client.me();
@@ -186,5 +197,12 @@ export async function syncArchive(
 
 	summary.uniqueBlocks = blocksById.size;
 
-	return { blocks: [...blocksById.values()], summary };
+	const blocks = [...blocksById.values()];
+	const documents = blocks.map(toSearchDocument);
+	const { batches, rowsUpserted } = await upsertSearchDocuments(documents, turbopuffer, { log });
+	summary.documentsUpserted = rowsUpserted;
+	summary.upsertBatches = batches;
+	log(`Upserted ${rowsUpserted} document(s) into Turbopuffer across ${batches} batch(es) total`);
+
+	return { blocks, summary };
 }
