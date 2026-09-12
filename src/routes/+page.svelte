@@ -6,8 +6,8 @@
 	import ArchiveMessage from '$lib/components/ArchiveMessage.svelte';
 	import ResultCard from '$lib/components/ResultCard.svelte';
 	import SearchForm from '$lib/components/SearchForm.svelte';
+	import { resultsStatus } from '$lib/components/format';
 	import {
-		ARCHIVE_RESULT_LIMIT,
 		hasActiveFilters,
 		readArchiveSearchState,
 		type ArchiveSearchHref
@@ -23,26 +23,14 @@
 	const announced = $derived(
 		searching && navigating.to ? readArchiveSearchState(navigating.to.url.searchParams) : state
 	);
-	const subject = $derived(announced.query ? `for “${announced.query}”` : 'in the archive');
-	const filterCount = $derived(
-		announced.channelSlugs.length +
-			announced.blockTypes.length +
-			(announced.from || announced.to ? 1 : 0)
+	const status = $derived(
+		resultsStatus({
+			kind: data.kind,
+			state: announced,
+			resultCount: results.length,
+			searching
+		})
 	);
-	const filterSuffix = $derived(
-		filterCount ? ` with ${filterCount} filter${filterCount === 1 ? '' : 's'}` : ''
-	);
-
-	const status = $derived.by(() => {
-		if (searching) return `Searching ${subject}${filterSuffix}…`;
-		if (data.kind === 'unavailable') return 'Search is unavailable right now.';
-		if (data.kind === 'invalid') return 'That search could not be read.';
-		if (!results.length) return `No blocks ${subject}${filterSuffix}.`;
-		if (results.length === ARCHIVE_RESULT_LIMIT) {
-			return `Showing the first ${ARCHIVE_RESULT_LIMIT} blocks ${subject}${filterSuffix}.`;
-		}
-		return `${results.length} block${results.length === 1 ? '' : 's'} ${subject}${filterSuffix}.`;
-	});
 
 	function navigate(href: ArchiveSearchHref) {
 		void goto(resolve(href), { keepFocus: true, noScroll: true });
@@ -96,6 +84,7 @@
 			</p>
 		</ArchiveMessage>
 	{:else}
+		<h2 class="visually-hidden">Results</h2>
 		<ul class="results" aria-busy={searching} class:searching>
 			{#each results as result, index (result.id)}
 				<li><ResultCard {result} {state} eager={index < 4} /></li>
@@ -131,6 +120,10 @@
 
 	.results-status {
 		margin: 0;
+	}
+
+	.results > :global(li) {
+		min-inline-size: 0;
 	}
 
 	.results {

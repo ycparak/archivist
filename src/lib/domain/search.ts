@@ -1,5 +1,6 @@
-import { z } from 'zod';
-import { ARCHIVE_BLOCK_TYPES, type ArchiveBlockType } from './archive';
+export const ARCHIVE_BLOCK_TYPES = ['Image', 'Link', 'Text', 'Attachment', 'Embed'] as const;
+
+export type ArchiveBlockType = (typeof ARCHIVE_BLOCK_TYPES)[number];
 
 export const ARCHIVE_SEARCH_PARAM = {
 	query: 'q',
@@ -16,20 +17,18 @@ export const ARCHIVE_RESULT_LIMIT = 24;
 
 export type ArchiveSearchMode = (typeof ARCHIVE_SEARCH_MODES)[number];
 
-export const searchResultSchema = z.object({
-	id: z.string(),
-	title: z.string().nullable(),
-	description: z.string().nullable(),
-	blockType: z.string(),
-	channelSlugs: z.array(z.string()),
-	connectedAt: z.string().nullable(),
-	sourceUrl: z.url().nullable(),
-	arenaUrl: z.url(),
-	imageUrl: z.url().nullable(),
-	sourceTitle: z.string().nullable()
-});
-
-export type SearchResult = z.infer<typeof searchResultSchema>;
+export type SearchResult = {
+	id: string;
+	title: string | null;
+	description: string | null;
+	blockType: string;
+	channelSlugs: string[];
+	connectedAt: string | null;
+	sourceUrl: string | null;
+	arenaUrl: string;
+	imageUrl: string | null;
+	sourceTitle: string | null;
+};
 
 export type ArchiveSearchState = {
 	query: string;
@@ -77,10 +76,22 @@ function readSingle(searchParams: URLSearchParams, name: string): string {
 }
 
 function readRepeated(searchParams: URLSearchParams, name: string): string[] {
-	return searchParams
-		.getAll(name)
-		.map((value) => value.trim())
-		.filter(Boolean);
+	return [
+		...new Set(
+			searchParams
+				.getAll(name)
+				.map((value) => value.trim())
+				.filter(Boolean)
+		)
+	];
+}
+
+function readDate(searchParams: URLSearchParams, name: string): string {
+	const value = readSingle(searchParams, name);
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
+	const parsed = new Date(`${value}T00:00:00.000Z`);
+	if (Number.isNaN(parsed.getTime())) return '';
+	return parsed.toISOString().slice(0, 10) === value ? value : '';
 }
 
 function isArchiveBlockType(value: string): value is ArchiveBlockType {
@@ -100,8 +111,8 @@ export function readArchiveSearchState(searchParams: URLSearchParams): ArchiveSe
 		mode: isArchiveSearchMode(requestedMode) ? requestedMode : defaultSearchMode(query),
 		channelSlugs: readRepeated(searchParams, ARCHIVE_SEARCH_PARAM.channel),
 		blockTypes: readRepeated(searchParams, ARCHIVE_SEARCH_PARAM.type).filter(isArchiveBlockType),
-		from: readSingle(searchParams, ARCHIVE_SEARCH_PARAM.from),
-		to: readSingle(searchParams, ARCHIVE_SEARCH_PARAM.to)
+		from: readDate(searchParams, ARCHIVE_SEARCH_PARAM.from),
+		to: readDate(searchParams, ARCHIVE_SEARCH_PARAM.to)
 	};
 }
 

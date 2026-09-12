@@ -2,13 +2,11 @@ import type { SearchRepository } from './contracts';
 import { TurbopufferSearchRepository } from './repository';
 import type { TurbopufferConfig } from './turbopuffer-client';
 
-const DEFAULT_NAMESPACE = 'arena-blocks-v1';
+export const DEFAULT_NAMESPACE = 'arena-blocks-v1';
 
-type SearchCredentials = {
-	TURBOPUFFER_API_KEY?: string;
-	TURBOPUFFER_REGION?: string;
-	TURBOPUFFER_NAMESPACE?: string;
-};
+type SearchCredentials = Partial<
+	Pick<Env, 'TURBOPUFFER_API_KEY' | 'TURBOPUFFER_REGION' | 'TURBOPUFFER_NAMESPACE'>
+>;
 
 export type SearchEnvironment = SearchCredentials | Readonly<Record<string, string | undefined>>;
 

@@ -1,9 +1,20 @@
 import { z } from 'zod';
-import { ARCHIVE_BLOCK_TYPES } from '$lib/domain/archive';
-import { ARCHIVE_SEARCH_MODES, searchResultSchema, type SearchResult } from '$lib/domain/search';
+import { ARCHIVE_BLOCK_TYPES, ARCHIVE_SEARCH_MODES, type SearchResult } from '$lib/domain/search';
 
-export { searchResultSchema };
 export type { SearchResult };
+
+export const searchResultSchema: z.ZodType<SearchResult> = z.object({
+	id: z.string(),
+	title: z.string().nullable(),
+	description: z.string().nullable(),
+	blockType: z.string(),
+	channelSlugs: z.array(z.string()),
+	connectedAt: z.string().nullable(),
+	sourceUrl: z.url().nullable(),
+	arenaUrl: z.url(),
+	imageUrl: z.url().nullable(),
+	sourceTitle: z.string().nullable()
+});
 
 export const searchModeSchema = z.enum(ARCHIVE_SEARCH_MODES);
 

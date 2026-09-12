@@ -1,5 +1,69 @@
 import { describe, expect, it } from 'vitest';
+import {
+	emptyArchiveSearchState,
+	toArchiveSearchHref,
+	type ArchiveSearchState
+} from '$lib/domain/search';
 import { SearchRequestValidationError, parseArchiveSearchRequest } from './request';
+
+describe('every href the UI can build is a request the server accepts', () => {
+	function state(overrides: Partial<ArchiveSearchState> = {}): ArchiveSearchState {
+		return { ...emptyArchiveSearchState, ...overrides };
+	}
+
+	const cases: Array<
+		[string, ArchiveSearchState, Partial<ReturnType<typeof parseArchiveSearchRequest>>]
+	> = [
+		['empty', state(), { mode: 'browse', query: '' }],
+		[
+			'query only',
+			state({ query: 'industrial felt', mode: 'hybrid' }),
+			{ mode: 'hybrid', query: 'industrial felt' }
+		],
+		[
+			'explicit ranking',
+			state({ query: 'felt', mode: 'lexical' }),
+			{ mode: 'lexical', query: 'felt' }
+		],
+		[
+			'explicit browse with a query',
+			state({ query: 'felt', mode: 'browse' }),
+			{ mode: 'browse', query: 'felt' }
+		],
+		['ranking dropped without a query', state({ mode: 'semantic' }), { mode: 'browse', query: '' }],
+		[
+			'filters only',
+			state({ channelSlugs: ['materials'], blockTypes: ['Image'] }),
+			{ mode: 'browse', channelSlugs: ['materials'], blockTypes: ['Image'] }
+		],
+		[
+			'everything at once',
+			state({
+				query: 'archival',
+				mode: 'semantic',
+				channelSlugs: ['materials', 'type'],
+				blockTypes: ['Image', 'Link'],
+				from: '2024-01-02',
+				to: '2024-01-31'
+			}),
+			{
+				mode: 'semantic',
+				query: 'archival',
+				channelSlugs: ['materials', 'type'],
+				blockTypes: ['Image', 'Link'],
+				from: new Date('2024-01-02T00:00:00.000Z'),
+				to: new Date('2024-01-31T23:59:59.999Z')
+			}
+		]
+	];
+
+	it.each(cases)('accepts the href for %s', (_name, uiState, expected) => {
+		const href = toArchiveSearchHref(uiState);
+		const { searchParams } = new URL(href, 'https://archivist.test');
+
+		expect(parseArchiveSearchRequest(searchParams)).toMatchObject(expected);
+	});
+});
 
 describe('parseArchiveSearchRequest', () => {
 	it('defaults an empty request to browse with the server-owned result limit', () => {

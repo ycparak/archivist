@@ -32,13 +32,13 @@ These mirror the architecture boundaries in [`AGENTS.md`](../AGENTS.md) — this
 
 - Favor small, single-purpose components over one large page component with conditional branches. A result card, a filter control, and an empty/error state are separate components even if each is short.
 - Accessible native controls first (`<button>`, `<select>`, `<a>`) — reach for ARIA roles only when no native element fits.
-- Keep markup, styles (see `src/styles/`), and logic in the same `.svelte` file unless a piece of logic is reused elsewhere, in which case extract it to `src/lib/domain/` (pure) or a `.svelte.ts` module (reactive).
+- Keep markup, styles (see `src/styles/`), and logic in the same `.svelte` file unless a piece of logic is reused elsewhere or is worth testing on its own, in which case extract it: shared vocabulary and transformations to `src/lib/domain/` (pure, client-shipped), presentation-only helpers to a plain `.ts` beside the components (`src/lib/components/format.ts`), reactive shared state to a `.svelte.ts` module. Branching that decides user-visible copy belongs in a tested function, not in a `$derived` the node test project cannot reach.
 
 ## Testing
 
 - Unit test normalizers, filter builders, and search-result mappers in `src/lib/domain/` and `src/lib/server/` with Vitest — colocate as `*.spec.ts` next to the source file (see `src/lib/domain/archive.spec.ts`).
 - Test behavior (given this input, this output/shape), not internal implementation details.
-- There is no component/browser test project. Markup contracts that matter (a form's `method`/`action`, hidden fields carrying URL state, `for`/`id` label association, `alt`, the live region) can still be asserted in the node project by server-rendering a component with `render()` from `svelte/server` — see `src/lib/components/markup.ssr.spec.ts`. Genuinely interactive behavior (focus, announcement, reflow) stays manual; record what was checked in the task's worksheet.
+- There is no component/browser test project. Markup contracts that matter (a form's `method`/`action`, hidden fields carrying URL state, `for`/`id` label association, `alt`, the live region) can still be asserted in the node project by server-rendering a component with `render()` from `svelte/server` — see `src/lib/components/markup.ssr.spec.ts`. Parse what you assert (`new URL(href).searchParams`, an attribute match) rather than matching raw HTML substrings, which pin Svelte's attribute order and parameter order rather than behavior. Genuinely interactive behavior (focus, announcement, reflow) stays manual; record what was checked in the task's worksheet.
 
 ## Use the Svelte MCP Server
 

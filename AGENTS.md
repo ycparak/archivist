@@ -12,7 +12,7 @@ This is an **agent router**: concise context loaded every session, read by both 
 
 Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, Turbopuffer (search datastore), Are.na V3 (source of truth for content).
 
-- `src/lib/domain/`: framework-free domain types and transformations.
+- `src/lib/domain/`: framework-free domain types and transformations. This code ships to the browser, so keep it free of Zod schemas, provider shapes, and any runtime validation library — put those behind `src/lib/server/`.
 - `src/lib/server/arena/`: Are.na transport and pagination only.
 - `src/lib/server/indexing/`: normalization, document construction, and sync orchestration.
 - `src/lib/server/search/`: search request validation, Turbopuffer adapter, and result mapping.

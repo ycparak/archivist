@@ -81,6 +81,22 @@ describe('readArchiveSearchState', () => {
 		expect(readArchiveSearchState(new URLSearchParams('mode=')).mode).toBe('browse');
 	});
 
+	it('collapses duplicate filter values so keyed rendering cannot break', () => {
+		expect(
+			readArchiveSearchState(
+				new URLSearchParams('channel=materials&channel=materials&type=Image&type=Image')
+			)
+		).toMatchObject({ channelSlugs: ['materials'], blockTypes: ['Image'] });
+	});
+
+	it('drops a date that is not a real calendar day', () => {
+		expect(readArchiveSearchState(new URLSearchParams('from=2024-13-45')).from).toBe('');
+		expect(readArchiveSearchState(new URLSearchParams('from=2024-02-31')).from).toBe('');
+		expect(readArchiveSearchState(new URLSearchParams('from=2024-1-2')).from).toBe('');
+		expect(readArchiveSearchState(new URLSearchParams('from=not-a-date')).from).toBe('');
+		expect(readArchiveSearchState(new URLSearchParams('from=2024-02-29')).from).toBe('2024-02-29');
+	});
+
 	it('drops blank and unknown values rather than echoing them back into the form', () => {
 		expect(
 			readArchiveSearchState(

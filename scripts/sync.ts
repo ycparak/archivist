@@ -1,6 +1,5 @@
 import { syncArchive } from '$lib/server/indexing/sync';
-
-const DEFAULT_NAMESPACE = 'arena-blocks-v1';
+import { DEFAULT_NAMESPACE } from '$lib/server/search/config';
 
 const accessToken = process.env.ARENA_ACCESS_TOKEN;
 if (!accessToken) {
