@@ -12,6 +12,9 @@ export const archiveBlockSchema = z.object({
 	sourceUrl: z.url().nullable().optional(),
 	arenaUrl: z.url(),
 	imageUrl: z.url().nullable().optional(),
+	imageAlt: z.string().nullable().optional(),
+	imageWidth: z.number().int().positive().nullable().optional(),
+	imageHeight: z.number().int().positive().nullable().optional(),
 	createdAt: z.coerce.date().optional(),
 	connectedAt: z.coerce.date().optional(),
 	channels: z.array(
@@ -36,6 +39,9 @@ export type SearchDocument = {
 	source_url: string | null;
 	arena_url: string;
 	image_url: string | null;
+	image_alt: string | null;
+	image_width: number | null;
+	image_height: number | null;
 	source_title: string | null;
 };
 
@@ -67,6 +73,9 @@ export function toSearchDocument(block: ArchiveBlock): SearchDocument {
 		source_url: block.sourceUrl ?? null,
 		arena_url: block.arenaUrl,
 		image_url: block.imageUrl ?? null,
+		image_alt: normalizeText(block.imageAlt) || null,
+		image_width: block.imageWidth ?? null,
+		image_height: block.imageHeight ?? null,
 		source_title: normalizeText(block.sourceTitle) || null
 	};
 }

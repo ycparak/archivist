@@ -10,31 +10,61 @@ interface TypeSpecificFields {
 	title: string | null;
 	content: string | null;
 	imageUrl: string | null;
+	imageAlt: string | null;
+	imageWidth: number | null;
+	imageHeight: number | null;
+}
+
+interface BlockImageLike {
+	alt_text?: string | null;
+	large: { width?: number | null; height?: number | null };
+}
+
+/** Dimensions of `large`, not the top-level `image`, since that's the version whose `src` is used. */
+function imageFields(image: BlockImageLike | null | undefined) {
+	return {
+		imageAlt: image?.alt_text ?? null,
+		imageWidth: image?.large.width ?? null,
+		imageHeight: image?.large.height ?? null
+	};
 }
 
 function extractTypeSpecificFields(item: ArenaBlockItem): TypeSpecificFields {
 	switch (item.type) {
 		case 'Text':
-			return { title: item.title ?? null, content: item.content.plain, imageUrl: null };
+			return {
+				title: item.title ?? null,
+				content: item.content.plain,
+				imageUrl: null,
+				...imageFields(null)
+			};
 		case 'Image':
-			return { title: item.title ?? null, content: null, imageUrl: item.image.large.src };
+			return {
+				title: item.title ?? null,
+				content: null,
+				imageUrl: item.image.large.src,
+				...imageFields(item.image)
+			};
 		case 'Link':
 			return {
 				title: item.title ?? null,
 				content: item.content?.plain ?? null,
-				imageUrl: item.image?.large.src ?? null
+				imageUrl: item.image?.large.src ?? null,
+				...imageFields(item.image)
 			};
 		case 'Attachment':
 			return {
 				title: item.title ?? item.attachment.filename ?? null,
 				content: null,
-				imageUrl: item.image?.large.src ?? null
+				imageUrl: item.image?.large.src ?? null,
+				...imageFields(item.image)
 			};
 		case 'Embed':
 			return {
 				title: item.title ?? item.embed.title ?? null,
 				content: null,
-				imageUrl: item.image?.large.src ?? null
+				imageUrl: item.image?.large.src ?? null,
+				...imageFields(item.image)
 			};
 		default:
 			return item satisfies never;
@@ -42,7 +72,8 @@ function extractTypeSpecificFields(item: ArenaBlockItem): TypeSpecificFields {
 }
 
 export function toArchiveBlock(item: ArenaBlockItem, channel: ChannelContext): ArchiveBlock {
-	const { title, content, imageUrl } = extractTypeSpecificFields(item);
+	const { title, content, imageUrl, imageAlt, imageWidth, imageHeight } =
+		extractTypeSpecificFields(item);
 
 	return {
 		id: String(item.id),
@@ -50,6 +81,9 @@ export function toArchiveBlock(item: ArenaBlockItem, channel: ChannelContext): A
 		title,
 		content,
 		imageUrl,
+		imageAlt,
+		imageWidth,
+		imageHeight,
 		description: item.description?.plain ?? null,
 		sourceTitle: item.source?.title ?? null,
 		sourceUrl: item.source?.url ?? null,
