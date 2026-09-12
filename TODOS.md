@@ -6,13 +6,6 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ## Up Next
 
-### Slice 3 — gallery surface
-
-- [ ] Search-first home page with URL-backed state (`?q=&mode=&channel=&type=&from=&to=`).
-- [ ] Responsive result cards, loading, no-result, and unavailable-service states.
-- [ ] Safe image dimensions/alt behavior; links go to the original Are.na block.
-- [ ] Keyboard behavior and narrow-screen layout confirmed.
-
 ### Slice 4 — portfolio polish
 
 - [ ] Concise architecture notes on the product's about surface.
@@ -21,7 +14,14 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ## In Progress
 
-_(none)_
+### Slice 3 — gallery surface
+
+- [ ] Search-first home page with URL-backed state (`?q=&mode=&channel=&type=&from=&to=`).
+- [ ] Responsive result cards, loading, no-result, and unavailable-service states.
+- [ ] Safe image dimensions/alt behavior; links go to the original Are.na block.
+- [ ] Keyboard behavior and narrow-screen layout confirmed.
+
+See [SPECs/worksheet-gallery-surface.md](./SPECs/worksheet-gallery-surface.md).
 
 ## Done
 
