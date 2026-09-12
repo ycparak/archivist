@@ -9,7 +9,7 @@ Repeatable loop for autonomous task execution. The agent works through the task 
 
 ## Agent Worksheet
 
-For every non-trivial task, create an agent worksheet at `SPECs/Agent/worksheet-<spec-slug>.md` to track progress and understanding. The worksheet is your scratch pad and your handoff artifact.
+For every non-trivial task, create an agent worksheet at `SPECs/worksheet-<spec-slug>.md` to track progress and understanding. The worksheet is your scratch pad and your handoff artifact.
 
 A worksheet should include:
 
@@ -33,7 +33,7 @@ Keep it tight. Another agent should be able to retrace your steps by reading the
 
 1. Open [`TODOS.md`](../../TODOS.md). Pick the smallest uncompleted item from **Up Next**.
 2. Move it to **In Progress**.
-3. Create the agent worksheet in `SPECs/Agent/` (hard prerequisite, even for small fixes).
+3. Create the agent worksheet in `SPECs/` (hard prerequisite, even for small fixes).
 
 ## Step 2: Investigate
 
