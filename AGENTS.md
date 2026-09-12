@@ -105,10 +105,12 @@ Run after a meaningful change and fix failures before handoff:
 bun run check   # wrangler types, svelte-kit sync, svelte-check (TypeScript)
 bun run lint    # prettier --check, eslint
 bun run test    # vitest
-bun run build   # wrangler types --check, vite build
+bun run build   # wrangler types, vite build
 ```
 
-`wrangler types` is pinned to `--env-file=.env.example`, not your local `.env`. Wrangler infers `Env`'s plain-var shape from whatever env file it reads — pointing it at your real `.env` bakes your local var set into the committed `worker-configuration.d.ts`, which then fails `wrangler types --check` in CI (no `.env` there) the moment your local keys differ from a clean checkout. Don't drop the flag when touching these scripts.
+`worker-configuration.d.ts` is generated, not committed. `check` and `build` regenerate it through `bun run gen` before type-checking. Wrangler's output depends on machine state twice over: it infers `Env`'s plain-var shape from whichever env file it reads, and it emits a `Cloudflare.GlobalProps` block only when the built Worker entry (`.svelte-kit/cloudflare/_worker.js`) already exists. A committed copy plus `wrangler types --check` therefore cannot hold: the file a contributor generates after building never matches the one CI generates before building.
+
+`wrangler types` stays pinned to `--env-file=.env.example`, not your local `.env`, so `Env` is identical everywhere regardless of which keys you happen to have. Don't drop the flag when touching these scripts.
 
 `bun run check` type-checks `scripts/` (the manual CLI entrypoints, e.g. `bun run sync`) as a second, separate `tsc --noEmit --project scripts/tsconfig.json` step after `svelte-check`. `scripts/` isn't in `svelte-check`'s scope (its generated tsconfig only covers `src/`/`test/`/`tests/`) and needs Node globals (`process`) that the root `tsconfig.json` deliberately excludes from `types` — leaking Node globals into `src/`, which is Cloudflare Workers code, would be a real correctness hazard, not just noise. Keep new CLI scripts under `scripts/` so this coverage applies to them automatically.
 
