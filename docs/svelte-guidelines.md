@@ -11,7 +11,7 @@ Archivist is Svelte 5. Use runes as the default state primitive.
 
 ## Project Boundaries
 
-These mirror the architecture boundaries in [`AGENTS.md`](../AGENTS.md) — this doc is about *how* to write the Svelte/TypeScript inside them, not where things live.
+These mirror the architecture boundaries in [`AGENTS.md`](../AGENTS.md) — this doc is about _how_ to write the Svelte/TypeScript inside them, not where things live.
 
 - `src/lib/domain/`: plain TypeScript, no Svelte imports, no SvelteKit imports. If a domain file needs `$state`, it belongs somewhere else.
 - `src/lib/server/`: server-only. Never import a `src/lib/server/**` module from a `.svelte` file or any code that ships to the client — SvelteKit's server-only enforcement will fail the build, and that failure is correct, not a false positive to work around.
