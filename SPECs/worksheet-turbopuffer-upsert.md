@@ -35,11 +35,16 @@ vector"`. Not mentioned anywhere in `docs/architecture.md` or the existing schem
   schema). No mapping function needed between the two; `SearchDocument[]` can be passed as
   `upsert_rows` directly.
 - Per Turbopuffer's docs (`https://turbopuffer.com/docs/write`, fetched live): write payloads can
-  be up to 512MB and large batches are encouraged — no hard row-count ceiling. At V1's real scale
-  (~3000 blocks, confirmed by the previous task's live sync run), a single write call could
-  technically hold everything. Chunking into batches anyway, per `docs/architecture.md`'s explicit
-  "upserts in batches" wording and as a sensible default regardless of current scale (bounds
-  request size/blast radius, gives progress feedback).
+  be up to 512MB and large batches are encouraged — no hard row-count ceiling documented for
+  plain writes. **Correction, found by actually running the real sync**: the _native-embedding_
+  path has its own, separate, account-tier-dependent batch cap — a real 500-document batch against
+  the maintainer's account was rejected with `"cowardly refusing to embed a large batch of
+documents(500). your batch limit is currently 256, please reach out to us about raising it"`.
+  This has nothing to do with the 512MB payload ceiling; it's specific to `embed`-configured
+  attributes like `search_text`. Lowered `DEFAULT_BATCH_SIZE` from the original 500 to 200 (some
+  headroom below the observed 256, since that cap is described as account-specific and could
+  differ per tier/region). Nothing was written before this was caught — the very first batch of
+  the real sync failed outright, so there's no partial-write cleanup to worry about.
 - The client's injected `fetch` receives `(urlString, init)` with a JSON string body — a different
   calling convention from `@aredotna/sdk`, which passes a `Request` object. Verified with a probe
   before writing tests, to avoid guessing at the mock shape.
