@@ -15,7 +15,13 @@ export interface UpsertResult {
 	rowsUpserted: number;
 }
 
-const DEFAULT_BATCH_SIZE = 500;
+/**
+ * Turbopuffer's native-embedding batch limit is account-tier-dependent — verified live against
+ * the maintainer's real account: a batch of 500 was rejected with "cowardly refusing to embed a
+ * large batch of documents(500). your batch limit is currently 256". 200 leaves headroom below
+ * that observed cap without knowing whether it's a hard platform limit or specific to this tier.
+ */
+const DEFAULT_BATCH_SIZE = 200;
 const noop = () => {};
 
 function chunk<T>(items: T[], size: number): T[][] {
