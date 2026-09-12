@@ -5,6 +5,7 @@ import {
 	ArenaRequestError,
 	computeProactiveWaitMs,
 	paginateChannelContents,
+	paginateOwnedChannels,
 	parseRateLimitInfo,
 	resolveRateLimitRetryDelayMs
 } from './client';
@@ -21,6 +22,10 @@ function textBlock(id: number) {
 		connection,
 		content: { markdown: 'hi', html: '<p>hi</p>', plain: 'hi' }
 	};
+}
+
+function ownedChannel(id: number, slug: string, title: string) {
+	return { id, type: 'Channel' as const, slug, title };
 }
 
 function pageResponse(
@@ -214,6 +219,68 @@ describe('ArenaClient.fetchChannelContentsPage', () => {
 	});
 });
 
+describe('ArenaClient.me', () => {
+	it('resolves and validates the current user', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ id: 558206, slug: 'yusuf-parak', email: 'y@example.com' }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+
+		const me = await client.me();
+		expect(me).toEqual({ id: 558206, slug: 'yusuf-parak' });
+		const [request] = fetchFn.mock.calls[0] as [Request];
+		expect(request.url).toBe('https://api.are.na/v3/me');
+	});
+
+	it('maps a non-429 error status to ArenaRequestError', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(new Response('nope', { status: 401 }));
+		const client = new ArenaClient({ accessToken: 'bad-token', fetchFn });
+
+		await expect(client.me()).rejects.toThrow(ArenaRequestError);
+	});
+});
+
+describe('ArenaClient.fetchOwnedChannelsPage', () => {
+	it('requests the user-contents endpoint filtered to Channel', async () => {
+		const fetchFn = vi
+			.fn()
+			.mockResolvedValue(pageResponse([ownedChannel(1, 'a-channel', 'A Channel')]));
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+
+		const result = await client.fetchOwnedChannelsPage(558206, { page: 1, per: 50 });
+
+		expect(result.data).toEqual([
+			{ id: 1, type: 'Channel', slug: 'a-channel', title: 'A Channel' }
+		]);
+		const [request] = fetchFn.mock.calls[0] as [Request];
+		expect(request.url).toBe(
+			'https://api.are.na/v3/users/558206/contents?page=1&per=50&type=Channel'
+		);
+	});
+
+	it('rejects a per outside [1, 100] without making a request', async () => {
+		const fetchFn = vi.fn();
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+
+		await expect(client.fetchOwnedChannelsPage(1, { per: 0 })).rejects.toThrow(RangeError);
+		expect(fetchFn).not.toHaveBeenCalled();
+	});
+
+	it('throws ArenaRateLimitError on 429, same as channel contents', async () => {
+		const fetchFn = vi
+			.fn()
+			.mockResolvedValue(new Response('', { status: 429, headers: { 'Retry-After': '2' } }));
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+
+		const error = await client.fetchOwnedChannelsPage(1).catch((e) => e);
+		expect(error).toBeInstanceOf(ArenaRateLimitError);
+		expect(error.retryAfterMs).toBe(2000);
+	});
+});
+
 describe('paginateChannelContents', () => {
 	it('yields every page until has_more_pages is false, pacing between requests', async () => {
 		const fetchFn = vi
@@ -357,5 +424,47 @@ describe('paginateChannelContents', () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe('paginateOwnedChannels', () => {
+	it('walks every page of discovered channels, sharing the same pagination engine', async () => {
+		const fetchFn = vi
+			.fn()
+			.mockResolvedValueOnce(
+				pageResponse([ownedChannel(1, 'a', 'A')], { has_more_pages: true, next_page: 2 })
+			)
+			.mockResolvedValueOnce(pageResponse([ownedChannel(2, 'b', 'B')], { has_more_pages: false }));
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+		const delayFn = vi.fn().mockResolvedValue(undefined);
+
+		const channels = [];
+		for await (const page of paginateOwnedChannels(client, 558206, { delayFn })) {
+			channels.push(...page.data);
+		}
+
+		expect(channels.map((c) => c.slug)).toEqual(['a', 'b']);
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+		const [firstRequest] = fetchFn.mock.calls[0] as [Request];
+		expect(firstRequest.url).toBe(
+			'https://api.are.na/v3/users/558206/contents?page=1&per=50&type=Channel'
+		);
+	});
+
+	it('retries a rate-limited page using the same backoff as channel contents', async () => {
+		const fetchFn = vi
+			.fn()
+			.mockResolvedValueOnce(new Response('', { status: 429, headers: { 'Retry-After': '1' } }))
+			.mockResolvedValueOnce(pageResponse([ownedChannel(1, 'a', 'A')], { has_more_pages: false }));
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+		const delayFn = vi.fn().mockResolvedValue(undefined);
+
+		const channels = [];
+		for await (const page of paginateOwnedChannels(client, 1, { delayFn })) {
+			channels.push(...page.data);
+		}
+
+		expect(channels).toHaveLength(1);
+		expect(delayFn).toHaveBeenCalledWith(1000, undefined);
 	});
 });

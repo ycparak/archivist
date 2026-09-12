@@ -109,6 +109,8 @@ bun run build   # wrangler types --check, vite build
 
 `wrangler types` is pinned to `--env-file=.env.example`, not your local `.env`. Wrangler infers `Env`'s plain-var shape from whatever env file it reads — pointing it at your real `.env` bakes your local var set into the committed `worker-configuration.d.ts`, which then fails `wrangler types --check` in CI (no `.env` there) the moment your local keys differ from a clean checkout. Don't drop the flag when touching these scripts.
 
+`bun run check` type-checks `scripts/` (the manual CLI entrypoints, e.g. `bun run sync`) as a second, separate `tsc --noEmit --project scripts/tsconfig.json` step after `svelte-check`. `scripts/` isn't in `svelte-check`'s scope (its generated tsconfig only covers `src/`/`test/`/`tests/`) and needs Node globals (`process`) that the root `tsconfig.json` deliberately excludes from `types` — leaking Node globals into `src/`, which is Cloudflare Workers code, would be a real correctness hazard, not just noise. Keep new CLI scripts under `scripts/` so this coverage applies to them automatically.
+
 ## Pull Request Hygiene
 
 - Keep the first V1 pull request to one vertical slice.
