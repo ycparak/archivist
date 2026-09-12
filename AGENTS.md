@@ -95,6 +95,13 @@ This repo configures the official Svelte MCP server for **both** Claude Code (`.
 - Run its autofixer tool against non-trivial Svelte/`.svelte.ts` changes before finalizing them.
 - Full guidance: [docs/svelte-guidelines.md](./docs/svelte-guidelines.md#use-the-svelte-mcp-server).
 
+## Tooling — Are.na MCP Server
+
+This repo also configures Are.na's official hosted MCP server (`https://mcp.are.na/mcp`, from [github.com/aredotna/mcp](https://github.com/aredotna/mcp)) for **both** Claude Code (`.mcp.json`) and Codex (`.codex/config.toml`). It authenticates per-session via OAuth (not a token in the repo) — in Claude Code run `/mcp` and authorize with your Are.na account; in Codex run `codex mcp login arena`.
+
+- **Development aid only.** Use it to explore the maintainer's live Are.na account interactively while building or debugging ingestion code (e.g. inspecting a real channel's shape, verifying what the discovery/sync work in `src/lib/server/arena/` actually returns) — not as a runtime dependency. V1's actual sync path uses `@aredotna/sdk` directly (see [SPECs/adr-arena-sdk-and-discovery.md](./SPECs/adr-arena-sdk-and-discovery.md)); the app itself never calls this MCP server.
+- It exposes 40+ generated tools, some of which can write (create/update/delete blocks, channels, connections). Authenticate with the least-privilege scope your Are.na OAuth consent screen offers, and don't invoke a write-capable tool against the maintainer's real account without explicit confirmation first — the same bar as any other side-effectful action.
+
 ## Validation
 
 Run after a meaningful change and fix failures before handoff:
