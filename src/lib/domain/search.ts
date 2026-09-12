@@ -33,6 +33,11 @@ export type SearchResult = {
 	sourceTitle: string | null;
 };
 
+export type ChannelManifestEntry = {
+	slug: string;
+	title: string;
+};
+
 export type ArchiveSearchState = {
 	query: string;
 	mode: ArchiveSearchMode;

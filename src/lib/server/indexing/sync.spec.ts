@@ -108,6 +108,31 @@ describe('syncArchive', () => {
 		expect(blocks.map((b) => b.id).sort()).toEqual(['100', '101']);
 	});
 
+	it('returns every discovered channel, regardless of sync outcome', async () => {
+		const fetchFn = routedFetch({
+			'/v3/me': () => meResponse(1, 'me'),
+			'/v3/users/1/contents': () =>
+				contentsResponse([
+					ownedChannel(10, 'good-channel', 'Good'),
+					ownedChannel(11, 'broken-channel', 'Broken')
+				]),
+			'/v3/channels/good-channel/contents': () => contentsResponse([textBlock(100)]),
+			'/v3/channels/broken-channel/contents': () => new Response('nope', { status: 404 })
+		});
+
+		const { channels } = await syncArchive({
+			accessToken: 't',
+			fetchFn,
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig()
+		});
+
+		expect(channels).toEqual([
+			{ slug: 'good-channel', title: 'Good' },
+			{ slug: 'broken-channel', title: 'Broken' }
+		]);
+	});
+
 	it('unions channel membership when the same block appears in more than one channel', async () => {
 		const fetchFn = routedFetch({
 			'/v3/me': () => meResponse(1, 'me'),

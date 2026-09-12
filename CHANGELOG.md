@@ -4,6 +4,9 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- The channel filter now lists every channel in the archive, not just the ones on the current
+  results page — `bun run sync` writes a channel manifest (`src/lib/server/indexing/channel-manifest.json`)
+  that the gallery bundles at build time, with no added Are.na calls or request-time cost.
 - Result images now use Are.na's own alt text when a block has it, and render at their real
   width/height instead of a fixed crop when Are.na supplies dimensions (falling back to the
   previous fixed box otherwise). Re-synced the archive to backfill this for existing blocks.

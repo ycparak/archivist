@@ -10,6 +10,7 @@ import {
 	upsertSearchDocuments,
 	type TurbopufferConfig
 } from '$lib/server/search/turbopuffer-client';
+import type { ChannelManifestEntry } from './channel-manifest';
 import { toArchiveBlock } from './normalize';
 
 export interface SyncOptions {
@@ -69,9 +70,11 @@ function mergeBlock(blocksById: Map<string, ArchiveBlock>, block: ArchiveBlock):
 	});
 }
 
-export async function syncArchive(
-	options: SyncOptions
-): Promise<{ blocks: ArchiveBlock[]; summary: SyncSummary }> {
+export async function syncArchive(options: SyncOptions): Promise<{
+	blocks: ArchiveBlock[];
+	channels: ChannelManifestEntry[];
+	summary: SyncSummary;
+}> {
 	const {
 		accessToken,
 		turbopuffer,
@@ -99,9 +102,9 @@ export async function syncArchive(
 	const me = await client.me();
 	log(`Resolved account: ${me.slug}`);
 
-	const channels: { slug: string; title: string }[] = [];
+	const channels: ChannelManifestEntry[] = [];
 	for await (const page of paginateOwnedChannels(client, me.id, { signal })) {
-		channels.push(...page.data);
+		channels.push(...page.data.map(({ slug, title }) => ({ slug, title })));
 	}
 	summary.channelsDiscovered = channels.length;
 	log(`Discovered ${channels.length} owned channel(s)`);
@@ -162,5 +165,5 @@ export async function syncArchive(
 	summary.upsertBatches = batches;
 	log(`Upserted ${rowsUpserted} document(s) into Turbopuffer across ${batches} batch(es) total`);
 
-	return { blocks, summary };
+	return { blocks, channels, summary };
 }

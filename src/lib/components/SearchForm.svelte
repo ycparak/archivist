@@ -5,13 +5,19 @@
 		readArchiveSearchStateFromEntries,
 		toArchiveSearchHref,
 		type ArchiveSearchHref,
-		type ArchiveSearchState
+		type ArchiveSearchState,
+		type ChannelManifestEntry
 	} from '$lib/domain/search';
 
 	let {
 		state,
+		channels,
 		onnavigate
-	}: { state: ArchiveSearchState; onnavigate: (href: ArchiveSearchHref) => void } = $props();
+	}: {
+		state: ArchiveSearchState;
+		channels: ChannelManifestEntry[];
+		onnavigate: (href: ArchiveSearchHref) => void;
+	} = $props();
 
 	const rankingModes = [
 		{ value: '', label: 'Best match' },
@@ -22,6 +28,13 @@
 	const selectedMode = $derived(
 		state.mode === 'lexical' || state.mode === 'semantic' ? state.mode : ''
 	);
+
+	// Preserve a channel filter the manifest doesn't (yet, or no longer) list — e.g. a shared URL
+	// from before the last sync — instead of silently dropping it on the next submit.
+	const orphanedChannelSlugs = $derived.by(() => {
+		const manifestSlugs = new Set(channels.map((channel) => channel.slug));
+		return state.channelSlugs.filter((slug) => !manifestSlugs.has(slug));
+	});
 
 	function handleSubmit(event: SubmitEvent & { currentTarget: HTMLFormElement }) {
 		const entries = [...new FormData(event.currentTarget)].filter(
@@ -45,6 +58,25 @@
 		/>
 		<button type="submit">Search</button>
 	</div>
+
+	{#if channels.length}
+		<fieldset class="control channel-control">
+			<legend>Channel</legend>
+			<div class="channels">
+				{#each channels as channel (channel.slug)}
+					<label class="checkbox">
+						<input
+							type="checkbox"
+							name={ARCHIVE_SEARCH_PARAM.channel}
+							value={channel.slug}
+							checked={state.channelSlugs.includes(channel.slug)}
+						/>
+						{channel.title}
+					</label>
+				{/each}
+			</div>
+		</fieldset>
+	{/if}
 
 	<div class="controls">
 		<div class="control">
@@ -96,7 +128,7 @@
 		</div>
 	</div>
 
-	{#each state.channelSlugs as slug (slug)}
+	{#each orphanedChannelSlugs as slug (slug)}
 		<input type="hidden" name={ARCHIVE_SEARCH_PARAM.channel} value={slug} />
 	{/each}
 </form>
@@ -171,6 +203,20 @@
 		gap: var(--space-2) var(--space-8);
 		align-items: center;
 		margin-block-start: var(--space-1);
+	}
+
+	.channel-control {
+		max-inline-size: 16rem;
+	}
+
+	.channels {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		max-block-size: 9rem;
+		margin-block-start: var(--space-1);
+		padding-inline-end: var(--space-4);
+		overflow-y: auto;
 	}
 
 	.checkbox {
