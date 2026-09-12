@@ -1,0 +1,65 @@
+[
+	{
+		"id": "exact-phrase-text",
+		"mode": "lexical",
+		"q": "Lightfield",
+		"expectedBlockIds": ["block:50290366"]
+	},
+	{
+		"id": "exact-phrase-link",
+		"mode": "hybrid",
+		"q": "privacy-friendly website analytics",
+		"expectedBlockIds": ["block:50207334"]
+	},
+	{
+		"id": "semantic-material",
+		"mode": "semantic",
+		"q": "independent product designer and engineer",
+		"expectedBlockIds": ["block:47027380"]
+	},
+	{
+		"id": "semantic-place",
+		"mode": "hybrid",
+		"q": "dependency-free animated text",
+		"expectedBlockIds": ["block:50231202"]
+	},
+	{
+		"id": "channel-filter",
+		"mode": "browse",
+		"channel": ["landing-pages-hqvprxehiyi"],
+		"expectedBlockIds": ["block:50290366"]
+	},
+	{
+		"id": "multi-channel-filter",
+		"mode": "browse",
+		"channel": ["landing-pages-hqvprxehiyi", "macos-and-ios"],
+		"expectedBlockIds": ["block:50290366", "block:50207334"]
+	},
+	{
+		"id": "block-type-filter",
+		"mode": "browse",
+		"type": ["Image"],
+		"expectedBlockIds": ["block:50207456"]
+	},
+	{
+		"id": "date-filter",
+		"mode": "browse",
+		"from": "2026-09-12",
+		"to": "2026-09-12",
+		"expectedBlockIds": ["block:50358785"]
+	},
+	{
+		"id": "combined-filter",
+		"mode": "hybrid",
+		"q": "website analytics",
+		"channel": ["landing-pages-hqvprxehiyi"],
+		"type": ["Link"],
+		"expectedBlockIds": ["block:50207334"]
+	},
+	{
+		"id": "no-result",
+		"mode": "browse",
+		"channel": ["no-such-public-archive-channel"],
+		"expectedBlockIds": []
+	}
+]

@@ -42,7 +42,6 @@ export type SearchDocument = {
 const normalizeText = (value: string | null | undefined) =>
 	value?.replace(/\s+/g, ' ').trim() ?? '';
 
-/** Converts only supplied Are.na metadata into a stable, indexable document. */
 export function toSearchDocument(block: ArchiveBlock): SearchDocument {
 	const channels = [...new Map(block.channels.map((channel) => [channel.slug, channel])).values()];
 	const searchText = [

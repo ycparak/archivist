@@ -15,26 +15,11 @@ import { toArchiveBlock } from './normalize';
 export interface SyncOptions {
 	accessToken: string;
 	turbopuffer: TurbopufferConfig;
-	/** Injectable for tests; defaults to the global `fetch`. */
 	fetchFn?: typeof fetch;
 	signal?: AbortSignal;
-	/** Progress line callback; defaults to a no-op. `bun run sync` passes `console.log`. */
 	log?: (message: string) => void;
-	/**
-	 * Pause between channels, on top of `paginateChannelContents`' own inter-*page* pacing. Most
-	 * of an account's owned channels are a single page, so without a separate per-channel pause,
-	 * syncing ~100 channels would fire their first (and often only) request back-to-back with no
-	 * pacing between them at all.
-	 */
 	channelDelayMs?: number;
-	/** Injectable for tests so this pacing doesn't need to sleep for real. */
 	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
-	/**
-	 * If this many channels in a row fail *before any channel has synced successfully*, abort the
-	 * whole sync instead of grinding through the rest — that pattern means something systemic
-	 * (an expired/invalid token, a revoked scope), not a few individually broken channels. Once at
-	 * least one channel has synced, isolated failures are tolerated for the rest of the run.
-	 */
 	maxLeadingChannelFailures?: number;
 }
 
@@ -47,12 +32,9 @@ export interface SyncSummary {
 	channelsDiscovered: number;
 	channelsSynced: number;
 	channelsFailed: ChannelSyncFailure[];
-	/** Raw content items fetched across every channel, blocks only (nested channels excluded). */
 	blocksFetched: number;
-	/** Nested-channel items encountered while walking a channel's contents — not blocks, not errors. */
 	itemsSkipped: number;
 	blocksNormalized: number;
-	/** After deduplicating by block id and unioning channel membership. */
 	uniqueBlocks: number;
 	documentsUpserted: number;
 	upsertBatches: number;
@@ -68,13 +50,6 @@ function maxDate(a: Date | undefined, b: Date | undefined): Date | undefined {
 	return a > b ? a : b;
 }
 
-/**
- * `connectedAt` is a per-channel connection timestamp (`item.connection.connected_at`), not
- * stable block metadata like title/description — it genuinely differs across a block's
- * occurrences in different channels. Keeping the most recent one matches browse mode's
- * newest-first ordering; every other field (title, content, ...) comes from the block resource
- * itself, so the first occurrence's values are as good as any and are left as-is.
- */
 function mergeBlock(blocksById: Map<string, ArchiveBlock>, block: ArchiveBlock): void {
 	const existing = blocksById.get(block.id);
 	if (!existing) {
@@ -94,23 +69,6 @@ function mergeBlock(blocksById: Map<string, ArchiveBlock>, block: ArchiveBlock):
 	});
 }
 
-/**
- * Discovers every channel the token's account owns, walks each one's contents, normalizes every
- * block, deduplicates by block id while unioning channel membership, and batch-upserts the result
- * into Turbopuffer — the full Sync lifecycle from `docs/architecture.md`. Re-running the same sync
- * is idempotent: every upsert overwrites the document at that id entirely.
- *
- * A channel that fails with an Are.na transport error (e.g. one of the account's ~100+ channels
- * returning a 403/404, or exhausting its rate-limit retries) is recorded in `summary.channelsFailed`
- * and skipped — it does not abort the rest of the sync, unless `maxLeadingChannelFailures`
- * consecutive channels fail before any have succeeded (see that option's doc). Anything that
- * *isn't* a transport failure — a schema validation error, a bug in `toArchiveBlock` — propagates
- * and fails the whole sync loudly instead of being isolated per channel; only a failure this
- * module can attribute to "this one channel had a problem" belongs in the per-channel bucket.
- * Turbopuffer write failures are never isolated this way either — every batch writes to the same
- * namespace, so a failure there is systemic, not specific to one batch's documents. See
- * `SPECs/worksheet-sync-command.md` for the fuller reasoning.
- */
 export async function syncArchive(
 	options: SyncOptions
 ): Promise<{ blocks: ArchiveBlock[]; summary: SyncSummary }> {

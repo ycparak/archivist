@@ -142,7 +142,6 @@ describe('arenaContentItemSchema', () => {
 		const item = arenaContentItemSchema.parse({
 			id: 8,
 			type: 'Text',
-			// title/description omitted entirely, matching an API response that drops null keys
 			created_at: '2023-01-15T10:30:00Z',
 			connection,
 			content: markdown
@@ -207,8 +206,6 @@ describe('arenaOwnedChannelSchema', () => {
 			type: 'Channel',
 			slug: 'discover-earth',
 			title: '❋ Discover Earth',
-			// Real API responses include many more fields (owner, counts, _links, ...) — verified
-			// live that none of them, including `connection`, are required for this endpoint.
 			owner: { id: 1 },
 			counts: { blocks: 3 }
 		});

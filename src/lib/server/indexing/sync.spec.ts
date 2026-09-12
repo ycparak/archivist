@@ -44,7 +44,6 @@ function ownedChannel(id: number, slug: string, title: string) {
 	return { id, type: 'Channel', slug, title };
 }
 
-/** Routes the SDK's injected fetch by pathname, matching the real Are.na V3 URL shapes. */
 function routedFetch(routes: Record<string, () => Response>) {
 	return vi.fn().mockImplementation(async (request: Request) => {
 		const { pathname } = new URL(request.url);
@@ -54,7 +53,6 @@ function routedFetch(routes: Record<string, () => Response>) {
 	});
 }
 
-/** A Turbopuffer fetch mock that always succeeds, reporting however many rows were sent. */
 function okTurbopufferFetch() {
 	return vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
 		const body = JSON.parse(init.body as string);
@@ -259,13 +257,11 @@ describe('syncArchive', () => {
 			})
 		).rejects.toThrow(/first 3 channels all failed/);
 
-		// The 4th channel is never requested — the sync stopped as soon as the breaker tripped.
 		expect(contentsCalls).toEqual([
 			'/v3/channels/broken-1/contents',
 			'/v3/channels/broken-2/contents',
 			'/v3/channels/broken-3/contents'
 		]);
-		// The sync never got as far as upserting anything.
 		expect(turbopufferFetch).not.toHaveBeenCalled();
 	});
 
@@ -301,7 +297,6 @@ describe('syncArchive', () => {
 		const fetchFn = routedFetch({
 			'/v3/me': () => meResponse(1, 'me'),
 			'/v3/users/1/contents': () => contentsResponse([ownedChannel(10, 'channel-a', 'Channel A')]),
-			// Missing every required field — fails Zod validation, not an Are.na transport error.
 			'/v3/channels/channel-a/contents': () => contentsResponse([{ id: 1, type: 'Text' }])
 		});
 
@@ -333,7 +328,6 @@ describe('syncArchive', () => {
 
 		await syncArchive({ accessToken: 't', fetchFn, delayFn, turbopuffer: turbopufferConfig() });
 
-		// One pause between the two channels; none after the last one.
 		expect(delayFn).toHaveBeenCalledTimes(1);
 		expect(delayFn).toHaveBeenCalledWith(300, undefined);
 	});

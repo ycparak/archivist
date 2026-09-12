@@ -14,18 +14,27 @@ export const archiveSearchInputSchema = z.object({
 
 export type ArchiveSearchInput = z.infer<typeof archiveSearchInputSchema>;
 
-export type SearchResult = {
-	id: string;
-	title: string | null;
-	description: string | null;
-	blockType: string;
-	channelSlugs: string[];
-	connectedAt: string | null;
-	sourceUrl: string | null;
-	arenaUrl: string;
-	imageUrl: string | null;
-	sourceTitle: string | null;
-};
+export const searchResultSchema = z.object({
+	id: z.string(),
+	title: z.string().nullable(),
+	description: z.string().nullable(),
+	blockType: z.string(),
+	channelSlugs: z.array(z.string()),
+	connectedAt: z.string().nullable(),
+	sourceUrl: z.url().nullable(),
+	arenaUrl: z.url(),
+	imageUrl: z.url().nullable(),
+	sourceTitle: z.string().nullable()
+});
+
+export type SearchResult = z.infer<typeof searchResultSchema>;
+
+export const searchSuccessResponseSchema = z.object({ results: z.array(searchResultSchema) });
+
+export const searchErrorResponseSchema = z.object({
+	error: z.string(),
+	correlationId: z.string().optional()
+});
 
 export interface SearchRepository {
 	search(input: ArchiveSearchInput): Promise<SearchResult[]>;

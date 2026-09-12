@@ -12,12 +12,6 @@ interface TypeSpecificFields {
 	imageUrl: string | null;
 }
 
-/**
- * Fields that differ per Are.na block type. `title` falls back to the type's own title-shaped
- * field (Embed's oEmbed title, an Attachment's filename) when the block-level `title` is empty —
- * without it, an untitled upload/embed would carry no searchable title text at all even though
- * Are.na supplied one under a different key.
- */
 function extractTypeSpecificFields(item: ArenaBlockItem): TypeSpecificFields {
 	switch (item.type) {
 		case 'Text':
@@ -47,12 +41,6 @@ function extractTypeSpecificFields(item: ArenaBlockItem): TypeSpecificFields {
 	}
 }
 
-/**
- * Converts one occurrence of an Are.na block, seen while syncing one channel, into the domain
- * `ArchiveBlock` shape `toSearchDocument` consumes. A block seen in multiple channels is
- * normalized once per occurrence; unioning its `channels` across those occurrences is
- * sync-orchestration's job, not this function's.
- */
 export function toArchiveBlock(item: ArenaBlockItem, channel: ChannelContext): ArchiveBlock {
 	const { title, content, imageUrl } = extractTypeSpecificFields(item);
 
