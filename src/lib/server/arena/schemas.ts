@@ -1,17 +1,5 @@
 import { z } from 'zod';
 
-/**
- * Wire-shape schemas for the Are.na V3 API, verified against the live OpenAPI spec at
- * https://api.are.na/v3/openapi.json (the rendered docs page at are.na/developers/explore lags
- * behind it — e.g. it omits `X-RateLimit-Remaining`, which the spec's own `info.description`
- * documents). Field names intentionally mirror the API response (snake_case) — this module is a
- * transport boundary, not the normalized domain shape. See `src/lib/domain/archive.ts` for that.
- *
- * A field the spec marks nullable-but-not-required may be entirely absent from the JSON, not
- * just `null` — those are modeled `.nullable().optional()`, not just `.nullable()`, so an
- * omitted key doesn't fail the whole page's parse.
- */
-
 const markdownContentSchema = z.object({
 	markdown: z.string(),
 	html: z.string(),
@@ -100,11 +88,6 @@ export const arenaEmbedBlockSchema = baseContentItemFieldsSchema.extend({
 	image: blockImageSchema.nullable().optional()
 });
 
-/**
- * A sub-channel nested inside another channel's contents. Not a block — the normalizer (a
- * separate TODO) is expected to skip these; this client still needs to parse them rather than
- * fail the whole page when one shows up.
- */
 export const arenaChannelItemSchema = z.object({
 	id: z.number(),
 	type: z.literal('Channel'),
@@ -150,12 +133,6 @@ export const arenaMeSchema = z.object({
 
 export type ArenaMe = z.infer<typeof arenaMeSchema>;
 
-/**
- * A channel returned from `GET /v3/users/{id}/contents?type=Channel` (channel discovery). Unlike
- * `arenaChannelItemSchema`, this has no `connection` field — verified live: a channel appearing in
- * a *user's* contents doesn't carry one (the API only attaches `connection` when a channel is
- * returned as part of *another channel's* contents, per the OpenAPI spec).
- */
 export const arenaOwnedChannelSchema = z.object({
 	id: z.number(),
 	type: z.literal('Channel'),

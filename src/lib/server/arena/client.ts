@@ -13,7 +13,6 @@ import {
 	type ArenaOwnedChannelsResponse
 } from './schemas';
 
-/** Are.na enforces `per` in [1, 100]; validated up front so a bad caller value fails loudly. */
 const MIN_PER_PAGE = 1;
 const MAX_PER_PAGE = 100;
 
@@ -27,9 +26,7 @@ export type ArenaContentSort =
 
 export interface ArenaClientOptions {
 	accessToken: string;
-	/** Injectable for tests; defaults to the global `fetch`. */
 	fetchFn?: typeof fetch;
-	/** Passed straight through to `@aredotna/sdk`'s `createArena` — no `/v3` suffix (it adds that itself). Defaults to `https://api.are.na`. */
 	baseUrl?: string;
 }
 
@@ -46,16 +43,9 @@ export interface FetchOwnedChannelsPageOptions {
 	signal?: AbortSignal;
 }
 
-/**
- * Read budget for the bucket that served the response. Per the OpenAPI spec's `info.description`
- * (more current than the rendered docs page, which omits `X-RateLimit-Remaining`), these headers
- * are present on every response, not just 429s — a field is `null` only if a header was missing
- * or unparseable.
- */
 export interface ArenaRateLimitInfo {
 	limit: number | null;
 	remaining: number | null;
-	/** Unix seconds when the bucket resets. */
 	reset: number | null;
 	windowSeconds: number | null;
 	tier: string | null;
@@ -80,7 +70,6 @@ export class ArenaRequestError extends Error {
 }
 
 export class ArenaRateLimitError extends ArenaRequestError {
-	/** How long to wait before retrying, derived from response headers. */
 	readonly retryAfterMs: number;
 
 	constructor(message: string, retryAfterMs: number) {
@@ -109,11 +98,6 @@ export function parseRateLimitInfo(headers: Headers): ArenaRateLimitInfo {
 	};
 }
 
-/**
- * Are.na's only per-request backpressure signal for an already-exceeded bucket is `Retry-After`
- * (on 429); `X-RateLimit-Reset` (a unix timestamp, always present) is the fallback. Floor both so
- * a clock skew or a `0` value doesn't turn into a retry storm.
- */
 export function resolveRateLimitRetryDelayMs(
 	headers: Headers,
 	now: () => number = Date.now
@@ -134,11 +118,6 @@ export function resolveRateLimitRetryDelayMs(
 	return MIN_RATE_LIMIT_RETRY_MS;
 }
 
-/**
- * Proactive counterpart to `resolveRateLimitRetryDelayMs`: computed from a successful response's
- * remaining budget so pagination can slow down *before* the bucket is exhausted, instead of only
- * ever reacting to an actual 429.
- */
 export function computeProactiveWaitMs(
 	rateLimit: ArenaRateLimitInfo,
 	safetyMargin: number,
@@ -157,13 +136,6 @@ const EMPTY_RATE_LIMIT_INFO: ArenaRateLimitInfo = {
 	tier: null
 };
 
-/**
- * The official SDK's own `Arena.rateLimit` doesn't capture `X-RateLimit-Remaining` (checked
- * against its source — it only parses Limit/Reset/Tier/Window), which is what our proactive
- * throttling in `computeProactiveWaitMs` needs. Wrapping the fetch we hand the SDK is the only
- * way to see the full header set without forking it: this only ever reads headers off the
- * response it's given and returns that response untouched.
- */
 function wrapFetchForRateLimitTracking(fetchFn: typeof fetch): {
 	fetchFn: typeof fetch;
 	latest: () => ArenaRateLimitInfo;
@@ -177,20 +149,6 @@ function wrapFetchForRateLimitTracking(fetchFn: typeof fetch): {
 	return { fetchFn: wrapped, latest: () => latest };
 }
 
-/**
- * Maps the SDK's normalized error classes to this module's own, so a caller never needs to
- * import from `@aredotna/sdk` directly — the provider's error shape stays private to this
- * adapter, per `AGENTS.md`'s "provider shapes never leak past their adapter module" rule.
- *
- * Deliberately doesn't delegate to the SDK's own `retry.respectRateLimits` option: that path only
- * ever waits based on `X-RateLimit-Reset` with no floor and ignores `Retry-After` entirely (read
- * from its source), which is weaker than `resolveRateLimitRetryDelayMs` below. Network errors
- * (`ArenaNetworkError`) and anything else pass through unchanged — they aren't HTTP-status
- * failures this adapter has a more specific type for.
- *
- * `context` is a human-readable phrase describing the request (e.g. `fetching current user`),
- * shared across every operation this client exposes.
- */
 function mapSdkError(error: unknown, context: string): unknown {
 	if (error instanceof SdkArenaRateLimitError) {
 		const retryAfterMs = error.response
@@ -229,7 +187,6 @@ export class ArenaClient {
 		this.latestRateLimit = latest;
 	}
 
-	/** Resolves the token's own account — the starting point for channel discovery. */
 	async me(): Promise<ArenaMe> {
 		try {
 			const body = await this.arena.me();
@@ -239,7 +196,6 @@ export class ArenaClient {
 		}
 	}
 
-	/** Fetches and validates a single page of a channel's contents (blocks + nested channels). */
 	async fetchChannelContentsPage(
 		slug: string,
 		{ page = 1, per = 50, sort, signal }: FetchChannelContentsPageOptions = {}
@@ -255,7 +211,6 @@ export class ArenaClient {
 		}
 	}
 
-	/** Fetches and validates a single page of channels owned by the given user (discovery). */
 	async fetchOwnedChannelsPage(
 		userId: number,
 		{ page = 1, per = 50, signal }: FetchOwnedChannelsPageOptions = {}
@@ -279,18 +234,9 @@ export class ArenaClient {
 export interface PaginateOptions {
 	per?: number;
 	signal?: AbortSignal;
-	/**
-	 * Pause between successive page requests. Are.na's own guidance is 200-500ms between
-	 * sequential calls; default errs gentle since this walks a whole resource in one pass.
-	 */
 	requestDelayMs?: number;
 	maxRetriesPerPage?: number;
-	/** Injectable for tests so pagination/backoff logic doesn't need to sleep for real. */
 	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
-	/**
-	 * When the reported remaining budget drops to/under this, wait for the bucket to reset
-	 * before the next request instead of only reacting once Are.na actually returns a 429.
-	 */
 	rateLimitSafetyMargin?: number;
 }
 
@@ -302,11 +248,6 @@ const DEFAULT_REQUEST_DELAY_MS = 300;
 const DEFAULT_MAX_RETRIES_PER_PAGE = 5;
 const DEFAULT_RATE_LIMIT_SAFETY_MARGIN = 1;
 
-/**
- * Sleeps for `ms`, but resolves immediately if `signal` is already (or becomes) aborted. Exported
- * so callers pacing requests *across* multiple paginated resources (e.g. one delay per channel
- * synced, not just between pages within one channel) can reuse the same abort-aware behavior.
- */
 export function delay(ms: number, signal?: AbortSignal): Promise<void> {
 	if (signal?.aborted) return Promise.resolve();
 	return new Promise((resolve) => {
@@ -323,12 +264,6 @@ interface PageLike {
 	rateLimit: ArenaRateLimitInfo;
 }
 
-/**
- * Shared pagination engine behind both `paginateChannelContents` and `paginateOwnedChannels`:
- * fetches page 1..N via `fetchPage`, honoring 429 backoff, slowing proactively as the rate-limit
- * budget runs low, pacing requests, and stopping cleanly on `has_more_pages: false` or abort.
- * Intended for the maintainer's manual, occasional sync — not a request made on a visitor's behalf.
- */
 async function* paginate<T extends PageLike>(
 	fetchPage: (page: number, per: number, signal?: AbortSignal) => Promise<T>,
 	{
@@ -387,7 +322,6 @@ async function fetchPageWithRetry<T extends PageLike>(
 	}
 }
 
-/** Walks every page of a channel's contents, oldest-to-configured-sort-order. */
 export function paginateChannelContents(
 	client: ArenaClient,
 	slug: string,
@@ -399,7 +333,6 @@ export function paginateChannelContents(
 	);
 }
 
-/** Walks every page of channels owned by the given user (channel discovery). */
 export function paginateOwnedChannels(
 	client: ArenaClient,
 	userId: number,
