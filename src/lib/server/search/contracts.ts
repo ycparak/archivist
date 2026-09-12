@@ -13,6 +13,9 @@ export const searchResultSchema: z.ZodType<SearchResult> = z.object({
 	sourceUrl: z.url().nullable(),
 	arenaUrl: z.url(),
 	imageUrl: z.url().nullable(),
+	imageAlt: z.string().nullable(),
+	imageWidth: z.number().int().positive().nullable(),
+	imageHeight: z.number().int().positive().nullable(),
 	sourceTitle: z.string().nullable()
 });
 

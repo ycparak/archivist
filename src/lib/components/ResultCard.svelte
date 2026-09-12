@@ -12,15 +12,18 @@
 
 	const title = $derived(blockDisplayTitle(result.title, result.blockType));
 	const connectedOn = $derived(formatArchiveDate(result.connectedAt));
+	const hasIntrinsicSize = $derived(Boolean(result.imageWidth && result.imageHeight));
 </script>
 
 <article class="card">
 	<a class="card-link" href={result.arenaUrl} rel="external">
 		{#if result.imageUrl}
-			<span class="card-media">
+			<span class="card-media" class:card-media--fixed={!hasIntrinsicSize}>
 				<img
 					src={result.imageUrl}
-					alt=""
+					alt={result.imageAlt ?? ''}
+					width={result.imageWidth ?? undefined}
+					height={result.imageHeight ?? undefined}
 					loading={eager ? 'eager' : 'lazy'}
 					decoding="async"
 					referrerpolicy="no-referrer"
@@ -77,13 +80,23 @@
 	.card-media {
 		display: block;
 		overflow: hidden;
-		aspect-ratio: 4 / 3;
 		background: var(--color-background-subtle);
 		border-radius: var(--radius-md);
 	}
 
 	.card-media img {
+		display: block;
 		inline-size: 100%;
+		block-size: auto;
+	}
+
+	/* Are.na didn't supply intrinsic dimensions for this block's image: fall back to a
+	   placeholder box instead of letting the image size the card unpredictably. */
+	.card-media--fixed {
+		aspect-ratio: 4 / 3;
+	}
+
+	.card-media--fixed img {
 		block-size: 100%;
 		object-fit: cover;
 	}
