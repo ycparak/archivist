@@ -37,7 +37,7 @@ Keep it tight. Another agent should be able to retrace your steps by reading the
 
 ## Step 2: Investigate
 
-1. Read the linked spec (if any), relevant docs (`docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/adr/`), and code. Understand the root cause or design space, not just the surface symptom.
+1. Read the linked spec (if any), relevant docs (`docs/prd.md`, `docs/architecture.md`, `SPECs/` for prior ADRs), and code. Understand the root cause or design space, not just the surface symptom.
 2. For bugs: write a failing test that reproduces the issue when practical. If a test is genuinely impractical, document why in the worksheet.
 3. For spec-driven features: identify the spec's non-negotiable constraints — the product boundary, architecture boundaries, and search invariants in [`AGENTS.md`](../../AGENTS.md) are non-negotiable unless the human explicitly changes them.
 4. If a Svelte/SvelteKit pattern is unfamiliar, use the Svelte MCP server's documentation tool before writing it — see [Use the Svelte MCP Server](../svelte-guidelines.md#use-the-svelte-mcp-server).
@@ -90,7 +90,7 @@ Run an implementation review using the personas and process in [`agent-review.md
 
 ## Step 7: Document and Wrap Up
 
-1. Update relevant docs if behavior or rules changed (including an ADR in `docs/adr/` if a schema or architecture decision changed — see `AGENTS.md`).
+1. Update relevant docs if behavior or rules changed (including an ADR in `SPECs/` if a schema or architecture decision changed — see `AGENTS.md`).
 2. Update [`CHANGELOG.md`](../../CHANGELOG.md) if the work is user-visible.
 3. Move the task from **In Progress** to **Done** in [`TODOS.md`](../../TODOS.md), with a shortened commit hash.
 4. Add follow-up TODOs if you found adjacent issues.

@@ -6,7 +6,7 @@ V1 is deliberately small: a manual Are.na sync indexes original blocks in Turbop
 
 ## Start here
 
-1. Read [the PRD](docs/PRD.md), then [the architecture](docs/ARCHITECTURE.md).
+1. Read [the PRD](docs/prd.md), then [the architecture](docs/architecture.md).
 2. Copy `.env.example` to `.env` and populate the server-only credentials.
 3. Run `bun run check`, `bun run lint`, and `bun run test` before opening a pull request.
 

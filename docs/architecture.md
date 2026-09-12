@@ -36,7 +36,7 @@ The project indexes an explicit `ARENA_CHANNEL_SLUGS` allowlist. This is intenti
 
 Namespace: `arena-blocks-v1` by default, configurable with `TURBOPUFFER_NAMESPACE`.
 
-Turbopuffer requires stable types per attribute and does not permit in-place type changes. Therefore version the namespace for a breaking schema change (`arena-blocks-v2`) and document the migration in an ADR.
+Turbopuffer requires stable types per attribute and does not permit in-place type changes. Therefore version the namespace for a breaking schema change (`arena-blocks-v2`) and document the migration in an ADR in [`SPECs/`](../SPECs/).
 
 | Attribute       | Type / index                               | Purpose                                    |
 | --------------- | ------------------------------------------ | ------------------------------------------ |
