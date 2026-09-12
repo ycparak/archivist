@@ -15,6 +15,9 @@ function document(id: string): SearchDocument {
 		source_url: null,
 		arena_url: `https://www.are.na/block/${id}`,
 		image_url: null,
+		image_alt: null,
+		image_width: null,
+		image_height: null,
 		source_title: null
 	};
 }

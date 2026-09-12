@@ -19,5 +19,8 @@ export const archiveNamespaceSchema = {
 	source_url: { type: 'string', filterable: false },
 	arena_url: { type: 'string', filterable: false },
 	image_url: { type: 'string', filterable: false },
+	image_alt: { type: 'string', filterable: false },
+	image_width: { type: 'uint', filterable: false },
+	image_height: { type: 'uint', filterable: false },
 	source_title: { type: 'string', filterable: false }
 } satisfies Record<string, Turbopuffer.AttributeSchema>;

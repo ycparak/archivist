@@ -15,6 +15,9 @@ function result(overrides: Partial<SearchResult> = {}): SearchResult {
 		sourceUrl: null,
 		arenaUrl: 'https://www.are.na/block/1',
 		imageUrl: null,
+		imageAlt: null,
+		imageWidth: null,
+		imageHeight: null,
 		sourceTitle: null,
 		...overrides
 	};

@@ -15,6 +15,9 @@ describe('toSearchDocument', () => {
 				sourceUrl: 'https://example.com/source',
 				arenaUrl: 'https://www.are.na/block/42',
 				imageUrl: 'https://images.are.na/example.jpg',
+				imageAlt: '  A brutalist window  ',
+				imageWidth: 800,
+				imageHeight: 600,
 				connectedAt: new Date('2026-01-02T03:04:05.000Z'),
 				channels: [
 					{ slug: 'architecture', title: 'Architecture' },
@@ -27,8 +30,26 @@ describe('toSearchDocument', () => {
 			id: 'block:42',
 			search_text: 'Brutalist window\nConcrete studies\nArchitecture',
 			channel_slugs: ['architecture'],
-			connected_at: '2026-01-02T03:04:05.000Z'
+			connected_at: '2026-01-02T03:04:05.000Z',
+			image_alt: 'A brutalist window',
+			image_width: 800,
+			image_height: 600
 		});
+	});
+
+	it('indexes null image metadata as null rather than a fallback value', () => {
+		const document = toSearchDocument(
+			archiveBlockSchema.parse({
+				id: 1,
+				type: 'Text',
+				arenaUrl: 'https://www.are.na/block/1',
+				channels: [{ slug: 'materials', title: 'Materials' }]
+			})
+		);
+
+		expect(document.image_alt).toBeNull();
+		expect(document.image_width).toBeNull();
+		expect(document.image_height).toBeNull();
 	});
 });
 

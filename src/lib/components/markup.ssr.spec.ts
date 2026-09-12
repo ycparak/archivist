@@ -32,6 +32,9 @@ function result(overrides: Partial<SearchResult> = {}): SearchResult {
 		sourceUrl: null,
 		arenaUrl: 'https://www.are.na/block/1',
 		imageUrl: 'https://images.are.na/felt.jpg',
+		imageAlt: null,
+		imageWidth: null,
+		imageHeight: null,
 		sourceTitle: null,
 		...overrides
 	};
@@ -157,6 +160,30 @@ describe('ResultCard markup', () => {
 		expect(body).toContain('href="https://www.are.na/block/1"');
 		expect(body).toContain('Industrial felt');
 		expect(body).toContain('alt=""');
+	});
+
+	it("uses Are.na's own alt text when the block image has it", () => {
+		const { body } = render(ResultCard, {
+			props: { result: result({ imageAlt: 'A felt swatch' }), state: state() }
+		});
+
+		expect(body).toContain('alt="A felt swatch"');
+	});
+
+	it('sets intrinsic width/height attributes and drops the fixed placeholder box when Are.na supplies dimensions', () => {
+		const { body } = render(ResultCard, {
+			props: { result: result({ imageWidth: 800, imageHeight: 600 }), state: state() }
+		});
+
+		expect(body).toContain('width="800"');
+		expect(body).toContain('height="600"');
+		expect(body).not.toContain('card-media--fixed');
+	});
+
+	it('falls back to the fixed placeholder box when Are.na supplies no dimensions', () => {
+		const { body } = render(ResultCard, { props: { result: result(), state: state() } });
+
+		expect(body).toContain('card-media--fixed');
 	});
 
 	it('lazy-loads by default and eagerly for the first cards', () => {
