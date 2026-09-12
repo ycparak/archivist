@@ -18,6 +18,7 @@
 
 	const state = $derived(data.state);
 	const results = $derived(data.kind === 'ok' ? data.results : []);
+	const channels = $derived(data.channels);
 	const searching = $derived(navigating.to?.route.id === '/');
 
 	const announced = $derived(
@@ -52,7 +53,7 @@
 		<p class="meta"><a href={resolve('/about')}>How this works</a></p>
 	</header>
 
-	<SearchForm {state} onnavigate={navigate} />
+	<SearchForm {state} {channels} onnavigate={navigate} />
 
 	<ActiveFilters {state} />
 

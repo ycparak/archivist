@@ -8,9 +8,6 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ### Slice 4 — portfolio polish
 
-- [ ] Give the UI a complete channel list. V1 can only offer channels present in the current
-      results, because Turbopuffer has no facet we rely on over `channel_slugs` and a public request
-      may never call Are.na. The intended shape is the sync command emitting a channel manifest.
 - [ ] Edge rate limiting and basic error telemetry before public deployment.
 - [ ] Full quality suite (`bun run check && bun run lint && bun run test && bun run build`) and manual pass over the evaluation queries.
 - [ ] Consider a second vitest project (`jsdom` + `@testing-library/svelte`) for interactive
@@ -25,6 +22,11 @@ _(none)_
 
 ## Done
 
+- [x] Slice 4 channel manifest: `bun run sync` now writes every owned channel it discovers to
+      `src/lib/server/indexing/channel-manifest.json`, bundled at build time (no request-time
+      Are.na call). The gallery's "Channel" filter lists every channel in the archive instead of
+      only ones present in current results. See
+      [SPECs/worksheet-channel-manifest.md](./SPECs/worksheet-channel-manifest.md).
 - [x] Slice 4 image metadata: index `image.alt_text`/`width`/`height` (from `image.large`, matching
       the version `imageUrl` already uses), thread them through to `ResultCard` (real `alt` text
       when Are.na has it, real intrinsic dimensions replacing the fixed 4:3 crop when it doesn't),
@@ -42,7 +44,12 @@ _(none)_
 
 ## Needs Input
 
-_(none)_
+- [ ] `channel-manifest.json` ships empty (`[]`) — the channel filter won't appear until the
+      maintainer runs a real `bun run sync`. That writes to the live Turbopuffer namespace and
+      authenticates against the maintainer's own Are.na account, so it wasn't run as part of the
+      channel-manifest task without their go-ahead (see
+      [SPECs/worksheet-channel-manifest.md](./SPECs/worksheet-channel-manifest.md#deliberately-not-done-running-the-real-sync)).
+      [AGENT NOTE: run `bun run sync` (or approve running it) to populate the manifest for real.]
 
 ## Backlog — V2 (only after V1 is stable)
 
