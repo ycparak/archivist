@@ -3,13 +3,15 @@
 Repeatable loop for autonomous task execution. The agent works through the task queue while the human is away, then the human reviews the work and queues new tasks and specs for the next session.
 
 - [`AGENTS.md`](../../AGENTS.md) — mode routing and project guidelines (read by both Claude Code and Codex)
-- [`TODOS.md`](../../TODOS.md) — task backlog
-- [`SPECs/`](../../SPECs/) — human-written feature/bug specs
+- [`TODOS.md`](../TODOS.md) — task backlog
+- [`specs/`](../specs/) — active human-written feature/bug specs and worksheets
+- [`decisions/`](../decisions/) — architecture decision records
+- [`history/worksheets/`](../history/worksheets/) — completed task worksheets
 - [`agent-review.md`](./agent-review.md) — review personas, findings format, escalation rules
 
 ## Agent Worksheet
 
-For every non-trivial task, create an agent worksheet at `SPECs/worksheet-<spec-slug>.md` to track progress and understanding. The worksheet is your scratch pad and your handoff artifact.
+For every non-trivial task, create an agent worksheet at `docs/specs/worksheet-<spec-slug>.md` to track progress and understanding. It is your scratch pad and handoff artifact; move it to `docs/history/worksheets/` when the task is complete.
 
 A worksheet should include:
 
@@ -31,13 +33,13 @@ Keep it tight. Another agent should be able to retrace your steps by reading the
 
 ## Step 1: Pick the next task
 
-1. Open [`TODOS.md`](../../TODOS.md). Pick the smallest uncompleted item from **Up Next**.
+1. Open [`TODOS.md`](../TODOS.md). Pick the smallest uncompleted item from **Up Next**.
 2. Move it to **In Progress**.
-3. Create the agent worksheet in `SPECs/` (hard prerequisite, even for small fixes).
+3. Create the agent worksheet in `docs/specs/` (hard prerequisite, even for small fixes).
 
 ## Step 2: Investigate
 
-1. Read the linked spec (if any), relevant docs (`docs/prd.md`, `docs/architecture.md`, `SPECs/` for prior ADRs), and code. Understand the root cause or design space, not just the surface symptom.
+1. Read the linked spec (if any), relevant docs (`docs/prd.md`, `docs/architecture.md`, `docs/decisions/` for prior ADRs), and code. Understand the root cause or design space, not just the surface symptom.
 2. For bugs: write a failing test that reproduces the issue when practical. If a test is genuinely impractical, document why in the worksheet.
 3. For spec-driven features: identify the spec's non-negotiable constraints — the product boundary, architecture boundaries, and search invariants in [`AGENTS.md`](../../AGENTS.md) are non-negotiable unless the human explicitly changes them.
 4. If a Svelte/SvelteKit pattern is unfamiliar, use the Svelte MCP server's documentation tool before writing it — see [Use the Svelte MCP Server](../svelte-guidelines.md#use-the-svelte-mcp-server).
@@ -90,9 +92,9 @@ Run an implementation review using the personas and process in [`agent-review.md
 
 ## Step 7: Document and Wrap Up
 
-1. Update relevant docs if behavior or rules changed (including an ADR in `SPECs/` if a schema or architecture decision changed — see `AGENTS.md`).
-2. Update [`CHANGELOG.md`](../../CHANGELOG.md) if the work is user-visible.
-3. Move the task from **In Progress** to **Done** in [`TODOS.md`](../../TODOS.md), with a shortened commit hash.
+1. Update relevant docs if behavior or rules changed (including an ADR in `docs/decisions/` if a schema or architecture decision changed — see `AGENTS.md`).
+2. Update [`CHANGELOG.md`](../CHANGELOG.md) if the work is user-visible.
+3. Move the task from **In Progress** to **Done** in [`TODOS.md`](../TODOS.md), with a shortened commit hash.
 4. Add follow-up TODOs if you found adjacent issues.
 5. Commit with a clear message — one commit per completed task. See the existing commit history for style.
 

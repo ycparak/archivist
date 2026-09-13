@@ -2,9 +2,9 @@
 
 - TODO: `TODOS.md` — Slice 1, "Manual `bun run sync` command that discovers and syncs every
   channel the maintainer's Are.na account owns."
-- Depends on: [SPECs/worksheet-arena-page-client.md](./worksheet-arena-page-client.md) (page
-  client), [SPECs/worksheet-arena-block-normalizer.md](./worksheet-arena-block-normalizer.md)
-  (`toArchiveBlock`), [SPECs/adr-arena-sdk-and-discovery.md](./adr-arena-sdk-and-discovery.md)
+- Depends on: [worksheet-arena-page-client.md](./worksheet-arena-page-client.md) (page
+  client), [worksheet-arena-block-normalizer.md](./worksheet-arena-block-normalizer.md)
+  (`toArchiveBlock`), [adr-arena-sdk-and-discovery.md](../../decisions/adr-arena-sdk-and-discovery.md)
   (auto-discovery decision).
 
 ## Investigation

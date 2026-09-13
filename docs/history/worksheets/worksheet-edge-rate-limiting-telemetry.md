@@ -2,7 +2,7 @@
 
 ## Task
 
-[`TODOS.md`](../TODOS.md): “Edge rate limiting and basic error telemetry before public deployment.”
+[`TODOS.md`](../../TODOS.md): “Edge rate limiting and basic error telemetry before public deployment.”
 
 ## Initial state
 
@@ -42,7 +42,7 @@
   include a raw URL, query string, headers, client address, limiter key, provider payload, or raw
   error. Existing unavailable-search logging becomes the latter explicit event shape.
 - Add focused Vitest coverage for the module and hook behavior, update the reliability section of
-  `docs/architecture.md`, `CHANGELOG.md`, and this worksheet. No schema migration or provider
+  `docs/architecture.md`, `docs/CHANGELOG.md`, and this worksheet. No schema migration or provider
   behavior changes are involved. The pre-launch checklist will require generated-type/config
   validation, a controlled over-limit sequence in the deployed environment, an Observability
   inspection for query-redacted events, and manual full-page plus enhanced-navigation 429 checks.

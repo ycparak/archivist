@@ -2,7 +2,7 @@
 
 - TODO: `TODOS.md` — Slice 1, "Turbopuffer schema creation (`search_text` full-text + native
   embed, per `docs/architecture.md`) and batch upsert."
-- Depends on: [SPECs/worksheet-sync-command.md](./worksheet-sync-command.md) (discovers/normalizes/
+- Depends on: [worksheet-sync-command.md](./worksheet-sync-command.md) (discovers/normalizes/
   dedupes blocks; this task adds the persistence step it explicitly deferred).
 
 ## Investigation
