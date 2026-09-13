@@ -23,7 +23,9 @@ Full technical detail: [docs/architecture.md](./docs/architecture.md).
 
 ## Docs Index
 
-All docs except this file, `CLAUDE.md`, `TODOS.md`, and `CHANGELOG.md` live in `./docs/`. Feature specs and agent worksheets live in `./SPECs/`.
+All project documentation lives in `./docs/`. Keep active feature specs and worksheets in
+`./docs/specs/`, completed worksheets in `./docs/history/worksheets/`, and architecture decisions
+in `./docs/decisions/`.
 
 **Product**
 
@@ -43,16 +45,19 @@ All docs except this file, `CLAUDE.md`, `TODOS.md`, and `CHANGELOG.md` live in `
 
 **Cross-cutting**
 
-- [TODOS.md](./TODOS.md) — task backlog and work-in-progress tracking
-- [CHANGELOG.md](./CHANGELOG.md) — user-visible changes log
-- [SPECs/](./SPECs/) — human-written feature and bug specs, architecture decision records, and agent worksheets
+- [docs/TODOS.md](./docs/TODOS.md) — task backlog and work-in-progress tracking
+- [docs/CHANGELOG.md](./docs/CHANGELOG.md) — user-visible changes log
+- [docs/specs/](./docs/specs/) — active feature and bug specs, and in-progress worksheets
+- [docs/history/worksheets/](./docs/history/worksheets/) — completed task worksheets
+- [docs/decisions/](./docs/decisions/) — architecture decision records
 
 ## Hard Rules
 
-- Check [`TODOS.md`](./TODOS.md) before starting work to see current tasks.
+- Check [`docs/TODOS.md`](./docs/TODOS.md) before starting work to see current tasks.
 - Move tasks between sections (Up Next → In Progress → Done) as you work.
-- For non-trivial work, create a spec in [`SPECs/`](./SPECs/) and link it from the task.
-- Update [`CHANGELOG.md`](./CHANGELOG.md) when completing user-visible work.
+- For non-trivial work, create a spec in [`docs/specs/`](./docs/specs/) and link it from the task.
+  Move its worksheet to `docs/history/worksheets/` when the task is complete.
+- Update [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) when completing user-visible work.
 - Load only docs relevant to the current task and scope.
 - If a behavior or rule changes in practice, update the owning doc in the same task.
 - In autonomous/loop mode, complete exactly one task at a time and commit immediately. Do not batch unless the user explicitly asks.
@@ -71,7 +76,7 @@ All docs except this file, `CLAUDE.md`, `TODOS.md`, and `CHANGELOG.md` live in `
 - `src/lib/domain/search.ts` owns the URL search grammar (parameter names, the implicit-mode rule, the date format). The server parser and the UI both consume it; do not restate a parameter name anywhere else.
 - Hybrid means one Turbopuffer `multiQuery` with BM25 + native ANN and `rerank_by: ['RRF']`; do not implement ad-hoc score arithmetic in the UI.
 - Filter only `block_type`, `channel_slugs`, and `connected_at` in V1.
-- Schema changes that alter an existing Turbopuffer attribute's type require a new versioned namespace. Record that migration as an ADR in `SPECs/`.
+- Schema changes that alter an existing Turbopuffer attribute's type require a new versioned namespace. Record that migration as an ADR in `docs/decisions/`.
 
 ## Engineering Guardrails
 
@@ -114,7 +119,7 @@ bun run build   # wrangler types, vite build
 
 `wrangler types` stays pinned to `--env-file=.env.example`, not your local `.env`, so `Env` is identical everywhere regardless of which keys you happen to have. Don't drop the flag when touching these scripts.
 
-`bun run check` type-checks `scripts/` (the manual CLI entrypoints, e.g. `bun run sync`) as a second, separate `tsc --noEmit --project scripts/tsconfig.json` step after `svelte-check`. `scripts/` isn't in `svelte-check`'s scope (its generated tsconfig only covers `src/`/`test/`/`tests/`) and needs Node globals (`process`) that the root `tsconfig.json` deliberately excludes from `types` — leaking Node globals into `src/`, which is Cloudflare Workers code, would be a real correctness hazard, not just noise. Keep new CLI scripts under `scripts/` so this coverage applies to them automatically.
+`bun run check` type-checks `scripts/` (the manual CLI entrypoints, e.g. `bun run sync`) as a second, separate `tsc --noEmit --project scripts/tsconfig.json` step after `svelte-check`. `scripts/` is intentionally outside `svelte-check`'s scope and needs Node globals (`process`) that the root `tsconfig.json` deliberately excludes from `types` — leaking Node globals into `src/`, which is Cloudflare Workers code, would be a real correctness hazard, not just noise. Keep new CLI scripts under `scripts/` so this coverage applies to them automatically.
 
 ## Pull Request Hygiene
 

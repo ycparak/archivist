@@ -21,7 +21,7 @@
   never re-enters this data — it collects `{ slug, title }` and currently only returns
   `{ blocks, summary }`, discarding the list itself after computing `summary.channelsDiscovered`.
 - Precedent for a checked-in, script-written JSON data file already exists:
-  `tests/fixtures/search-cases.json`, read by `scripts/evaluate-search.ts` via `node:fs/promises`
+  `scripts/fixtures/search-cases.json`, read by `scripts/evaluate-search.ts` via `node:fs/promises`
   `readFile` + `searchEvaluationCasesSchema.parse(...)`. That script runs under Bun/Node, not on
   Cloudflare Workers.
 - The distinction that matters for _this_ task: `+page.server.ts` runs as part of the deployed
@@ -118,7 +118,7 @@ resets it. Reverted the fixture back to `[]` afterward — see below.
 
 `bun run check`, `lint`, `test` (189 passed, 9 new across `channel-manifest.spec.ts`,
 `sync.spec.ts`, and `markup.ssr.spec.ts`), and `build` all pass. `lint`'s one remaining warning
-(`SPECs/worksheet-image-metadata-indexing.md`) predates this task and is untouched by it.
+(`docs/history/worksheets/worksheet-image-metadata-indexing.md`) predates this task and is untouched by it.
 
 ### Deliberately not done: running the real sync
 

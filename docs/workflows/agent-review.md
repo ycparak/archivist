@@ -40,7 +40,7 @@ Activate only the personas relevant to the changed surface area. Each persona ow
   Owned docs: `AGENTS.md` (Product boundary, Architecture boundaries, Search invariants).
 
 - **QA Engineer**: coverage quality, regression risk, test adequacy and test selection. Validates that tests are legitimate (no hardcoded expected values, no skipped assertions) and exercise behavior, not implementation details.
-  Owned docs: `*.spec.ts` files colocated under `src/lib/`, `tests/fixtures/` if present.
+  Owned docs: `*.spec.ts` files colocated under `src/lib/`, `scripts/fixtures/` if present.
 
 Each persona should also load any spec or doc directly relevant to the files being changed, even if not listed above.
 
@@ -71,14 +71,14 @@ If there are no findings, explicitly say so and list residual risks/testing gaps
 - Product boundary respected: no generated collections, summaries, tags, OCR, link crawling, auth, accounts, analytics, background queues, or chat UI introduced into V1 without an explicit human decision to start V2.
 - Correct ownership: `src/lib/domain/` stays framework-free, `src/lib/server/` stays server-only and provider-shape-private, `src/routes/` stays composition-only.
 - Provider API shapes (Are.na, Turbopuffer) never leak past their adapter module — UI and route code consume `SearchResult`, never raw rows/payloads.
-- Turbopuffer attribute-type changes are versioned into a new namespace with an ADR in `SPECs/`, never an in-place type change.
+- Turbopuffer attribute-type changes are versioned into a new namespace with an ADR in `docs/decisions/`, never an in-place type change.
 - Hybrid ranking uses Turbopuffer's `multiQuery` + `rerank_by: ['RRF']`; no ad-hoc score arithmetic in application code.
 - Untrusted input (query params, Are.na responses) validated with Zod at the boundary.
 - Secrets stay server-only; no tokens, full raw API payloads, or user search queries in logs.
 - Relevant docs updated when behavior or rules changed.
 - Reviewers should recommend updates to their own persona's docs whenever they notice gaps, stale info, unclear language, or missing coverage.
 - Commit cadence verified: in loop mode, one commit per completed task (unless user explicitly requested batching).
-- For user-visible work, [`CHANGELOG.md`](../../CHANGELOG.md) updated in the same task/commit.
+- For user-visible work, [`CHANGELOG.md`](../CHANGELOG.md) updated in the same task/commit.
 - `bun run check` and `bun run lint` pass.
 - `bun run test` passes; tests are appropriate for risk and scope, gaps are called out.
 - No unused variables or dead-code declarations remain in changed files.
