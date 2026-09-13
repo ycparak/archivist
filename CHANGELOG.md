@@ -4,6 +4,8 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- Hybrid search results are now capped at the same server-owned limit as other modes after
+  deduplication, so the result count and status message stay aligned.
 - Protected the gallery and search API with a shared edge request limit before they query the
   archive. When the limit is reached, the gallery shows a short retry page and the API returns a
   429 response. Added privacy-safe operational telemetry so the maintainer can diagnose unavailable
