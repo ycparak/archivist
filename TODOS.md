@@ -8,7 +8,6 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ### Slice 4 — portfolio polish
 
-- [ ] Edge rate limiting and basic error telemetry before public deployment.
 - [ ] Full quality suite (`bun run check && bun run lint && bun run test && bun run build`) and manual pass over the evaluation queries.
 - [ ] Consider a second vitest project (`jsdom` + `@testing-library/svelte`) for interactive
       component behavior. `vite.config.ts` already reserves the slot by excluding
@@ -22,6 +21,11 @@ _(none)_
 
 ## Done
 
+- [x] Edge rate limiting and basic error telemetry before public deployment: the shared limiter
+      protects both the gallery and API before Turbopuffer, and Cloudflare observability redacts
+      query strings while retaining safe structured failure events. See
+      [SPECs/worksheet-edge-rate-limiting-telemetry.md](./SPECs/worksheet-edge-rate-limiting-telemetry.md).
+      `f5fefdc`.
 - [x] Slice 4 channel manifest: `bun run sync` now writes every owned channel it discovers to
       `src/lib/server/indexing/channel-manifest.json`, bundled at build time (no request-time
       Are.na call). The gallery's "Channel" filter lists every channel in the archive instead of
