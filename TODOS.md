@@ -8,11 +8,7 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ### Slice 4 — portfolio polish
 
-- [ ] Consider a second vitest project (`jsdom` + `@testing-library/svelte`) for interactive
-      component behavior. `vite.config.ts` already reserves the slot by excluding
-      `src/**/*.svelte.spec.ts` from the node project. Server-rendered markup assertions
-      (`src/lib/components/markup.ssr.spec.ts`) cover the static contract today; focus, live-region
-      announcement, and reflow remain manual.
+_(none)_
 
 ## In Progress
 
@@ -20,6 +16,9 @@ _(none)_
 
 ## Done
 
+- [x] Testing approach decision: keep one node-based Vitest project. Server-rendered markup
+      assertions cover static component contracts; focus, live-region announcement, and reflow
+      remain manual browser checks. See [docs/svelte-guidelines.md](./docs/svelte-guidelines.md).
 - [x] Slice 4 quality pass: the full check/lint/test/build suite and all ten live evaluation cases
       pass, with a manual browser pass over every fixture URL. Hybrid results are capped after
       deduplication so the UI's result limit and status stay aligned. See
