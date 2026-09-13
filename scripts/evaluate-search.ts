@@ -30,7 +30,7 @@ function toSearchParams(testCase: SearchEvaluationCase): URLSearchParams {
 }
 
 const fixture = JSON.parse(
-	await readFile(new URL('../tests/fixtures/search-cases.json', import.meta.url), 'utf8')
+	await readFile(new URL('./fixtures/search-cases.json', import.meta.url), 'utf8')
 );
 const cases = searchEvaluationCasesSchema.parse(fixture);
 const repository = new TurbopufferSearchRepository({

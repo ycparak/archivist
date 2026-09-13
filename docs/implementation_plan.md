@@ -14,7 +14,7 @@ Keep the work in vertical slices. Stop after a slice is usable and reviewable.
 
 - Implement `SearchRepository` and `/api/search`.
 - Support browse, lexical, semantic, hybrid, and the three V1 filters.
-- Add a small committed, non-private `tests/fixtures/search-cases.json` with ten query expectations.
+- Add a small committed, non-private `scripts/fixtures/search-cases.json` with ten query expectations.
 - Test request parsing, filter construction, document mapping, and mode selection.
 
 ## Slice 3 — gallery surface

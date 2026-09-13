@@ -2,10 +2,10 @@
 
 - TODO: `TODOS.md` — Slice 1, "Verify a known block round-trips via a direct SDK query," with the
   specific ask to include an Embed and a filename-only Attachment and confirm `toArchiveBlock`'s
-  title fallback (from [SPECs/worksheet-arena-block-normalizer.md](./worksheet-arena-block-normalizer.md)'s
+  title fallback (from [worksheet-arena-block-normalizer.md](./worksheet-arena-block-normalizer.md)'s
   P2 fix) matches what Are.na's own UI shows.
 - This is a verification task against the real, already-synced archive
-  ([SPECs/worksheet-turbopuffer-upsert.md](./worksheet-turbopuffer-upsert.md) — 2,962 blocks live in
+  ([worksheet-turbopuffer-upsert.md](./worksheet-turbopuffer-upsert.md) — 2,962 blocks live in
   `arena-blocks-v1`) — no new feature, code changes only if a real bug turned up.
 
 ## Method

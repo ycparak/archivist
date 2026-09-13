@@ -100,7 +100,7 @@ no domain/search leakage, `bun run check`/`lint`/`test`/`build` all pass.
 After this task shipped, the maintainer asked (a) to auto-discover every channel their account
 owns instead of maintaining `ARENA_CHANNEL_SLUGS`, and (b) whether `@aredotna/sdk` (Are.na's
 official TypeScript SDK) should be used instead of the hand-rolled `fetch` client above. Both are
-real decisions — see [SPECs/adr-arena-sdk-and-discovery.md](./adr-arena-sdk-and-discovery.md) for
+real decisions — see [adr-arena-sdk-and-discovery.md](../../decisions/adr-arena-sdk-and-discovery.md) for
 the full reasoning. Short version: yes to both, and `client.ts` now wraps `createArena()` instead
 of calling `fetch` directly, while keeping the Zod validation in `schemas.ts`, the pagination/
 backoff/proactive-throttle logic in `paginateChannelContents`, and the module's own error types

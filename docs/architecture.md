@@ -36,7 +36,7 @@ The sync auto-discovers scope: it resolves the maintainer's own user id (`GET /v
 
 Namespace: `arena-blocks-v1` by default, configurable with `TURBOPUFFER_NAMESPACE`.
 
-Turbopuffer requires stable types per attribute and does not permit in-place type changes. Therefore version the namespace for a breaking schema change (`arena-blocks-v2`) and document the migration in an ADR in [`SPECs/`](../SPECs/).
+Turbopuffer requires stable types per attribute and does not permit in-place type changes. Therefore version the namespace for a breaking schema change (`arena-blocks-v2`) and document the migration in an ADR in [`docs/decisions/`](./decisions/).
 
 | Attribute       | Type / index                               | Purpose                                    |
 | --------------- | ------------------------------------------ | ------------------------------------------ |
