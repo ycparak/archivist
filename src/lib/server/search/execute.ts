@@ -40,7 +40,7 @@ export async function executeArchiveSearch(
 	try {
 		const input = parseArchiveSearchRequest(searchParams);
 		const results = await createRepository().search(input);
-		return { kind: 'ok', state, results: deduplicateById(results) };
+		return { kind: 'ok', state, results: deduplicateById(results).slice(0, input.limit) };
 	} catch (error) {
 		if (error instanceof SearchRequestValidationError) return { kind: 'invalid', state };
 		const correlationId = createCorrelationId();

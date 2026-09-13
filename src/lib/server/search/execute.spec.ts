@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SearchResult } from '$lib/domain/search';
+import { ARCHIVE_RESULT_LIMIT, type SearchResult } from '$lib/domain/search';
 import type { SearchRepository } from './contracts';
 import { executeArchiveSearch, reportSearchUnavailable } from './execute';
 import { SearchUnavailableError } from './repository';
@@ -67,6 +67,25 @@ describe('executeArchiveSearch', () => {
 
 		expect(outcome.kind).toBe('ok');
 		expect(outcome.kind === 'ok' && outcome.results).toEqual([result(), result({ id: 'block:2' })]);
+	});
+
+	it('caps deduplicated results at the server-owned limit', async () => {
+		const results = Array.from({ length: ARCHIVE_RESULT_LIMIT + 1 }, (_, index) =>
+			result({ id: `block:${index + 1}` })
+		);
+
+		const outcome = await executeArchiveSearch(
+			new URLSearchParams('q=website+analytics'),
+			() => repository(results),
+			undefined,
+			silent
+		);
+
+		expect(outcome.kind).toBe('ok');
+		expect(outcome.kind === 'ok' && outcome.results).toHaveLength(ARCHIVE_RESULT_LIMIT);
+		expect(outcome.kind === 'ok' && outcome.results.at(-1)?.id).toBe(
+			`block:${ARCHIVE_RESULT_LIMIT}`
+		);
 	});
 
 	it('reports an invalid request without building a repository or a correlation ID', async () => {

@@ -8,7 +8,6 @@ Seeded from [`docs/implementation_plan.md`](./docs/implementation_plan.md) — v
 
 ### Slice 4 — portfolio polish
 
-- [ ] Full quality suite (`bun run check && bun run lint && bun run test && bun run build`) and manual pass over the evaluation queries.
 - [ ] Consider a second vitest project (`jsdom` + `@testing-library/svelte`) for interactive
       component behavior. `vite.config.ts` already reserves the slot by excluding
       `src/**/*.svelte.spec.ts` from the node project. Server-rendered markup assertions
@@ -21,6 +20,10 @@ _(none)_
 
 ## Done
 
+- [x] Slice 4 quality pass: the full check/lint/test/build suite and all ten live evaluation cases
+      pass, with a manual browser pass over every fixture URL. Hybrid results are capped after
+      deduplication so the UI's result limit and status stay aligned. See
+      [SPECs/worksheet-quality-suite.md](./SPECs/worksheet-quality-suite.md).
 - [x] Edge rate limiting and basic error telemetry before public deployment: the shared limiter
       protects both the gallery and API before Turbopuffer, and Cloudflare observability redacts
       query strings while retaining safe structured failure events. See
