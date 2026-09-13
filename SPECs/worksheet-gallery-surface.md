@@ -208,7 +208,8 @@ keeping the _last_ copy of a duplicated block, i.e. the lower-ranked one. It now
 
 Not adopted: naming each active filter in the status text rather than counting them (a reasonable
 P3, but the count plus the query already varies per request); splitting `SearchUnavailableError` out
-of `repository.ts`; a jsdom test project (already a Slice 4 TODO).
+of `repository.ts`; a separate jsdom test project. Archivist keeps one node-based Vitest project,
+with SSR markup assertions and manual browser checks covering the component surface.
 
 ### Manual verification
 
