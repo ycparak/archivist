@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SearchResult } from '$lib/domain/search';
 import type { SearchRepository } from './contracts';
-import { executeArchiveSearch } from './execute';
+import { executeArchiveSearch, reportSearchUnavailable } from './execute';
 import { SearchUnavailableError } from './repository';
 
 function result(overrides: Partial<SearchResult> = {}): SearchResult {
@@ -157,6 +157,19 @@ describe('executeArchiveSearch', () => {
 			correlationId: 'request-456',
 			providerStatus: null
 		});
+	});
+
+	it('emits an allowlisted structured event for the default unavailable-search reporter', () => {
+		const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		reportSearchUnavailable({ correlationId: 'request-456', providerStatus: null });
+
+		expect(report).toHaveBeenCalledWith({
+			event: 'archive_search_unavailable',
+			correlationId: 'request-456',
+			providerStatus: null
+		});
+		report.mockRestore();
 	});
 
 	it('keeps the submitted filters on an unavailable search so the form is not wiped', async () => {

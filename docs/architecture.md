@@ -88,7 +88,19 @@ RRF belongs in Turbopuffer, not in client code. It combines independently ranked
 - Validate URL query parameters and Are.na responses with Zod at their boundary.
 - Return a generic 503 for unavailable Turbopuffer credentials/service; log a correlation ID and provider status, never a token or raw archive response.
 - Set a request timeout below the platform limit and use the SDK’s bounded retry behavior. Do not retry client validation errors.
-- Rate-limit the public search endpoint at the edge before public launch. The exact Cloudflare binding is deployment infrastructure, not a reason to add user accounts.
+- Rate-limit `GET /` and `GET /api/search` at the edge before Turbopuffer is constructed. The
+  Cloudflare `ARCHIVE_SEARCH_RATE_LIMITER` binding allows 60 requests per minute per
+  `archive-search:<client address>` key, shared by both search surfaces. It is local to a
+  Cloudflare location and eventually consistent, so it is an abuse brake rather than an accounting
+  or security boundary. V1 has no user identity; IP-based keys can group legitimate visitors behind
+  shared networks and are never logged. Local development bypasses an absent binding; a thrown
+  limiter call fails open after a privacy-safe error event. A rejection returns a cache-safe 429
+  (JSON at `/api/search`, minimal retry HTML at `/`).
+- Enable Workers observability with logs and traces persisted at full sampling while traffic is low,
+  and redact request query strings. Application telemetry is structured and allowlisted:
+  unavailable search logs only its event name, correlation ID, and provider status; rate-limit logs
+  only their event name, route, and (for rejections) 429 status. Never log a URL, query string,
+  headers, client address, rate-limit key, credentials, provider payload, or raw error.
 - Use SSR/server API routes for all provider access. Only public image and Are.na URLs are sent to the browser.
 - Escape/avoid raw block HTML. Render normalized text as text.
 
