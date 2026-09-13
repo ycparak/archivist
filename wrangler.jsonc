@@ -8,6 +8,31 @@
 		"binding": "ASSETS",
 		"directory": ".svelte-kit/cloudflare"
 	},
+	"ratelimits": [
+		{
+			"name": "ARCHIVE_SEARCH_RATE_LIMITER",
+			"namespace_id": "1",
+			"simple": {
+				"limit": 60,
+				"period": 60
+			}
+		}
+	],
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1,
+		"redact_query_string": true,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"persist": true
+		},
+		"traces": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"persist": true
+		}
+	},
 	"workers_dev": true,
 	"preview_urls": true
 }

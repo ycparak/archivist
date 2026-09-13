@@ -18,7 +18,7 @@ export type ArchiveSearchOutcome =
 	| { kind: 'unavailable'; state: ArchiveSearchState; correlationId: string };
 
 export function reportSearchUnavailable(report: SearchUnavailableReport): void {
-	console.error('Search unavailable', report);
+	console.error({ event: 'archive_search_unavailable', ...report });
 }
 
 function deduplicateById(results: SearchResult[]): SearchResult[] {

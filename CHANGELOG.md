@@ -4,6 +4,10 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- Protected the gallery and search API with a shared edge request limit before they query the
+  archive. When the limit is reached, the gallery shows a short retry page and the API returns a
+  429 response. Added privacy-safe operational telemetry so the maintainer can diagnose unavailable
+  search or limiter issues without recording search terms or visitor addresses.
 - The channel filter now lists every channel in the archive, not just the ones on the current
   results page — `bun run sync` writes a channel manifest (`src/lib/server/indexing/channel-manifest.json`)
   that the gallery bundles at build time, with no added Are.na calls or request-time cost.

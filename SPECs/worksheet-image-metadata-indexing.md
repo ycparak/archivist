@@ -20,14 +20,14 @@ Threaded the three fields end to end, following the existing shape for every oth
   the other display fields.
 - `src/lib/server/search/turbopuffer-schema.ts` — three new unindexed attributes (`string`, `uint`,
   `uint`). New attributes on an existing namespace don't need a version bump, per the TODO and
-  `docs/architecture.md`'s migration rule (only a *type change* on an existing attribute does).
+  `docs/architecture.md`'s migration rule (only a _type change_ on an existing attribute does).
 - `src/lib/server/search/repository.ts` and `contracts.ts` — added to `presentationAttributes`,
   the Turbopuffer row schema, `toSearchResult`, and the public `SearchResult`/`searchResultSchema`.
 - `src/lib/components/ResultCard.svelte` — `alt` now uses `result.imageAlt ?? ''` (was always `""`);
   `width`/`height` attributes are set from the result when both are present. CSS: a
   `.card-media--fixed` modifier keeps the old 4:3 `object-fit: cover` box only when Are.na supplied
   no dimensions; otherwise the image renders at its own aspect ratio (`block-size: auto`). This
-  layout shift*, not *force every card into an identical crop* — the TODO explicitly called the
+  layout shift_, not _force every card into an identical crop_ — the TODO explicitly called the
   fixed box a stand-in for missing real dimensions, and object-fit: cover would still be lossy
   cropping of the maintainer's original image now that we don't have to guess.
 - Tests added/extended: `normalize.spec.ts`, `archive.spec.ts`, `repository.spec.ts`,

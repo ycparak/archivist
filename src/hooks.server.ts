@@ -1,0 +1,11 @@
+import type { Handle } from '@sveltejs/kit';
+import { enforcePublicSearchRateLimit } from '$lib/server/rate-limit';
+
+export const handle: Handle = async ({ event, resolve }) => {
+	const response = await enforcePublicSearchRateLimit(
+		event.request,
+		event.url.pathname,
+		event.platform?.env.ARCHIVE_SEARCH_RATE_LIMITER
+	);
+	return response ?? resolve(event);
+};
