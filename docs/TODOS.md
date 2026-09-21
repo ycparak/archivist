@@ -6,7 +6,65 @@ Seeded from [`implementation_plan.md`](./implementation_plan.md) — vertical sl
 
 ## Up Next
 
-_(none)_
+### Vision indexing — phase 1
+
+Generate visual descriptions for the 2,585 blocks with an image and fold them into retrieval.
+Spec: [`specs/spec-vision-indexing.md`](./specs/spec-vision-indexing.md).
+Decision: [`decisions/adr-vision-indexing.md`](./decisions/adr-vision-indexing.md).
+Work these in order — each one is shippable on its own.
+
+- [x] **1. Baseline the search evaluation.** Done — the evaluation was red before this work started
+      (3 cases stranded past the 24-result limit by the browse-ordering change, 1 expecting a block
+      that pruning had removed). Repaired those 4 to be ordering-independent, added rank reporting
+      so dilution is visible, added a `pending` field so target cases can be recorded without
+      holding the gate red, and added 5 pending vision cases grounded in the actual images. Baseline
+      and the promotion bar for task 5 are in
+      [worksheet](./specs/worksheet-vision-eval-baseline.md).
+- [x] **2. Rendition and cache primitives.** Done —
+      [`vision/rendition.ts`](../src/lib/server/indexing/vision/rendition.ts) (payload
+      decode/rewrite/re-encode, source-key extraction, SHA-256; passes non-resizer URLs through
+      untouched) and [`vision/cache.ts`](../src/lib/server/indexing/vision/cache.ts) (JSONL
+      parse/serialize with fixed key order, the skip rule, and a merge that keeps entries for
+      blocks skipped this run while dropping ones that left the archive). 31 unit tests; the
+      rendition rewrite also verified against live Are.na, 10 of 10 at HTTP 200 and ~70% smaller.
+- [ ] **3. OpenRouter client.** Note from task 1: GIFs need a size guard — `block:36923691`
+      (`browser.gif`) is 5,069 KB at source, over the 5 MB ceiling several providers enforce, and
+      CloudFront serves no resize payload, so the first-frame-at-source-size assumption in the spec
+      does not hold for all 134 of them. `vision/client.ts` calling `xiaomi/mimo-v2.5` with
+      `provider: { require_parameters: true }`, an explicit provider `order`, `reasoning` disabled,
+      and a strict JSON schema; Zod validation of the response at the boundary. `fetch` + Zod, no
+      new SDK dependency. The user turn carries the block's existing title/description/source title
+      as labelled untrusted context so the model can write a good short title for text-heavy
+      screenshots — with an explicit never-follow-instructions guard, and validation rejecting a
+      generated title that just reproduces the supplied one. Add `OPENROUTER_API_KEY` to
+      `.env.example` and drop the unused `OPENAI_API_KEY` placeholder.
+- [ ] **4. Wire the stage into sync behind `--vision`.** `describeBlocks()` between normalization
+      and `toSearchDocument`, concurrency 8, per-block failures recorded not fatal. Add
+      `--vision-dry-run`, `--vision-limit=N`, `--revision[=<slug>]` and the new summary lines.
+      Verify with `--vision-limit=25` and read all 25 outputs by hand before going further.
+- [ ] **5. Schema, `search_text`, and the full backfill.** Add `vision_description`, `vision_ocr`,
+      `vision_title`, `vision_medium` to the Turbopuffer schema (additive — no namespace bump);
+      extend `toSearchDocument`; run the full backfill (≈ $0.49); commit
+      `src/lib/server/indexing/vision-cache.jsonl`. Re-run `evaluate:search` and compare against
+      the step-1 baseline. If retrieval regressed for Link blocks, tighten the length cap or move
+      to a separate embedded field before continuing. Update the schema table and sync lifecycle in
+      [`architecture.md`](./architecture.md) in the same change.
+- [ ] **6. Are.na write-back.** `ArenaClient.updateBlock`, ownership filter
+      (`block.user.id === me.id` — only 2,050 of 2,594 blocks qualify), and
+      `vision/titles.ts` implementing `isLowQualityTitle` with its four triggers — filename-shaped
+      (783), opaque token (308), social boilerplate (116), and verbose-and-redundant (70), the last
+      being the `… on X: "…" / X` case where the title is platform chrome wrapped around a copy of
+      the description. 939 processable blocks are flagged, plus 16 untitled. Block type is **not**
+      part of the decision (see the ADR amendment); Link and Attachment blocks are in scope now.
+      Unit-test both directions against the real corpus samples listed in the spec — false
+      negatives are fine, false positives are not. `description` is still only written when empty.
+      `--push-arena` prints a diff; `--push-arena-apply` writes.
+      Also sets `metadata.vision_v` / `vision_at` / `vision_src`. Note this bumps `updated_at` on
+      2,050 blocks and will show up in the maintainer's Are.na activity — stage it with
+      `--vision-limit`.
+- [ ] **7. Product boundary follow-through.** Confirm [`prd.md`](./prd.md) and
+      [`AGENTS.md`](../AGENTS.md) reflect what actually shipped, and move this group to Done with
+      its worksheet archived to [`history/worksheets/`](./history/worksheets/).
 
 ## In Progress
 
@@ -62,6 +120,24 @@ _(none)_
       channel-manifest task without their go-ahead (see
       [worksheet](./history/worksheets/worksheet-channel-manifest.md#deliberately-not-done-running-the-real-sync)).
       [AGENT NOTE: run `bun run sync` (or approve running it) to populate the manifest for real.]
+
+## Backlog — Vision indexing phase 2 (only after phase 1 has shipped and been measured)
+
+- **Video input for animated GIFs.** `xiaomi/mimo-v2.5` accepts video as a native input modality
+  (`text+image+audio+video`), so the 134 animated GIFs currently described from their first frame
+  could be understood as motion instead — pacing, loop structure, what actually changes between
+  frames. Send the GIF as a video part rather than an image part, confirm the pinned providers
+  accept it, and bump `PROMPT_VERSION` so only those 134 blocks regenerate. Audio is explicitly
+  out of scope. The 46 Embed blocks stay thumbnail-only regardless: they are YouTube/Vimeo links,
+  not files the pipeline can hand over.
+- **Batch/async backfill mode.** A `--vision-batch` path for large regenerations if a prompt
+  revision ever makes a full 2,585-block re-run routine.
+- **trigger.dev**, if sync moves off the maintainer's machine. Revisit only when there is an
+  unattended or scheduled run to make durable — see the ADR for why it is not phase 1.
+- **`vision_medium` as a UI facet**, if the generated values cluster usefully.
+- **A separate embedded field** for generated text, if phase-1 measurement shows it dilutes
+  retrieval for the 1,494 Link blocks that already have good human descriptions.
+- **Native PDF input** for the 50 Attachment blocks, instead of describing Are.na's preview image.
 
 ## Backlog — V2 (only after V1 is stable)
 
