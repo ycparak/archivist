@@ -182,8 +182,24 @@ describe('transcodeToVideoDataUrl — leaves nothing behind', () => {
 });
 
 describe('cleanupStaleTranscodes', () => {
-	it('removes what an interrupted run left behind, and nothing else', async () => {
+	it('leaves a directory a concurrent run could still be using', async () => {
 		const { mkdtempSync, mkdirSync, existsSync, rmSync } = await import('node:fs');
+		const { tmpdir } = await import('node:os');
+		const { join } = await import('node:path');
+
+		const sandbox = mkdtempSync(join(tmpdir(), 'archivist-sweep-test-'));
+		const fresh = join(sandbox, 'archivist-vision-inflight');
+		mkdirSync(fresh);
+
+		const { removed } = await cleanupStaleTranscodes(sandbox);
+
+		expect(removed).toBe(0);
+		expect(existsSync(fresh)).toBe(true);
+		rmSync(sandbox, { recursive: true, force: true });
+	});
+
+	it('removes what an interrupted run left behind, and nothing else', async () => {
+		const { mkdtempSync, mkdirSync, existsSync, rmSync, utimesSync } = await import('node:fs');
 		const { tmpdir } = await import('node:os');
 		const { join } = await import('node:path');
 
@@ -192,6 +208,11 @@ describe('cleanupStaleTranscodes', () => {
 		const unrelated = join(sandbox, 'someone-elses-files');
 		mkdirSync(stale);
 		mkdirSync(unrelated);
+
+		// Backdated rather than passing a zero age, so this exercises the real default threshold.
+		const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+		utimesSync(stale, twoHoursAgo, twoHoursAgo);
+		utimesSync(unrelated, twoHoursAgo, twoHoursAgo);
 
 		const { removed } = await cleanupStaleTranscodes(sandbox);
 

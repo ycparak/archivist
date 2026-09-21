@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -167,17 +167,36 @@ export async function transcodeToVideoDataUrl(
  * but a killed process never runs its `finally`, and an interrupted backfill can strand hundreds of
  * megabytes of downloaded animations.
  */
-export async function cleanupStaleTranscodes(directory = tmpdir()): Promise<{ removed: number }> {
+/** Old enough that no live run could still be using it. */
+export const STALE_TRANSCODE_AGE_MS = 60 * 60 * 1000;
+
+export async function cleanupStaleTranscodes(
+	directory = tmpdir(),
+	options: { maxAgeMs?: number; now?: () => number } = {}
+): Promise<{ removed: number }> {
+	const { maxAgeMs = STALE_TRANSCODE_AGE_MS, now = Date.now } = options;
 	let removed = 0;
+
 	try {
 		for (const name of await readdir(directory)) {
 			if (!name.startsWith(TEMP_PREFIX)) continue;
-			await rm(join(directory, name), { recursive: true, force: true });
-			removed += 1;
+			const path = join(directory, name);
+			try {
+				// The temp directory is shared. Sweeping everything with the prefix would delete the
+				// working files of a run happening right now — which is what it did to a parallel
+				// test before this guard existed.
+				const { mtimeMs } = await stat(path);
+				if (now() - mtimeMs < maxAgeMs) continue;
+				await rm(path, { recursive: true, force: true });
+				removed += 1;
+			} catch {
+				// Raced with something else removing it, which is the outcome we wanted anyway.
+			}
 		}
 	} catch {
 		// A sweep that cannot read the temp directory is not a reason to fail the run.
 	}
+
 	return { removed };
 }
 
