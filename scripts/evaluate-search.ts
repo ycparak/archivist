@@ -39,21 +39,52 @@ const repository = new TurbopufferSearchRepository({
 	namespace: process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE
 });
 
+/** Where each expected block landed, so a change that keeps a case passing but sinks it is visible. */
+function formatRanks(expectedBlockIds: string[], orderedIds: string[]): string {
+	if (!expectedBlockIds.length) return '';
+	const ranks = expectedBlockIds.map((id) => {
+		const index = orderedIds.indexOf(id);
+		return `${id}@${index === -1 ? '—' : index + 1}`;
+	});
+	return ` (${ranks.join(', ')} of ${orderedIds.length})`;
+}
+
 let failures = 0;
+let readyToPromote = 0;
 for (const testCase of cases) {
 	const { results } = await repository.search(parseArchiveSearchRequest(toSearchParams(testCase)));
-	const resultIds = new Set(results.map((result) => result.id));
+	const orderedIds = results.map((result) => result.id);
+	const resultIds = new Set(orderedIds);
 	const missing = testCase.expectedBlockIds.filter((id) => !resultIds.has(id));
-	if (!matchesEvaluationCase(testCase, resultIds)) {
-		failures += 1;
-		if (missing.length) {
-			console.error(`${testCase.id}: missing expected public block IDs: ${missing.join(', ')}`);
+	const ranks = formatRanks(testCase.expectedBlockIds, orderedIds);
+
+	if (matchesEvaluationCase(testCase, resultIds)) {
+		if (testCase.pending) {
+			readyToPromote += 1;
+			console.log(`${testCase.id}: PENDING CASE NOW PASSES${ranks} — remove its "pending" field`);
 		} else {
-			console.error(`${testCase.id}: expected no results, received ${results.length}`);
+			console.log(`${testCase.id}: passed${ranks}`);
 		}
-	} else {
-		console.log(`${testCase.id}: passed`);
+		continue;
 	}
+
+	const detail = missing.length
+		? `missing expected public block IDs: ${missing.join(', ')}`
+		: `expected no results, received ${results.length}`;
+
+	if (testCase.pending) {
+		console.log(`${testCase.id}: pending — ${detail} (${testCase.pending})`);
+		continue;
+	}
+
+	failures += 1;
+	console.error(`${testCase.id}: ${detail}${ranks}`);
+}
+
+if (readyToPromote) {
+	console.log(
+		`\n${readyToPromote} pending case(s) now pass and should lose their "pending" field.`
+	);
 }
 
 if (failures) process.exit(1);

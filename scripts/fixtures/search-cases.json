@@ -26,27 +26,28 @@
 	{
 		"id": "channel-filter",
 		"mode": "browse",
-		"channel": ["landing-pages-hqvprxehiyi"],
-		"expectedBlockIds": ["block:50290366"]
+		"channel": ["hci-density"],
+		"expectedBlockIds": ["block:32253420"]
 	},
 	{
 		"id": "multi-channel-filter",
 		"mode": "browse",
-		"channel": ["landing-pages-hqvprxehiyi", "macos-and-ios"],
-		"expectedBlockIds": ["block:50290366", "block:50207334"]
+		"channel": ["hci-density", "cyberpunk-aesthetics"],
+		"expectedBlockIds": ["block:32253420", "block:43484078"]
 	},
 	{
 		"id": "block-type-filter",
 		"mode": "browse",
+		"channel": ["hci-density"],
 		"type": ["Image"],
-		"expectedBlockIds": ["block:50207456"]
+		"expectedBlockIds": ["block:31353299"]
 	},
 	{
 		"id": "date-filter",
 		"mode": "browse",
 		"from": "2026-09-12",
 		"to": "2026-09-12",
-		"expectedBlockIds": ["block:50358785"]
+		"expectedBlockIds": ["block:50368557"]
 	},
 	{
 		"id": "combined-filter",
@@ -61,5 +62,40 @@
 		"mode": "browse",
 		"channel": ["no-such-public-archive-channel"],
 		"expectedBlockIds": []
+	},
+	{
+		"id": "vision-widget-grid",
+		"mode": "hybrid",
+		"q": "dark mode widget grid of small bar charts and complications",
+		"expectedBlockIds": ["block:17698965"],
+		"pending": "indexed text is the upload filename; needs the generated visual description"
+	},
+	{
+		"id": "vision-ocr-refugee-document",
+		"mode": "hybrid",
+		"q": "refugee travel documents contracting states convention",
+		"expectedBlockIds": ["block:13214360"],
+		"pending": "the words are set in the image itself; needs OCR"
+	},
+	{
+		"id": "vision-poster-sans-theme",
+		"mode": "hybrid",
+		"q": "Sans Theme fashion exhibition poster Philadelphia",
+		"expectedBlockIds": ["block:21165584"],
+		"pending": "poster copy is only in the image; needs OCR"
+	},
+	{
+		"id": "vision-planner-ui",
+		"mode": "hybrid",
+		"q": "task planner app day columns over orange gradient wallpaper",
+		"expectedBlockIds": ["block:23363409"],
+		"pending": "indexed text is \"image.png\" plus channel titles; needs the generated visual description"
+	},
+	{
+		"id": "vision-time-machine",
+		"mode": "hybrid",
+		"q": "macOS Time Machine restore receding stack of Finder windows",
+		"expectedBlockIds": ["block:32633860"],
+		"pending": "indexed text is the upload filename; needs the generated visual description"
 	}
 ]
