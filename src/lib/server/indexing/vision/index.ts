@@ -38,7 +38,15 @@ export interface VisionStageResult {
 }
 
 const noop = () => {};
-const DEFAULT_CONCURRENCY = 8;
+
+/**
+ * Measured against the real workload rather than guessed: a single description takes 20-160s
+ * (mean ~60s) because the model emits several hundred completion tokens, and per-slot throughput
+ * stays roughly flat as slots are added — so wall time scales close to linearly with this number.
+ * At 8 the full backfill projected to ~16 hours; at 32 it ran in a few. Providers rate-limit well
+ * before this hurts, and the client retries 429s with backoff.
+ */
+const DEFAULT_CONCURRENCY = 32;
 
 function cacheKey(block: ArchiveBlock, client: VisionClient): VisionCacheKey {
 	return {
@@ -176,7 +184,11 @@ export async function describeBlocks(
 			log(`  failed ${block.id}: ${message}`);
 		} finally {
 			completed += 1;
-			if (completed % 25 === 0) log(`  ${completed}/${pending.length} described`);
+			// Also log the final block: without it the tail after the last multiple of 25 runs
+			// silently, which reads as a hang when each call can take minutes.
+			if (completed % 25 === 0 || completed === pending.length) {
+				log(`  ${completed}/${pending.length} described`);
+			}
 		}
 	});
 
