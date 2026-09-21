@@ -218,3 +218,51 @@ describe('applyWriteBack', () => {
 		expect(summary.blocksUpdated).toBe(1);
 	});
 });
+
+describe('applyWriteBack — a credential that cannot write', () => {
+	const skipped = { notOwned: 0, noVisionResult: 0, nothingToChange: 0 };
+
+	function manyPlans(count: number) {
+		const blocks = Array.from({ length: count }, (_, i) => block({ id: String(i + 1) }));
+		const cacheFor = new Map(blocks.map((b) => [b.id, entry(b.id)]));
+		return planWriteBack(blocks, cacheFor, { ownerId: OWNER, now }).plans;
+	}
+
+	it('stops after five leading failures instead of hammering every block', async () => {
+		const updateBlock = vi.fn(async () => {
+			throw new Error('Are.na request failed with status 401 updating block');
+		});
+
+		await expect(
+			applyWriteBack(manyPlans(200), skipped, { updateBlock, delayFn: async () => {} })
+		).rejects.toThrow(/Aborting Are.na write-back: the first 5 writes all failed/);
+
+		expect(updateBlock).toHaveBeenCalledTimes(5);
+	});
+
+	it('names the likely cause rather than only the status code', async () => {
+		const updateBlock = vi.fn(async () => {
+			throw new Error('status 401');
+		});
+
+		await expect(
+			applyWriteBack(manyPlans(10), skipped, { updateBlock, delayFn: async () => {} })
+		).rejects.toThrow(/ARENA_ACCESS_TOKEN is read-only/);
+	});
+
+	it('does not abort once something has succeeded', async () => {
+		let calls = 0;
+		const updateBlock = vi.fn(async () => {
+			calls += 1;
+			if (calls > 1) throw new Error('transient');
+		});
+
+		const summary = await applyWriteBack(manyPlans(8), skipped, {
+			updateBlock,
+			delayFn: async () => {}
+		});
+
+		expect(summary.blocksUpdated).toBe(1);
+		expect(summary.failed).toHaveLength(7);
+	});
+});

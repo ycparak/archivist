@@ -136,6 +136,12 @@ export interface ApplyWriteBackOptions {
 const noop = () => {};
 const DEFAULT_WRITE_DELAY_MS = 300;
 
+/**
+ * If the first writes all fail the same way, the cause is the credential or the endpoint, not the
+ * blocks — so stop rather than spending hundreds of requests proving it.
+ */
+const MAX_LEADING_FAILURES = 5;
+
 export async function applyWriteBack(
 	plans: WriteBackPlan[],
 	skipped: WriteBackSkips,
@@ -160,10 +166,15 @@ export async function applyWriteBack(
 			await updateBlock(Number(plan.blockId), plan.update);
 			summary.blocksUpdated += 1;
 		} catch (error) {
-			summary.failed.push({
-				blockId: plan.blockId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			const message = error instanceof Error ? error.message : String(error);
+			summary.failed.push({ blockId: plan.blockId, error: message });
+
+			if (summary.blocksUpdated === 0 && summary.failed.length >= MAX_LEADING_FAILURES) {
+				throw new Error(
+					`Aborting Are.na write-back: the first ${summary.failed.length} writes all failed (most recently block ${plan.blockId}: ${message}). This usually means ARENA_ACCESS_TOKEN is read-only — writing titles and descriptions needs write scope — not that these blocks are individually broken.`,
+					{ cause: error }
+				);
+			}
 		}
 
 		if ((index + 1) % 25 === 0 || index === selected.length - 1) {
