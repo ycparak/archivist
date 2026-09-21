@@ -66,11 +66,30 @@ The 134 animated GIFs are served from `d2w9rnfcy7mm78.cloudfront.net` with no ed
 `renditionUrl` returns them untouched and the model sees the first frame. Motion understanding is
 phase 2.
 
-**They need a size guard.** An earlier draft of this spec assumed GIFs were ~1 MB and safely under
-every provider's ceiling. Measured against the archive, they are not: `block:36923691` is 5,069 KB
-and a second sampled GIF is 5,927 KB, both over the 5 MB image limit several providers enforce.
-Task 3 must check `content-length` before sending and downscale or skip past the ceiling — a
-rendition rewrite is not available for this host.
+**They need a size guard, and 43 of them cannot be processed in phase 1.** An earlier draft assumed
+GIFs were ~1 MB and safely under every provider's ceiling. Measuring all 134 non-resizable images:
+
+|           |               |
+| --------- | ------------- |
+| median    | 2.70 MB       |
+| p90       | 11.23 MB      |
+| max       | 24.15 MB      |
+| over 5 MB | **43 of 134** |
+| total     | 615 MB        |
+
+Are.na publishes no smaller rendition for these: `thumb`, `square`, `small`, `medium` and `large`
+are all the same CloudFront URL, confirmed against the API for two GIF blocks. Downscaling would
+mean decoding and re-encoding locally, which means a native image dependency —
+[`AGENTS.md`](../../AGENTS.md) asks that a dependency remove meaningful production code, and this
+one would add it for 43 blocks.
+
+So phase 1 **skips** any non-resizable image over `MAX_IMAGE_BYTES` (5 MB, the common provider
+ceiling) and reports it, leaving 2,542 of 2,585 blocks processed. The right fix is phase 2's video
+input: these are animated GIFs, and sending them as video is both more accurate and the path that
+already has a task.
+
+The guard needs no network round-trip — `image.file_size` comes back on the block payload, and is
+now carried through `ArchiveBlock.imageBytes`.
 
 Implemented in [`rendition.ts`](../../src/lib/server/indexing/vision/rendition.ts) and verified
 against live Are.na: 10 of 10 sampled blocks returned HTTP 200 at width 768, with resizable images
