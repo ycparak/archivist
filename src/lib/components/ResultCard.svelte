@@ -37,7 +37,7 @@
 		<p class="card-description">{result.description}</p>
 	{/if}
 
-	<p class="meta card-meta">
+	<p class="card-meta meta">
 		<span>{result.blockType}</span>
 		{#if result.sourceTitle}
 			<span aria-hidden="true">·</span>
@@ -104,7 +104,7 @@
 	.card-title {
 		margin: 0;
 		overflow-wrap: anywhere;
-		font-size: var(--text-size-md);
+		font-size: var(--text-md);
 		line-height: var(--leading-interface);
 		text-decoration: underline;
 		text-decoration-color: var(--color-border-emphasis);
@@ -126,7 +126,7 @@
 		margin: 0;
 		overflow: hidden;
 		color: var(--color-text-secondary);
-		font-size: var(--text-size-sm);
+		font-size: var(--text-sm);
 	}
 
 	.card-meta {
@@ -150,7 +150,7 @@
 		overflow-wrap: anywhere;
 		color: var(--color-text-tertiary);
 		font-family: var(--font-mono);
-		font-size: var(--text-size-meta);
+		font-size: var(--text-meta);
 		text-decoration: none;
 	}
 

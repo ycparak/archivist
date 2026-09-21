@@ -82,7 +82,7 @@
 		color: var(--color-text-secondary);
 		background: var(--color-control);
 		border-radius: var(--radius-pill);
-		font-size: var(--text-size-meta);
+		font-size: var(--text-meta);
 		line-height: var(--leading-interface);
 		text-decoration: none;
 	}
@@ -98,6 +98,6 @@
 
 	.clear {
 		color: var(--color-text-tertiary);
-		font-size: var(--text-size-meta);
+		font-size: var(--text-meta);
 	}
 </style>
