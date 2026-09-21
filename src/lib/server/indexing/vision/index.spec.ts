@@ -218,22 +218,55 @@ describe('describeBlocks', () => {
 		expect(summary).toMatchObject({ generated: 1, skippedOverLimit: 2 });
 	});
 
-	it('never exceeds the configured concurrency', async () => {
+	/** Asserting only an upper bound would pass even if the pool ran everything one at a time. */
+	it('runs exactly the configured number of descriptions at once', async () => {
 		let active = 0;
 		let peak = 0;
 		const client = stubClient(async () => {
 			active += 1;
 			peak = Math.max(peak, active);
-			await new Promise((resolve) => setTimeout(resolve, 1));
+			await new Promise((resolve) => setTimeout(resolve, 5));
 			active -= 1;
 			return { kind: 'described', result: RESULT, provider: 'test' };
 		});
 
 		await describeBlocks(
-			Array.from({ length: 12 }, (_, index) => block({ id: String(index) })),
-			{ client, cache: new Map(), concurrency: 3, now }
+			Array.from({ length: 40 }, (_, index) => block({ id: String(index) })),
+			{ client, cache: new Map(), concurrency: 8, now }
 		);
 
-		expect(peak).toBeLessThanOrEqual(3);
+		expect(peak).toBe(8);
+	});
+
+	it('never starts more workers than there is work', async () => {
+		let peak = 0;
+		let active = 0;
+		const client = stubClient(async () => {
+			active += 1;
+			peak = Math.max(peak, active);
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			active -= 1;
+			return { kind: 'described', result: RESULT, provider: 'test' };
+		});
+
+		await describeBlocks([block({ id: '1' }), block({ id: '2' })], {
+			client,
+			cache: new Map(),
+			concurrency: 32,
+			now
+		});
+
+		expect(peak).toBe(2);
+	});
+
+	it('reports the final block, so the tail does not look like a hang', async () => {
+		const lines: string[] = [];
+		await describeBlocks(
+			Array.from({ length: 27 }, (_, index) => block({ id: String(index) })),
+			{ client: stubClient(), cache: new Map(), concurrency: 4, now, log: (m) => lines.push(m) }
+		);
+
+		expect(lines).toContain('  25/27 described');
+		expect(lines).toContain('  27/27 described');
 	});
 });
