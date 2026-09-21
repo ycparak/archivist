@@ -201,11 +201,12 @@ try {
 	}
 	if (summary.writeBack) {
 		const w = summary.writeBack;
-		const planned = w.titlesAdded + w.titlesReplaced + w.descriptionsAdded;
 		if (pushArena?.apply) {
-			console.log(`  Are.na written:      ${w.blocksUpdated} of ${planned} planned block(s)`);
+			console.log(
+				`  Are.na written:      ${w.blocksUpdated} of ${w.blocksPlanned} planned block(s)`
+			);
 		} else {
-			console.log(`  Are.na would write:  ${planned} block(s) — nothing written`);
+			console.log(`  Are.na would write:  ${w.blocksPlanned} block(s) — nothing written`);
 		}
 		console.log(`    titles replaced:   ${w.titlesReplaced}`);
 		console.log(`    titles added:      ${w.titlesAdded}`);
