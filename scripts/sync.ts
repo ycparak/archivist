@@ -3,6 +3,7 @@ import {
 	buildChannelManifest,
 	serializeChannelManifest
 } from '$lib/server/indexing/channel-manifest';
+import { parseSlugList } from '$lib/server/indexing/channel-filter';
 import { syncArchive } from '$lib/server/indexing/sync';
 import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 
@@ -26,7 +27,11 @@ try {
 	const { channels, summary } = await syncArchive({
 		accessToken,
 		turbopuffer: { apiKey, region, namespace },
-		log: console.log
+		log: console.log,
+		channelFilter: {
+			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
+			allowPrivate: parseSlugList(process.env.ARENA_ALLOW_PRIVATE_CHANNELS)
+		}
 	});
 
 	const manifest = buildChannelManifest(channels);
@@ -37,6 +42,8 @@ try {
 	console.log('');
 	console.log('Sync summary:');
 	console.log(`  Channels discovered: ${summary.channelsDiscovered}`);
+	console.log(`  Channels ignored:    ${summary.channelsIgnored}`);
+	console.log(`  Private skipped:     ${summary.channelsPrivateSkipped}`);
 	console.log(`  Channels synced:     ${summary.channelsSynced}`);
 	if (summary.channelsFailed.length > 0) {
 		console.log(`  Channels failed:     ${summary.channelsFailed.length}`);

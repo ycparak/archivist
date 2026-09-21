@@ -2,6 +2,7 @@
 
 @import 'tailwindcss/preflight.css' layer(base);
 @import 'tailwindcss/utilities.css' layer(utilities);
+@import '../styles/fonts.css';
 @import '../styles/tokens.css';
 @import '../styles/globals.css';
 @import '../styles/primitives.css';

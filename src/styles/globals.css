@@ -3,52 +3,80 @@
 		font-family: var(--font-sans);
 		font-synthesis: none;
 		text-rendering: optimizeLegibility;
+		text-size-adjust: 100%;
+		-webkit-text-size-adjust: 100%;
+	}
+
+	html,
+	body {
+		min-block-size: 100%;
+		overflow-x: hidden;
 	}
 
 	body {
 		background: var(--color-background);
-		color: var(--color-text);
-		font-size: var(--text-md);
+		color: var(--color-text-secondary);
+		font-size: var(--text-base);
 		font-weight: var(--font-weight-regular);
-		line-height: var(--leading-copy);
-		letter-spacing: var(--tracking-copy);
+		line-height: var(--text-base--line-height);
 		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	}
+
+	/* Trim the empty space above cap height and below the baseline so boxes measure the ink. */
+	:where(
+		h1,
+		h2,
+		h3,
+		h4,
+		h5,
+		h6,
+		p,
+		li,
+		dt,
+		dd,
+		blockquote,
+		figcaption,
+		label,
+		legend,
+		button,
+		input,
+		textarea,
+		select,
+		th,
+		td
+	) {
+		text-box: trim-both cap alphabetic;
 	}
 
 	a {
 		color: inherit;
 		text-underline-offset: 0.15em;
-		transition: color var(--duration-fast) var(--ease-standard);
+		transition: color var(--duration-standard) var(--ease-standard);
 	}
 
 	a:hover {
-		color: var(--color-accent);
+		color: var(--color-accent-strong);
 	}
 
 	h1,
 	h2,
 	h3,
 	h4 {
+		color: var(--color-text);
+		font-size: inherit;
 		font-weight: var(--font-weight-regular);
-		letter-spacing: var(--tracking-heading);
-		line-height: var(--leading-tight);
 	}
 
-	h1 {
-		font-size: var(--text-3xl);
+	strong,
+	b {
+		color: var(--color-text);
+		font-weight: var(--font-weight-medium);
 	}
 
-	h2 {
-		font-size: var(--text-2xl);
-	}
-
-	h3 {
-		font-size: var(--text-xl);
-	}
-
-	p,
-	li {
-		line-height: var(--leading-copy);
+	em,
+	i {
+		font-style: oblique 12deg;
 	}
 
 	code,
@@ -56,29 +84,41 @@
 	pre,
 	samp {
 		font-family: var(--font-mono);
-		font-size: 0.9em;
+		font-variation-settings: 'MONO' 100;
+		letter-spacing: var(--tracking-mono);
 	}
 
 	hr {
 		margin: 0;
 		border: 0;
-		border-top: var(--border-width) solid var(--color-border-subtle);
+		border-top: var(--border-width) solid var(--color-border-emphasis);
 	}
 
 	::selection {
 		background: var(--color-selection);
+		color: var(--color-selection-text);
 	}
 
 	:where(button, input, textarea, select, a, summary):focus-visible {
-		outline: 0.125rem solid var(--color-accent-strong);
+		outline: 0.125rem solid var(--color-accent);
 		outline-offset: 0.125rem;
+	}
+
+	:where(button:not(:disabled), [role='button']:not(:disabled)) {
+		cursor: pointer;
 	}
 
 	:where(input, textarea, select) {
 		color: var(--color-text);
-		background: var(--color-control);
-		border: 0;
-		border-radius: var(--radius-md);
+		background: var(--color-surface);
+		border: var(--border-width) solid var(--color-border);
+		border-radius: 0;
+		font: inherit;
+		letter-spacing: inherit;
+	}
+
+	:where(select) {
+		background-color: var(--color-control);
 	}
 
 	:where(input, textarea, select)::placeholder {
@@ -86,26 +126,29 @@
 		opacity: 1;
 	}
 
-	:where(input, textarea, select):hover:not(:disabled),
-	:where(input, textarea, select):focus {
-		background: var(--color-control-hover);
+	:where(input, textarea, select):hover:not(:disabled) {
+		background-color: var(--color-surface-hover);
+		border-color: var(--color-border-emphasis);
 	}
 
 	:where(input, textarea, select):focus {
+		background-color: var(--color-surface-hover);
+		border-color: var(--color-accent);
 		box-shadow: var(--focus-ring);
 	}
 
 	:where(button) {
 		border: 0;
-		border-radius: var(--radius-md);
+		border-radius: 0;
+		font: inherit;
 	}
 
 	:where(button, input, select) {
-		min-height: var(--control-md);
+		min-height: var(--control-sm);
 	}
 
 	:where(button, input, textarea, select):disabled,
 	:where([aria-disabled='true']) {
-		opacity: 0.5;
+		color: var(--color-text-disabled);
 	}
 }

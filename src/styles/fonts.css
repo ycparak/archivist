@@ -1,0 +1,17 @@
+@font-face {
+	font-family: 'ABC Areal';
+	src: url('/fonts/ABCArealSuperfamilyVariable.woff2') format('woff2');
+	font-weight: 400 700;
+	font-style: oblique 0deg 12deg;
+	font-display: swap;
+	font-feature-settings: 'ss09';
+	font-variation-settings: 'DRKM' 0;
+}
+
+@font-face {
+	font-family: 'Neureal Mono';
+	src: url('/fonts/Neureal.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}

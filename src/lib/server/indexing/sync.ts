@@ -10,6 +10,7 @@ import {
 	upsertSearchDocuments,
 	type TurbopufferConfig
 } from '$lib/server/search/turbopuffer-client';
+import { EMPTY_CHANNEL_FILTER, exclusionReason, type ChannelFilter } from './channel-filter';
 import type { ChannelManifestEntry } from './channel-manifest';
 import { toArchiveBlock } from './normalize';
 
@@ -22,6 +23,7 @@ export interface SyncOptions {
 	channelDelayMs?: number;
 	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
 	maxLeadingChannelFailures?: number;
+	channelFilter?: ChannelFilter;
 }
 
 export interface ChannelSyncFailure {
@@ -31,6 +33,8 @@ export interface ChannelSyncFailure {
 
 export interface SyncSummary {
 	channelsDiscovered: number;
+	channelsIgnored: number;
+	channelsPrivateSkipped: number;
 	channelsSynced: number;
 	channelsFailed: ChannelSyncFailure[];
 	blocksFetched: number;
@@ -83,12 +87,15 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		log = noop,
 		channelDelayMs = DEFAULT_CHANNEL_DELAY_MS,
 		delayFn = delay,
-		maxLeadingChannelFailures = DEFAULT_MAX_LEADING_CHANNEL_FAILURES
+		maxLeadingChannelFailures = DEFAULT_MAX_LEADING_CHANNEL_FAILURES,
+		channelFilter = EMPTY_CHANNEL_FILTER
 	} = options;
 	const client = new ArenaClient({ accessToken, fetchFn });
 
 	const summary: SyncSummary = {
 		channelsDiscovered: 0,
+		channelsIgnored: 0,
+		channelsPrivateSkipped: 0,
 		channelsSynced: 0,
 		channelsFailed: [],
 		blocksFetched: 0,
@@ -104,10 +111,17 @@ export async function syncArchive(options: SyncOptions): Promise<{
 
 	const channels: ChannelManifestEntry[] = [];
 	for await (const page of paginateOwnedChannels(client, me.id, { signal })) {
-		channels.push(...page.data.map(({ slug, title }) => ({ slug, title })));
+		for (const channel of page.data) {
+			summary.channelsDiscovered += 1;
+			const reason = exclusionReason(channel, channelFilter);
+			if (reason === 'ignored') summary.channelsIgnored += 1;
+			else if (reason === 'private') summary.channelsPrivateSkipped += 1;
+			else channels.push({ slug: channel.slug, title: channel.title });
+		}
 	}
-	summary.channelsDiscovered = channels.length;
-	log(`Discovered ${channels.length} owned channel(s)`);
+	log(
+		`Discovered ${summary.channelsDiscovered} owned channel(s); syncing ${channels.length} (${summary.channelsIgnored} ignored, ${summary.channelsPrivateSkipped} private skipped)`
+	);
 
 	const blocksById = new Map<string, ArchiveBlock>();
 	let leadingFailureCount = 0;
