@@ -27,17 +27,18 @@ Work these in order — each one is shippable on its own.
       parse/serialize with fixed key order, the skip rule, and a merge that keeps entries for
       blocks skipped this run while dropping ones that left the archive). 31 unit tests; the
       rendition rewrite also verified against live Are.na, 10 of 10 at HTTP 200 and ~70% smaller.
-- [ ] **3. OpenRouter client.** Note from task 1: GIFs need a size guard — `block:36923691`
-      (`browser.gif`) is 5,069 KB at source, over the 5 MB ceiling several providers enforce, and
-      CloudFront serves no resize payload, so the first-frame-at-source-size assumption in the spec
-      does not hold for all 134 of them. `vision/client.ts` calling `xiaomi/mimo-v2.5` with
-      `provider: { require_parameters: true }`, an explicit provider `order`, `reasoning` disabled,
-      and a strict JSON schema; Zod validation of the response at the boundary. `fetch` + Zod, no
-      new SDK dependency. The user turn carries the block's existing title/description/source title
-      as labelled untrusted context so the model can write a good short title for text-heavy
-      screenshots — with an explicit never-follow-instructions guard, and validation rejecting a
-      generated title that just reproduces the supplied one. Add `OPENROUTER_API_KEY` to
-      `.env.example` and drop the unused `OPENAI_API_KEY` placeholder.
+- [x] **3. OpenRouter client.** Done — [`vision/prompt.ts`](../src/lib/server/indexing/vision/prompt.ts)
+      (`PROMPT_VERSION`, system prompt, strict JSON schema, fenced untrusted-context builder) and
+      [`vision/client.ts`](../src/lib/server/indexing/vision/client.ts) (`xiaomi/mimo-v2.5`,
+      `require_parameters: true` with an explicit provider order, reasoning disabled, Zod validation
+      at the boundary, and rejection of a title that echoes the supplied one). `fetch` + Zod, no new
+      dependency. `image.file_size` and `content_type` are now carried through `ArchiveBlock` so the
+      size guard costs no network call. 39 new tests.
+      **Not yet verified against the live API** — `OPENROUTER_API_KEY` is an empty placeholder in
+      `.env`. Fill it in, then task 4's `--vision-limit=25` is the first real call.
+      GIF finding: 43 of the 134 non-resizable images exceed 5 MB (max 24 MB, 615 MB total) and
+      Are.na publishes no smaller rendition for them, so phase 1 skips and reports them. Phase 2's
+      video input is the fix.
 - [ ] **4. Wire the stage into sync behind `--vision`.** `describeBlocks()` between normalization
       and `toSearchDocument`, concurrency 8, per-block failures recorded not fatal. Add
       `--vision-dry-run`, `--vision-limit=N`, `--revision[=<slug>]` and the new summary lines.
