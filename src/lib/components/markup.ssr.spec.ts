@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
-import ActiveFilters from './ActiveFilters.svelte';
 import ResultCard from './ResultCard.svelte';
 import SearchForm from './SearchForm.svelte';
 import {
@@ -218,7 +217,7 @@ describe('SearchForm markup', () => {
 
 describe('ResultCard markup', () => {
 	it('links the block to Are.na and leaves its image alt empty inside that named link', () => {
-		const { body } = render(ResultCard, { props: { result: result(), state: state() } });
+		const { body } = render(ResultCard, { props: { result: result() } });
 
 		expect(body).toContain('href="https://www.are.na/block/1"');
 		expect(body).toContain('Industrial felt');
@@ -227,7 +226,7 @@ describe('ResultCard markup', () => {
 
 	it("uses Are.na's own alt text when the block image has it", () => {
 		const { body } = render(ResultCard, {
-			props: { result: result({ imageAlt: 'A felt swatch' }), state: state() }
+			props: { result: result({ imageAlt: 'A felt swatch' }) }
 		});
 
 		expect(body).toContain('alt="A felt swatch"');
@@ -235,32 +234,30 @@ describe('ResultCard markup', () => {
 
 	it('sets intrinsic width/height attributes and drops the fixed placeholder box when Are.na supplies dimensions', () => {
 		const { body } = render(ResultCard, {
-			props: { result: result({ imageWidth: 800, imageHeight: 600 }), state: state() }
+			props: { result: result({ imageWidth: 800, imageHeight: 600 }) }
 		});
 
 		expect(body).toContain('width="800"');
 		expect(body).toContain('height="600"');
-		expect(body).not.toContain('card-media--fixed');
+		expect(body).not.toContain('aspect-4/3');
 	});
 
 	it('falls back to the fixed placeholder box when Are.na supplies no dimensions', () => {
-		const { body } = render(ResultCard, { props: { result: result(), state: state() } });
+		const { body } = render(ResultCard, { props: { result: result() } });
 
-		expect(body).toContain('card-media--fixed');
+		expect(body).toContain('aspect-4/3');
 	});
 
 	it('lazy-loads by default and eagerly for the first cards', () => {
-		expect(render(ResultCard, { props: { result: result(), state: state() } }).body).toContain(
-			'loading="lazy"'
+		expect(render(ResultCard, { props: { result: result() } }).body).toContain('loading="lazy"');
+		expect(render(ResultCard, { props: { result: result(), eager: true } }).body).toContain(
+			'loading="eager"'
 		);
-		expect(
-			render(ResultCard, { props: { result: result(), state: state(), eager: true } }).body
-		).toContain('loading="eager"');
 	});
 
 	it('renders a block without an image as text rather than an empty frame', () => {
 		const { body } = render(ResultCard, {
-			props: { result: result({ imageUrl: null, blockType: 'Text' }), state: state() }
+			props: { result: result({ imageUrl: null, blockType: 'Text' }) }
 		});
 
 		expect(body).not.toContain('<img');
@@ -269,67 +266,29 @@ describe('ResultCard markup', () => {
 
 	it('labels an untitled block by its type without inventing archive metadata', () => {
 		const { body } = render(ResultCard, {
-			props: { result: result({ title: null, blockType: 'Image' }), state: state() }
+			props: { result: result({ title: null, blockType: 'Image' }) }
 		});
 
 		expect(body).toContain('Untitled image');
 	});
 
-	it('turns each channel into a link that adds that channel filter', () => {
+	it('shows only the block title and a link to Are.na, without channels or other metadata', () => {
 		const { body } = render(ResultCard, {
-			props: { result: result(), state: state({ query: 'felt', mode: 'lexical' }) }
-		});
-
-		const channelHref = hrefsIn(body).find((url) => url.searchParams.has('channel'));
-		expect(channelHref?.searchParams.getAll('channel')).toEqual(['materials']);
-		expect(channelHref?.searchParams.get('q')).toBe('felt');
-		expect(channelHref?.searchParams.get('mode')).toBe('lexical');
-	});
-
-	it('sends the block link to Are.na without letting the router claim it', () => {
-		const { body } = render(ResultCard, { props: { result: result(), state: state() } });
-
-		expect(body).toMatch(/<a[^>]*href="https:\/\/www\.are\.na\/block\/1"[^>]*rel="external"/);
-	});
-});
-
-describe('ActiveFilters markup', () => {
-	it('renders nothing when no filter is active', () => {
-		const { body } = render(ActiveFilters, { props: { state: state({ query: 'felt' }) } });
-
-		expect(body).not.toContain('<a');
-		expect(body.replace(/<!--.*?-->/g, '').trim()).toBe('');
-	});
-
-	it('offers each active filter as a link that removes only that filter', () => {
-		const { body } = render(ActiveFilters, {
 			props: {
-				state: state({
-					query: 'felt',
-					channelSlugs: ['materials'],
-					blockTypes: ['Image'],
-					from: '2024-01-02'
-				})
+				result: result({ description: null, sourceTitle: 'A book', channelSlugs: ['materials'] })
 			}
 		});
 
-		const removals = hrefsIn(body);
-		expect(removals).toHaveLength(4);
-		for (const url of removals) {
-			expect(url.searchParams.get('q')).toBe('felt');
-		}
-		expect(removals.some((url) => !url.searchParams.has('channel'))).toBe(true);
-		expect(removals.some((url) => !url.searchParams.has('type'))).toBe(true);
-		expect(removals.some((url) => !url.searchParams.has('from'))).toBe(true);
+		expect(body).not.toContain('materials');
+		expect(body).not.toContain('A book');
+		expect(hrefsIn(body)).toHaveLength(1);
 	});
 
-	it('labels a date filter as a readable range and keeps the remove affordance in text', () => {
-		const { body } = render(ActiveFilters, {
-			props: { state: state({ from: '2024-01-02', to: '2024-01-31' }) }
-		});
+	it('sends the block link to Are.na without letting the router claim it', () => {
+		const { body } = render(ResultCard, { props: { result: result() } });
 
-		expect(body).toContain('2 Jan 2024');
-		expect(body).toContain('31 Jan 2024');
-		expect(body).toContain('(remove filter)');
+		expect(body).toMatch(
+			/<a[^>]*href="https:\/\/www\.are\.na\/block\/1"[^>]*rel="external noopener noreferrer"/
+		);
 	});
 });

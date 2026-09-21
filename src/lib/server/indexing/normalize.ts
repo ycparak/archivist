@@ -13,10 +13,14 @@ interface TypeSpecificFields {
 	imageAlt: string | null;
 	imageWidth: number | null;
 	imageHeight: number | null;
+	imageBytes: number | null;
+	imageContentType: string | null;
 }
 
 interface BlockImageLike {
 	alt_text?: string | null;
+	file_size?: number | null;
+	content_type?: string | null;
 	large: { width?: number | null; height?: number | null };
 }
 
@@ -25,7 +29,9 @@ function imageFields(image: BlockImageLike | null | undefined) {
 	return {
 		imageAlt: image?.alt_text ?? null,
 		imageWidth: image?.large.width ?? null,
-		imageHeight: image?.large.height ?? null
+		imageHeight: image?.large.height ?? null,
+		imageBytes: image?.file_size ?? null,
+		imageContentType: image?.content_type ?? null
 	};
 }
 
@@ -72,8 +78,16 @@ function extractTypeSpecificFields(item: ArenaBlockItem): TypeSpecificFields {
 }
 
 export function toArchiveBlock(item: ArenaBlockItem, channel: ChannelContext): ArchiveBlock {
-	const { title, content, imageUrl, imageAlt, imageWidth, imageHeight } =
-		extractTypeSpecificFields(item);
+	const {
+		title,
+		content,
+		imageUrl,
+		imageAlt,
+		imageWidth,
+		imageHeight,
+		imageBytes,
+		imageContentType
+	} = extractTypeSpecificFields(item);
 
 	return {
 		id: String(item.id),
@@ -84,6 +98,9 @@ export function toArchiveBlock(item: ArenaBlockItem, channel: ChannelContext): A
 		imageAlt,
 		imageWidth,
 		imageHeight,
+		imageBytes,
+		imageContentType,
+		ownerId: item.user?.id ?? null,
 		description: item.description?.plain ?? null,
 		sourceTitle: item.source?.title ?? null,
 		sourceUrl: item.source?.url ?? null,

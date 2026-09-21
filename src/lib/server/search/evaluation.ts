@@ -10,7 +10,13 @@ export const searchEvaluationCaseSchema = z.object({
 	type: z.array(z.enum(ARCHIVE_BLOCK_TYPES)).min(1).optional(),
 	from: z.iso.date().optional(),
 	to: z.iso.date().optional(),
-	expectedBlockIds: z.array(z.string())
+	expectedBlockIds: z.array(z.string()),
+	/**
+	 * A target the archive cannot satisfy yet. Its failure does not fail the run, and its success
+	 * is reported as ready to promote — so a fixture can record what a pending change should
+	 * achieve without turning the evaluation gate red until then.
+	 */
+	pending: z.string().min(1).optional()
 });
 
 export const searchEvaluationCasesSchema = z.array(searchEvaluationCaseSchema).min(10);

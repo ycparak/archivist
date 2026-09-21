@@ -1,8 +1,20 @@
 import {
 	ARCHIVE_RESULT_LIMIT,
 	type ArchiveBlockType,
-	type ArchiveSearchState
+	type ArchiveSearchState,
+	type SearchResult,
+	type SearchTimings
 } from '$lib/domain/search';
+
+const FALLBACK_MEDIA_RATIO = 4 / 3;
+const MIN_MEDIA_RATIO = 0.5;
+const MAX_MEDIA_RATIO = 3;
+
+export function mediaRatio(result: Pick<SearchResult, 'imageWidth' | 'imageHeight'>): number {
+	const { imageWidth, imageHeight } = result;
+	if (!imageWidth || !imageHeight) return FALLBACK_MEDIA_RATIO;
+	return Math.min(MAX_MEDIA_RATIO, Math.max(MIN_MEDIA_RATIO, imageWidth / imageHeight));
+}
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -24,6 +36,12 @@ const UNTITLED_LABELS: Record<ArchiveBlockType, string> = {
 export function blockDisplayTitle(title: string | null, blockType: string): string {
 	if (title) return title;
 	return UNTITLED_LABELS[blockType as ArchiveBlockType] ?? 'Untitled block';
+}
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(2)}s`;
+
+export function formatSearchTimings({ totalMs, queryMs, rerankMs }: SearchTimings): string {
+	return `time: ${seconds(totalMs)} (query: ${seconds(queryMs)}, rerank: ${seconds(rerankMs)})`;
 }
 
 export type ResultsStatusInput = {

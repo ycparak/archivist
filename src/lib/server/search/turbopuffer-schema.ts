@@ -12,6 +12,7 @@ export const archiveNamespaceSchema = {
 	},
 	block_type: { type: 'string', filterable: true },
 	channel_slugs: { type: '[]string', filterable: true },
+	connection_count: { type: 'uint', filterable: true },
 	connected_at: { type: 'datetime', filterable: true },
 	created_at: { type: 'datetime', filterable: false },
 	title: { type: 'string', filterable: false },
@@ -22,5 +23,10 @@ export const archiveNamespaceSchema = {
 	image_alt: { type: 'string', filterable: false },
 	image_width: { type: 'uint', filterable: false },
 	image_height: { type: 'uint', filterable: false },
-	source_title: { type: 'string', filterable: false }
+	source_title: { type: 'string', filterable: false },
+	vision_title: { type: 'string', filterable: false },
+	vision_description: { type: 'string', filterable: false },
+	vision_ocr: { type: 'string', filterable: false },
+	/** Filterable for a future facet, but unproven — see the spec before exposing it. */
+	vision_medium: { type: 'string', filterable: true }
 } satisfies Record<string, Turbopuffer.AttributeSchema>;

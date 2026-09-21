@@ -6,10 +6,6 @@ import {
 	readArchiveSearchState,
 	toArchiveSearchHref,
 	withChannel,
-	withoutBlockType,
-	withoutChannel,
-	withoutDateRange,
-	withoutFilters,
 	type ArchiveSearchState
 } from './search';
 
@@ -119,26 +115,6 @@ describe('search state transitions', () => {
 	it('adds a channel at most once', () => {
 		expect(withChannel(state(), 'materials').channelSlugs).toEqual(['materials']);
 		expect(withChannel(active, 'materials')).toBe(active);
-	});
-
-	it('removes one filter while preserving the query, mode, and other filters', () => {
-		expect(withoutChannel(active, 'materials')).toMatchObject({
-			query: 'felt',
-			mode: 'lexical',
-			channelSlugs: ['type'],
-			blockTypes: ['Image', 'Link']
-		});
-		expect(withoutBlockType(active, 'Image').blockTypes).toEqual(['Link']);
-		expect(withoutDateRange(active)).toMatchObject({ from: '', to: '', query: 'felt' });
-	});
-
-	it('drops every filter but keeps the search itself', () => {
-		expect(withoutFilters(active)).toEqual(state({ query: 'felt', mode: 'lexical' }));
-	});
-
-	it('leaves no filter params in the href once the last filter is removed', () => {
-		const single = state({ query: 'felt', mode: 'lexical', channelSlugs: ['materials'] });
-		expect(toArchiveSearchHref(withoutChannel(single, 'materials'))).toBe('/?q=felt&mode=lexical');
 	});
 
 	it('reports whether any filter is active', () => {

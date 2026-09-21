@@ -4,6 +4,43 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- _(Planned, not yet shipped — tracked as the "Vision indexing — phase 1" group in
+  [`TODOS.md`](./TODOS.md). Remove this marker when the backfill lands.)_ Search now finds blocks by
+  what the image actually looks like, not just what Are.na says about it. A vision model describes
+  every block with an image — subject, composition, palette, typography, medium, and any text it can
+  read — and that description is indexed alongside the block's own metadata. This mostly helps image
+  blocks, which usually arrive titled with a filename (`cleanshot-2025-02-28-at-17.36.56.png`) and
+  no description. `bun run sync` generates a description once per block and never again unless the
+  image changes or you pass `--revision`, so re-running it is free; `--vision-dry-run` reports what
+  a run would cost before spending anything. Where the maintainer owns the block, `--push-arena`
+  can write a short, specific title and a description back to Are.na (`--push-arena` to preview,
+  `--push-arena-apply` to write), replacing the ones that carry no information: upload filenames, hashes and bare URLs, and the platform boilerplate you get from
+  a shared post (`Seth Thompson on X: "Searching my library is now fast enough…" / X`), where the
+  title is a 250-character copy of the description. Titles that already say something are left
+  alone, however long they are, and a description you have written is never overwritten.
+- `bun run sync` now deletes documents that are no longer in your Are.na archive, including blocks from channels you ignore or make private. Pruning is skipped if any channel failed to sync, and when it would delete more than half the index; pass `--allow-large-prune` to override that limit.
+- Removed the active-filter pills under the search bar (the Channel and Block type menus show a count instead), made checkboxes 16px, and moved component styling to Tailwind utilities. Filter-row text is now cap-height trimmed throughout, so labels, menus, selects and date fields share one baseline.
+- The gallery now loads more blocks as you scroll instead of stopping at 24, and with no search term it lists the most-connected blocks first (ties go to the newest). Ordering needs a re-sync (`bun run sync`) to index the new `connection_count` attribute; until then, browse returns "Search is unavailable". The rule above the sidebar and page headings sits 16px from the top of the page.
+- The result status at the right of the filter row now shows Turbopuffer timings (`time: 0.85s (query: 0.02s, rerank: 0.00s)`); the sentence it replaced is still announced to screen readers. The search bar is 32px, the Ranking label is visually hidden, filters share one centered row, and the sidebar and pane rules line up 12px above their headings.
+- Removed the `/about` page and its sidebar link, opened all links in a new tab, dropped focus
+  styling from form fields, moved the canvas to `gray-100`, rounded and whitened form fields,
+  widened the pane padding to 24px, kept the sidebar fixed while scrolling, and merged
+  `tokens.css` and `primitives.css` into `globals.css`.
+- Restyled the app with the design system from the maintainer's personal site: ABC Areal (with
+  Neureal Mono, copied to `static/fonts/`), a 13px interface size, an oklch gray ramp, blue
+  accents, and square 1px-bordered controls. Color tokens are now role-based (surfaces, text,
+  rules, controls, action/state) instead of the previous ad-hoc aliases.
+- New layout: a recessed sidebar beside a gray pane, with the search field and one row of filters
+  above a justified-row gallery where each image row shares a height. Result cards now show only
+  the block's image and title; the introduction paragraph, the type/source/date/channel metadata,
+  and the clickable channel links on cards are gone. Channels are filtered from the form's Channel
+  control (shown once `bun run sync` has written the channel manifest), and the result status now
+  sits at the right of the filter row. The `/about` page is linked from the sidebar.
+- `bun run sync` now skips private channels by default. Set `ARENA_ALLOW_PRIVATE_CHANNELS` to a
+  comma-separated list of channel slugs to index specific private channels, and
+  `ARENA_IGNORE_CHANNELS` to exclude any channel (the ignore list wins). Skipped channels are also
+  left out of the channel manifest. Blocks already indexed from a channel that is now skipped are
+  removed on the next sync.
 - Hybrid search results are now capped at the same server-owned limit as other modes after
   deduplication, so the result count and status message stay aligned.
 - Protected the gallery and search API with a shared edge request limit before they query the

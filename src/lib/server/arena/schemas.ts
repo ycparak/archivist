@@ -17,6 +17,8 @@ const blockImageSchema = z.object({
 	src: z.url(),
 	alt_text: z.string().nullable().optional(),
 	blurhash: z.string().nullable().optional(),
+	content_type: z.string().nullable().optional(),
+	file_size: z.number().nullable().optional(),
 	width: z.number().nullable().optional(),
 	height: z.number().nullable().optional(),
 	small: blockImageVersionSchema,
@@ -51,8 +53,12 @@ const embeddedConnectionSchema = z.object({
 	connected_at: z.coerce.date()
 });
 
+const blockUserSchema = z.object({ id: z.number() });
+
 const baseContentItemFieldsSchema = z.object({
 	id: z.number(),
+	/** Only the block's author may update it, so write-back needs this. */
+	user: blockUserSchema.nullable().optional(),
 	title: z.string().nullable().optional(),
 	description: markdownContentSchema.nullable().optional(),
 	source: blockSourceSchema.nullable().optional(),
@@ -137,7 +143,8 @@ export const arenaOwnedChannelSchema = z.object({
 	id: z.number(),
 	type: z.literal('Channel'),
 	slug: z.string(),
-	title: z.string()
+	title: z.string(),
+	visibility: z.enum(['public', 'closed', 'private'])
 });
 
 export type ArenaOwnedChannel = z.infer<typeof arenaOwnedChannelSchema>;

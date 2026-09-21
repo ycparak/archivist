@@ -40,8 +40,13 @@ function textBlock(id: number, connectedAt = '2023-01-15T10:30:00Z') {
 	};
 }
 
-function ownedChannel(id: number, slug: string, title: string) {
-	return { id, type: 'Channel', slug, title };
+function ownedChannel(
+	id: number,
+	slug: string,
+	title: string,
+	visibility: 'public' | 'closed' | 'private' = 'public'
+) {
+	return { id, type: 'Channel', slug, title, visibility };
 }
 
 function routedFetch(routes: Record<string, () => Response>) {
@@ -53,16 +58,31 @@ function routedFetch(routes: Record<string, () => Response>) {
 	});
 }
 
-function okTurbopufferFetch() {
-	return vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+function okTurbopufferFetch(existingIds: string[] = []) {
+	return vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
 		const body = JSON.parse(init.body as string);
+		if (url.endsWith('/query')) {
+			const after = body.filters?.[2] as string | undefined;
+			const rows = existingIds
+				.filter((id) => after === undefined || id > after)
+				.sort()
+				.slice(0, body.limit)
+				.map((id) => ({ id }));
+			return jsonResponse({ rows, billing: {}, performance: {} });
+		}
 		return jsonResponse({
 			status: 'OK',
 			message: 'ok',
-			rows_affected: body.upsert_rows?.length ?? 0,
+			rows_affected: body.upsert_rows?.length ?? body.deletes?.length ?? 0,
 			billing: {}
 		});
 	});
+}
+
+function writeBodies(fetchFn: ReturnType<typeof okTurbopufferFetch>) {
+	return fetchFn.mock.calls
+		.filter(([url]) => !(url as string).endsWith('/query'))
+		.map(([, init]) => JSON.parse((init as RequestInit).body as string));
 }
 
 function turbopufferConfig(fetchFn = okTurbopufferFetch()) {
@@ -75,6 +95,43 @@ function turbopufferConfig(fetchFn = okTurbopufferFetch()) {
 }
 
 describe('syncArchive', () => {
+	it('skips ignored and private channels, but syncs allow-listed private ones', async () => {
+		const fetchFn = routedFetch({
+			'/v3/me': () => meResponse(1, 'me'),
+			'/v3/users/1/contents': () =>
+				contentsResponse([
+					ownedChannel(10, 'public-a', 'Public A'),
+					ownedChannel(11, 'ignored-b', 'Ignored B'),
+					ownedChannel(12, 'private-c', 'Private C', 'private'),
+					ownedChannel(13, 'private-allowed', 'Private Allowed', 'private'),
+					ownedChannel(14, 'closed-e', 'Closed E', 'closed'),
+					ownedChannel(15, 'private-ignored', 'Private Ignored', 'private')
+				]),
+			'/v3/channels/public-a/contents': () => contentsResponse([textBlock(100)]),
+			'/v3/channels/private-allowed/contents': () => contentsResponse([textBlock(101)]),
+			'/v3/channels/closed-e/contents': () => contentsResponse([textBlock(102)])
+		});
+
+		const { channels, summary } = await syncArchive({
+			accessToken: 't',
+			fetchFn,
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig(),
+			channelFilter: {
+				ignore: new Set(['ignored-b', 'private-ignored']),
+				allowPrivate: new Set(['private-allowed', 'private-ignored'])
+			}
+		});
+
+		expect(channels.map((c) => c.slug)).toEqual(['public-a', 'private-allowed', 'closed-e']);
+		expect(summary).toMatchObject({
+			channelsDiscovered: 6,
+			channelsIgnored: 2,
+			channelsPrivateSkipped: 1,
+			channelsSynced: 3
+		});
+	});
+
 	it('discovers channels, syncs each one, and returns normalized, deduplicated blocks', async () => {
 		const fetchFn = routedFetch({
 			'/v3/me': () => meResponse(1, 'me'),
@@ -395,7 +452,7 @@ describe('syncArchive', () => {
 
 		expect(summary.documentsUpserted).toBe(1);
 		expect(summary.upsertBatches).toBe(1);
-		expect(turbopufferFetch).toHaveBeenCalledTimes(1);
+		expect(writeBodies(turbopufferFetch)).toHaveLength(1);
 
 		const [url, init] = turbopufferFetch.mock.calls[0] as [string, RequestInit];
 		expect(url).toBe('https://r.turbopuffer.com/v2/namespaces/archivist-test');
@@ -422,5 +479,238 @@ describe('syncArchive', () => {
 		expect(summary.documentsUpserted).toBe(0);
 		expect(summary.upsertBatches).toBe(0);
 		expect(turbopufferFetch).not.toHaveBeenCalled();
+	});
+
+	describe('pruning', () => {
+		const twoChannelsFetch = (failing = false) =>
+			routedFetch({
+				'/v3/me': () => meResponse(1, 'me'),
+				'/v3/users/1/contents': () =>
+					contentsResponse([
+						ownedChannel(10, 'channel-a', 'Channel A'),
+						ownedChannel(11, 'channel-b', 'Channel B')
+					]),
+				'/v3/channels/channel-a/contents': () => contentsResponse([textBlock(100), textBlock(101)]),
+				'/v3/channels/channel-b/contents': () =>
+					failing
+						? jsonResponse({ error: 'boom' }, { status: 500 })
+						: contentsResponse([textBlock(102)])
+			});
+
+		it('deletes indexed documents that were not fetched, after upserting', async () => {
+			const turbopufferFetch = okTurbopufferFetch([
+				'block:100',
+				'block:101',
+				'block:102',
+				'block:9'
+			]);
+
+			const { summary } = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(),
+				channelDelayMs: 0,
+				turbopuffer: turbopufferConfig(turbopufferFetch)
+			});
+
+			expect(summary.documentsDeleted).toBe(1);
+			expect(summary.pruneSkipped).toBeNull();
+			const writes = writeBodies(turbopufferFetch);
+			expect(writes[0].upsert_rows).toHaveLength(3);
+			expect(writes[1]).toEqual({ deletes: ['block:9'] });
+		});
+
+		it('deletes several stale documents in one batch', async () => {
+			const stale = Array.from({ length: 3 }, (_, i) => `block:stale-${i}`);
+			const turbopufferFetch = okTurbopufferFetch([
+				'block:100',
+				'block:101',
+				'block:102',
+				...stale
+			]);
+
+			const { summary } = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(),
+				channelDelayMs: 0,
+				maxPruneFraction: 1,
+				turbopuffer: turbopufferConfig(turbopufferFetch)
+			});
+
+			expect(summary.documentsDeleted).toBe(3);
+		});
+
+		it('does not prune when a channel failed to sync', async () => {
+			const turbopufferFetch = okTurbopufferFetch(['block:100', 'block:102']);
+
+			const { summary } = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(true),
+				channelDelayMs: 0,
+				turbopuffer: turbopufferConfig(turbopufferFetch)
+			});
+
+			expect(summary.channelsFailed).toHaveLength(1);
+			expect(summary.documentsDeleted).toBe(0);
+			expect(summary.pruneSkipped).toMatch(/failed/);
+			expect(turbopufferFetch.mock.calls.some(([url]) => (url as string).endsWith('/query'))).toBe(
+				false
+			);
+		});
+
+		it('skips pruning above the safety limit unless explicitly allowed', async () => {
+			const existing = ['block:100', 'block:101', 'block:102', 'block:7', 'block:8', 'block:9'];
+
+			const guarded = okTurbopufferFetch(existing);
+			const skipped = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(),
+				channelDelayMs: 0,
+				maxPruneFraction: 0.4,
+				turbopuffer: turbopufferConfig(guarded)
+			});
+			expect(skipped.summary.documentsDeleted).toBe(0);
+			expect(skipped.summary.pruneSkipped).toMatch(/3 of 6/);
+			expect(writeBodies(guarded)).toHaveLength(1);
+
+			const allowed = okTurbopufferFetch(existing);
+			const forced = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(),
+				channelDelayMs: 0,
+				maxPruneFraction: 0.4,
+				allowLargePrune: true,
+				turbopuffer: turbopufferConfig(allowed)
+			});
+			expect(forced.summary.documentsDeleted).toBe(3);
+		});
+
+		it('does nothing when the namespace already matches', async () => {
+			const turbopufferFetch = okTurbopufferFetch(['block:100', 'block:101', 'block:102']);
+
+			const { summary } = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(),
+				channelDelayMs: 0,
+				turbopuffer: turbopufferConfig(turbopufferFetch)
+			});
+
+			expect(summary.documentsDeleted).toBe(0);
+			expect(writeBodies(turbopufferFetch)).toHaveLength(1);
+		});
+	});
+});
+
+function imageBlock(id: number) {
+	return {
+		id,
+		type: 'Image',
+		title: `image-${id}.png`,
+		description: null,
+		created_at: '2023-01-15T10:30:00Z',
+		connection: { connected_at: '2023-01-15T10:30:00Z' },
+		image: {
+			src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif',
+			file_size: 1000,
+			content_type: 'image/gif',
+			small: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif' },
+			medium: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif' },
+			large: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif', width: 10, height: 10 },
+			square: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif' }
+		}
+	};
+}
+
+const VISION_RESULT = {
+	title: 'Generated title',
+	description: 'Generated description',
+	ocr: '',
+	palette: ['#000000'],
+	medium: 'screenshot' as const,
+	tags: ['tag']
+};
+
+function visionClient(
+	describe = vi.fn(async () => ({
+		kind: 'described' as const,
+		result: VISION_RESULT,
+		provider: 'test'
+	}))
+) {
+	return { model: 'test-model', promptVersion: 1, describe };
+}
+
+function visionFetch() {
+	return routedFetch({
+		'/v3/me': () => meResponse(7, 'maintainer'),
+		'/v3/users/7/contents': () => contentsResponse([ownedChannel(1, 'alpha', 'Alpha')]),
+		'/v3/channels/alpha/contents': () => contentsResponse([imageBlock(11), textBlock(12)])
+	});
+}
+
+describe('syncArchive — vision stage', () => {
+	it('leaves sync untouched when no vision options are passed', async () => {
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {}
+		});
+
+		expect(result.summary.vision).toBeNull();
+		expect(result.visionCache).toBeNull();
+	});
+
+	it('describes only blocks that have an image', async () => {
+		const client = visionClient();
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			vision: { client }
+		});
+
+		expect(client.describe).toHaveBeenCalledOnce();
+		expect(result.summary.vision).toMatchObject({ blocksWithImage: 1, generated: 1 });
+		expect(result.visionCache).toHaveLength(1);
+		expect(result.visionCache?.[0]).toMatchObject({ block_id: '11', title: 'Generated title' });
+	});
+
+	it('spends nothing and writes no cache on a dry run', async () => {
+		const client = visionClient();
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			vision: { client, dryRun: true }
+		});
+
+		expect(client.describe).not.toHaveBeenCalled();
+		expect(result.visionCache).toBeNull();
+		expect(result.summary.vision).toMatchObject({ blocksWithImage: 1, generated: 0 });
+	});
+
+	it('drops cache entries for blocks that have left the archive', async () => {
+		const stale = {
+			...VISION_RESULT,
+			block_id: '999',
+			image_src_hash: 'sha256:old',
+			prompt_version: 1,
+			model: 'test-model',
+			provider: 'test',
+			generated_at: '2026-01-01T00:00:00.000Z'
+		};
+
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			visionCache: new Map([['999', stale]]),
+			vision: { client: visionClient() }
+		});
+
+		expect(result.visionCache?.map((entry) => entry.block_id)).toEqual(['11']);
 	});
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import FilterMenu from './FilterMenu.svelte';
 	import {
 		ARCHIVE_BLOCK_TYPES,
 		ARCHIVE_SEARCH_PARAM,
@@ -12,10 +13,14 @@
 	let {
 		state,
 		channels,
+		status = '',
+		timings = '',
 		onnavigate
 	}: {
 		state: ArchiveSearchState;
 		channels: ChannelManifestEntry[];
+		status?: string;
+		timings?: string;
 		onnavigate: (href: ArchiveSearchHref) => void;
 	} = $props();
 
@@ -29,85 +34,133 @@
 		state.mode === 'lexical' || state.mode === 'semantic' ? state.mode : ''
 	);
 
-	// Preserve a channel filter the manifest doesn't (yet, or no longer) list — e.g. a shared URL
-	// from before the last sync — instead of silently dropping it on the next submit.
 	const orphanedChannelSlugs = $derived.by(() => {
 		const manifestSlugs = new Set(channels.map((channel) => channel.slug));
 		return state.channelSlugs.filter((slug) => !manifestSlugs.has(slug));
 	});
 
-	function handleSubmit(event: SubmitEvent & { currentTarget: HTMLFormElement }) {
-		const entries = [...new FormData(event.currentTarget)].filter(
+	const QUERY_DEBOUNCE_MS = 150;
+
+	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	let requestedHref: ArchiveSearchHref | undefined;
+
+	$effect(() => {
+		void state;
+		requestedHref = undefined;
+	});
+
+	function cancelPending() {
+		clearTimeout(debounceTimer);
+		debounceTimer = undefined;
+	}
+
+	function search(form: HTMLFormElement) {
+		cancelPending();
+		const entries = [...new FormData(form)].filter(
 			(entry): entry is [string, string] => typeof entry[1] === 'string'
 		);
-		event.preventDefault();
-		onnavigate(toArchiveSearchHref(readArchiveSearchStateFromEntries(entries)));
+		const href = toArchiveSearchHref(readArchiveSearchStateFromEntries(entries));
+		if (href === (requestedHref ?? toArchiveSearchHref(state))) return;
+		requestedHref = href;
+		onnavigate(href);
 	}
+
+	function handleSubmit(event: SubmitEvent & { currentTarget: HTMLFormElement }) {
+		event.preventDefault();
+		search(event.currentTarget);
+	}
+
+	function handleInput(event: Event & { currentTarget: HTMLFormElement }) {
+		if (!(event.target instanceof HTMLInputElement) || event.target.type !== 'search') return;
+		cancelPending();
+		const form = event.currentTarget;
+		debounceTimer = setTimeout(() => search(form), QUERY_DEBOUNCE_MS);
+	}
+
+	function handleKeydown(event: KeyboardEvent & { currentTarget: HTMLInputElement }) {
+		if (event.key !== 'Enter' || event.isComposing || !event.currentTarget.form) return;
+		event.preventDefault();
+		search(event.currentTarget.form);
+	}
+
+	function handleChange(event: Event & { currentTarget: HTMLFormElement }) {
+		if (event.target instanceof HTMLInputElement && event.target.type === 'search') return;
+		search(event.currentTarget);
+	}
+
+	$effect(() => cancelPending);
 </script>
 
-<form class="search-form" method="GET" action="/" role="search" onsubmit={handleSubmit}>
-	<div class="search-row">
-		<label class="visually-hidden" for="archive-query">Search the archive</label>
-		<input
-			id="archive-query"
-			name={ARCHIVE_SEARCH_PARAM.query}
-			type="search"
-			value={state.query}
-			placeholder="Search materials, ideas, images…"
-			autocomplete="off"
-		/>
-		<button type="submit">Search</button>
-	</div>
+<form
+	class="flex flex-col gap-2"
+	method="GET"
+	action="/"
+	role="search"
+	onsubmit={handleSubmit}
+	oninput={handleInput}
+	onchange={handleChange}
+>
+	<label class="visually-hidden" for="archive-query">Search the archive</label>
+	<input
+		id="archive-query"
+		class="h-(--control-lg) min-h-0 appearance-none px-3 [&::-webkit-search-cancel-button]:appearance-none"
+		name={ARCHIVE_SEARCH_PARAM.query}
+		type="search"
+		value={state.query}
+		placeholder="Search materials, ideas, images…"
+		autocomplete="off"
+		onkeydown={handleKeydown}
+	/>
 
-	{#if channels.length}
-		<fieldset class="control channel-control">
-			<legend>Channel</legend>
-			<div class="channels">
-				{#each channels as channel (channel.slug)}
-					<label class="checkbox">
-						<input
-							type="checkbox"
-							name={ARCHIVE_SEARCH_PARAM.channel}
-							value={channel.slug}
-							checked={state.channelSlugs.includes(channel.slug)}
-						/>
-						{channel.title}
-					</label>
-				{/each}
-			</div>
-		</fieldset>
-	{/if}
-
-	<div class="controls">
-		<div class="control">
-			<label for="archive-mode">Ranking</label>
-			<select id="archive-mode" name={ARCHIVE_SEARCH_PARAM.mode} value={selectedMode}>
+	<div class="flex flex-wrap items-center gap-x-2 gap-y-2">
+		<div class="flex h-(--control-sm) min-w-0 items-center gap-x-3">
+			<label class="visually-hidden" for="archive-mode">Ranking</label>
+			<select
+				class="h-(--control-sm) appearance-none chevron pl-3 text-text-tertiary"
+				id="archive-mode"
+				name={ARCHIVE_SEARCH_PARAM.mode}
+				value={selectedMode}
+			>
 				{#each rankingModes as option (option.value)}
 					<option value={option.value}>{option.label}</option>
 				{/each}
 			</select>
 		</div>
 
-		<fieldset class="control">
-			<legend>Block type</legend>
-			<div class="types">
-				{#each ARCHIVE_BLOCK_TYPES as blockType (blockType)}
-					<label class="checkbox">
+		{#if channels.length}
+			<FilterMenu label="Channel" count={state.channelSlugs.length}>
+				{#each channels as channel (channel.slug)}
+					<label class="flex items-center gap-1.5 text-text-secondary">
 						<input
 							type="checkbox"
-							name={ARCHIVE_SEARCH_PARAM.type}
-							value={blockType}
-							checked={state.blockTypes.includes(blockType)}
+							name={ARCHIVE_SEARCH_PARAM.channel}
+							value={channel.slug}
+							checked={state.channelSlugs.includes(channel.slug)}
 						/>
-						{blockType}
+						<span class="trim-text">{channel.title}</span>
 					</label>
 				{/each}
-			</div>
-		</fieldset>
+			</FilterMenu>
+		{/if}
 
-		<div class="control">
-			<label for="archive-from">Connected from</label>
+		<FilterMenu label="Block type" count={state.blockTypes.length}>
+			{#each ARCHIVE_BLOCK_TYPES as blockType (blockType)}
+				<label class="flex items-center gap-1.5 text-text-secondary">
+					<input
+						type="checkbox"
+						name={ARCHIVE_SEARCH_PARAM.type}
+						value={blockType}
+						checked={state.blockTypes.includes(blockType)}
+					/>
+					<span class="trim-text">{blockType}</span>
+				</label>
+			{/each}
+		</FilterMenu>
+
+		<div class="ml-8 flex h-(--control-sm) min-w-0 items-center gap-x-2">
+			<label class="text-text-secondary trim-text" for="archive-from">From</label>
 			<input
+				class="h-(--control-sm) px-3 text-text-tertiary"
 				id="archive-from"
 				name={ARCHIVE_SEARCH_PARAM.from}
 				type="date"
@@ -116,9 +169,10 @@
 			/>
 		</div>
 
-		<div class="control">
-			<label for="archive-to">Connected to</label>
+		<div class="flex h-(--control-sm) min-w-0 items-center gap-x-2">
+			<label class="text-text-secondary trim-text" for="archive-to">To</label>
 			<input
+				class="h-(--control-sm) px-3 text-text-tertiary"
 				id="archive-to"
 				name={ARCHIVE_SEARCH_PARAM.to}
 				type="date"
@@ -126,115 +180,12 @@
 				min={state.from || undefined}
 			/>
 		</div>
+
+		<p class="m-0 ml-auto meta" aria-hidden="true">{timings || status}</p>
+		<p class="visually-hidden" role="status" aria-live="polite">{status}</p>
 	</div>
 
 	{#each orphanedChannelSlugs as slug (slug)}
 		<input type="hidden" name={ARCHIVE_SEARCH_PARAM.channel} value={slug} />
 	{/each}
 </form>
-
-<style>
-	.search-form {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-8);
-	}
-
-	.search-row {
-		display: flex;
-		gap: var(--space-4);
-	}
-
-	.search-row input {
-		flex: 1;
-		min-inline-size: 0;
-		block-size: var(--control-lg);
-		padding-inline: var(--space-6);
-		font-size: var(--text-size-md);
-	}
-
-	.search-row button {
-		block-size: var(--control-lg);
-		padding-inline: var(--space-12);
-		color: var(--color-text-inverse);
-		background: var(--color-accent);
-		font-size: var(--text-size-sm);
-	}
-
-	.search-row button:hover {
-		background: var(--color-accent-hover);
-	}
-
-	.controls {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-6) var(--space-12);
-		align-items: end;
-	}
-
-	.control {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
-		min-inline-size: 0;
-		margin: 0;
-		padding: 0;
-		border: 0;
-	}
-
-	.control label,
-	.control legend {
-		padding: 0;
-		color: var(--color-text-secondary);
-		font-size: var(--text-size-sm);
-		line-height: var(--leading-interface);
-	}
-
-	.control select,
-	.control input[type='date'] {
-		block-size: var(--control-md);
-		padding-inline: var(--space-4);
-		font-size: var(--text-size-sm);
-	}
-
-	.types {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-2) var(--space-8);
-		align-items: center;
-		margin-block-start: var(--space-1);
-	}
-
-	.channel-control {
-		max-inline-size: 16rem;
-	}
-
-	.channels {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
-		max-block-size: 9rem;
-		margin-block-start: var(--space-1);
-		padding-inline-end: var(--space-4);
-		overflow-y: auto;
-	}
-
-	.checkbox {
-		display: flex;
-		gap: var(--space-3);
-		align-items: center;
-		color: var(--color-text-secondary);
-		font-size: var(--text-size-sm);
-	}
-
-	.checkbox input {
-		min-block-size: 0;
-		accent-color: var(--color-accent);
-	}
-
-	@media (max-width: 30rem) {
-		.search-row {
-			flex-direction: column;
-		}
-	}
-</style>

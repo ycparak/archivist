@@ -59,13 +59,15 @@ in `./docs/decisions/`.
 - Update [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) when completing user-visible work.
 - Load only docs relevant to the current task and scope.
 - If a behavior or rule changes in practice, update the owning doc in the same task.
+- Never run `bun run sync` (or any command that writes to the live Turbopuffer namespace or calls the maintainer's Are.na account, including `--vision` and `--push-arena-apply`). When a task needs a sync or re-index after the code changes, finish the code and tests, then hand back and ask the maintainer to run it, saying which command and why. Dry runs that write nothing are fine.
 - In autonomous/loop mode, complete exactly one task at a time and commit immediately. Do not batch unless the user explicitly asks.
 - When coding or reviewing, follow the Engineering Guardrails and Product/Search rules below and the guidelines in linked docs.
 
 ## Product Boundary
 
 - V1 is an open-source public gallery and search surface for one maintainer's Are.na archive.
-- Results are original Are.na blocks. Do not introduce generated collections, summaries, tags, OCR, link crawling, auth, accounts, analytics, background queues, or a chat UI in V1.
+- Results are original Are.na blocks. Do not introduce generated collections, summaries, tags, link crawling, auth, accounts, analytics, background queues, or a chat UI in V1.
+- Exception, decided: a vision model describes blocks that are already synced, and that text is indexed for retrieval. Scope and constraints are fixed by [docs/decisions/adr-vision-indexing.md](./docs/decisions/adr-vision-indexing.md) and [docs/specs/spec-vision-indexing.md](./docs/specs/spec-vision-indexing.md) — read both before touching `src/lib/server/indexing/vision/`. Query time stays LLM-free.
 - Sync is manual and maintainer-only. Public requests query Turbopuffer only; they must never proxy to Are.na.
 - V2 may use Mastra for an evidence-first research mode. Keep V1 retrieval framework-agnostic so it can become a Mastra tool later. Do not start V2 work until the human explicitly starts that milestone.
 

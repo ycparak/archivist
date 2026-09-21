@@ -23,8 +23,10 @@ function result(overrides: Partial<SearchResult> = {}): SearchResult {
 	};
 }
 
+const timings = { totalMs: 12, queryMs: 8, rerankMs: 2 };
+
 function repository(results: SearchResult[]): SearchRepository {
-	return { search: vi.fn().mockResolvedValue(results) };
+	return { search: vi.fn().mockResolvedValue({ results, timings }) };
 }
 
 const silent = () => {};
@@ -48,7 +50,9 @@ describe('executeArchiveSearch', () => {
 				from: '',
 				to: ''
 			},
-			results: [result()]
+			results: [result()],
+			hasMore: false,
+			timings
 		});
 	});
 
@@ -82,10 +86,41 @@ describe('executeArchiveSearch', () => {
 		);
 
 		expect(outcome.kind).toBe('ok');
+		expect(outcome.kind === 'ok' && outcome.hasMore).toBe(true);
 		expect(outcome.kind === 'ok' && outcome.results).toHaveLength(ARCHIVE_RESULT_LIMIT);
 		expect(outcome.kind === 'ok' && outcome.results.at(-1)?.id).toBe(
 			`block:${ARCHIVE_RESULT_LIMIT}`
 		);
+	});
+
+	it('serves a later page from the ranked list and says whether more remain', async () => {
+		const results = Array.from({ length: ARCHIVE_RESULT_LIMIT * 2 + 1 }, (_, index) =>
+			result({ id: `block:${index + 1}` })
+		);
+
+		const outcome = await executeArchiveSearch(
+			new URLSearchParams(`q=felt&offset=${ARCHIVE_RESULT_LIMIT}`),
+			() => repository(results),
+			undefined,
+			silent
+		);
+
+		expect(outcome.kind === 'ok' && outcome.results).toHaveLength(ARCHIVE_RESULT_LIMIT);
+		expect(outcome.kind === 'ok' && outcome.results[0].id).toBe(
+			`block:${ARCHIVE_RESULT_LIMIT + 1}`
+		);
+		expect(outcome.kind === 'ok' && outcome.hasMore).toBe(true);
+	});
+
+	it('rejects an offset beyond the server-owned ceiling as an invalid request', async () => {
+		const outcome = await executeArchiveSearch(
+			new URLSearchParams('q=felt&offset=999999'),
+			vi.fn(),
+			undefined,
+			silent
+		);
+
+		expect(outcome.kind).toBe('invalid');
 	});
 
 	it('reports an invalid request without building a repository or a correlation ID', async () => {
