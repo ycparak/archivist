@@ -15,6 +15,9 @@ export const archiveBlockSchema = z.object({
 	imageAlt: z.string().nullable().optional(),
 	imageWidth: z.number().int().positive().nullable().optional(),
 	imageHeight: z.number().int().positive().nullable().optional(),
+	/** Sync-time only: lets the vision stage apply its size guard without a HEAD request. */
+	imageBytes: z.number().int().nonnegative().nullable().optional(),
+	imageContentType: z.string().nullable().optional(),
 	createdAt: z.coerce.date().optional(),
 	connectedAt: z.coerce.date().optional(),
 	channels: z.array(
