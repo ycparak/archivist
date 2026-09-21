@@ -358,3 +358,59 @@ describe('describe — retries', () => {
 		expect(slept).toEqual([1000, 2000, 4000]);
 	});
 });
+
+describe('describe — request timeout', () => {
+	/** A stalled socket must not hang a multi-hour backfill. */
+	function stalls(times: number) {
+		let calls = 0;
+		return vi.fn<typeof fetch>(async (_url, init) => {
+			calls += 1;
+			if (calls > times) return Response.json(completion(RESULT));
+			await new Promise((resolve, reject) => {
+				init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+			});
+			throw new Error('unreachable');
+		});
+	}
+
+	it('gives up on a stalled request and retries it', async () => {
+		const fetchFn = stalls(1);
+		const outcome = await createVisionClient({
+			apiKey: 'k',
+			fetchFn: fetchFn as unknown as typeof fetch,
+			requestTimeoutMs: 20,
+			sleepFn: async () => {}
+		}).describe({ imageUrl: ARENA_URL, block });
+
+		expect(outcome.kind).toBe('described');
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+	});
+
+	it('fails with a clear message once every attempt times out', async () => {
+		const fetchFn = stalls(Number.POSITIVE_INFINITY);
+		await expect(
+			createVisionClient({
+				apiKey: 'k',
+				fetchFn: fetchFn as unknown as typeof fetch,
+				requestTimeoutMs: 20,
+				maxRetries: 2,
+				sleepFn: async () => {}
+			}).describe({ imageUrl: ARENA_URL, block })
+		).rejects.toThrow(/timed out after 20ms, 3 attempt\(s\)/);
+	});
+
+	it('does not retry when the caller aborts the run', async () => {
+		const controller = new AbortController();
+		const fetchFn = stalls(Number.POSITIVE_INFINITY);
+		const pending = createVisionClient({
+			apiKey: 'k',
+			fetchFn: fetchFn as unknown as typeof fetch,
+			requestTimeoutMs: 10_000,
+			sleepFn: async () => {}
+		}).describe({ imageUrl: ARENA_URL, block, signal: controller.signal });
+
+		controller.abort(new Error('shutting down'));
+		await expect(pending).rejects.toThrow(/shutting down/);
+		expect(fetchFn).toHaveBeenCalledOnce();
+	});
+});
