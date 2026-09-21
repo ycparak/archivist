@@ -188,6 +188,10 @@ export async function describeBlocks(
 		if (removed) log(`  cleared ${removed} scratch director(ies) from an interrupted run`);
 	}
 
+	// Roughly ten updates per run, whatever its size. A fixed interval of 25 meant a 12-block run
+	// printed nothing at all until it finished, which reads as a hang.
+	const progressEvery = Math.max(1, Math.min(25, Math.ceil(pending.length / 10)));
+
 	const entries: VisionCacheEntry[] = [];
 	let completed = 0;
 
@@ -259,7 +263,7 @@ export async function describeBlocks(
 			completed += 1;
 			// Also log the final block: without it the tail after the last multiple of 25 runs
 			// silently, which reads as a hang when each call can take minutes.
-			if (completed % 25 === 0 || completed === pending.length) {
+			if (completed % progressEvery === 0 || completed === pending.length) {
 				log(`  ${completed}/${pending.length} described`);
 			}
 		}
