@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -14,6 +14,9 @@ import { join } from 'node:path';
  */
 
 export const VIDEO_MEDIA_TYPE = 'video/mp4';
+
+/** Shared prefix so a run can find and remove what an interrupted run left behind. */
+const TEMP_PREFIX = 'archivist-vision-';
 
 /** Enough detail for the model, small enough to inline as a data URL. */
 const TARGET_WIDTH = 512;
@@ -107,7 +110,7 @@ export async function transcodeToVideoDataUrl(
 		};
 	}
 
-	const directory = await mkdtemp(join(tmpdir(), 'archivist-vision-'));
+	const directory = await mkdtemp(join(tmpdir(), TEMP_PREFIX));
 	try {
 		const input = join(directory, 'source');
 		const output = join(directory, 'out.mp4');
@@ -137,6 +140,10 @@ export async function transcodeToVideoDataUrl(
 			ffmpegOptions
 		);
 
+		// The source is the large half — several hundred MB across a run — and nothing needs it
+		// once ffmpeg has read it.
+		await rm(input, { force: true });
+
 		const encoded = await readFile(output);
 		if (encoded.byteLength > maxTranscodedBytes) {
 			return {
@@ -153,6 +160,25 @@ export async function transcodeToVideoDataUrl(
 	} finally {
 		await rm(directory, { recursive: true, force: true });
 	}
+}
+
+/**
+ * Removes scratch directories an earlier run left behind. Normal completion cleans up after itself,
+ * but a killed process never runs its `finally`, and an interrupted backfill can strand hundreds of
+ * megabytes of downloaded animations.
+ */
+export async function cleanupStaleTranscodes(directory = tmpdir()): Promise<{ removed: number }> {
+	let removed = 0;
+	try {
+		for (const name of await readdir(directory)) {
+			if (!name.startsWith(TEMP_PREFIX)) continue;
+			await rm(join(directory, name), { recursive: true, force: true });
+			removed += 1;
+		}
+	} catch {
+		// A sweep that cannot read the temp directory is not a reason to fail the run.
+	}
+	return { removed };
 }
 
 /**
