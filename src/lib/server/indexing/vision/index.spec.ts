@@ -44,6 +44,7 @@ function entryFor(id: string, imageUrl = IMAGE): VisionCacheEntry {
 		image_src_hash: imageSourceHash(imageUrl),
 		prompt_version: 1,
 		model: 'test-model',
+		input_mode: 'image',
 		provider: 'test',
 		generated_at: '2026-09-21T00:00:00.000Z'
 	};
@@ -268,5 +269,71 @@ describe('describeBlocks', () => {
 
 		expect(lines).toContain('  25/27 described');
 		expect(lines).toContain('  27/27 described');
+	});
+});
+
+describe('describeBlocks — animated blocks', () => {
+	function gif(overrides: Partial<ArchiveBlock> = {}): ArchiveBlock {
+		return block({ imageContentType: 'image/gif', ...overrides });
+	}
+
+	it('leaves animations on the image path unless video is asked for', async () => {
+		const client = stubClient();
+		await describeBlocks([gif()], { client, cache: new Map(), now });
+
+		expect(client.describe.mock.calls[0][0].media.kind).toBe('image');
+	});
+
+	it('regenerates an animation previously described as a still', async () => {
+		const client = stubClient();
+		const asStill = entryFor('1'); // input_mode: 'image'
+		const { summary } = await describeBlocks([gif()], {
+			client,
+			cache: new Map([['1', asStill]]),
+			video: true,
+			now,
+			transcodeOptions: { fetchFn: async () => new Response('x') }
+		});
+
+		expect(summary.cacheHits).toBe(0);
+	});
+
+	it('leaves a still alone when video is enabled — only animations change mode', async () => {
+		const client = stubClient();
+		const { summary } = await describeBlocks([block({ imageContentType: 'image/png' })], {
+			client,
+			cache: new Map([['1', entryFor('1')]]),
+			video: true,
+			now
+		});
+
+		expect(summary.cacheHits).toBe(1);
+		expect(client.describe).not.toHaveBeenCalled();
+	});
+
+	it('records the input mode on the entry, so the next run can tell them apart', async () => {
+		const { entries } = await describeBlocks([block()], {
+			client: stubClient(),
+			cache: new Map(),
+			now
+		});
+
+		expect(entries[0].input_mode).toBe('image');
+	});
+
+	it('counts an animation that could not be transcoded as skipped, not failed', async () => {
+		const client = stubClient();
+		const { summary } = await describeBlocks([gif()], {
+			client,
+			cache: new Map(),
+			video: true,
+			now,
+			// A 404 makes the transcode return a skip rather than throwing.
+			transcodeOptions: { fetchFn: async () => new Response('', { status: 404 }) }
+		});
+
+		expect(summary.skippedTooLarge).toBe(1);
+		expect(summary.failed).toEqual([]);
+		expect(client.describe).not.toHaveBeenCalled();
 	});
 });

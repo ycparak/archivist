@@ -69,6 +69,8 @@ function resolveVisionOptions(): Omit<VisionSyncOptions, 'onEntry'> | undefined 
 		limit,
 		concurrency,
 		revise: parseRevise(),
+		// Animations are read as motion by default; the opt-out is for machines without ffmpeg.
+		video: !hasFlag('no-vision-video'),
 		dryRun
 	};
 }
@@ -189,7 +191,9 @@ try {
 		} else {
 			console.log(`  Vision generated:    ${v.generated}`);
 		}
-		if (v.skippedTooLarge) console.log(`  Vision too large:    ${v.skippedTooLarge}`);
+		if (v.generatedFromVideo) console.log(`  Vision from video:   ${v.generatedFromVideo}`);
+		if (v.skippedTooLarge)
+			console.log(`  Vision skipped:      ${v.skippedTooLarge} (media too large)`);
 		if (v.skippedOverLimit) console.log(`  Vision over limit:   ${v.skippedOverLimit}`);
 		if (v.failed.length) {
 			console.log(`  Vision failed:       ${v.failed.length}`);

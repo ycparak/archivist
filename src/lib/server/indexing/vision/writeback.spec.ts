@@ -35,6 +35,7 @@ function entry(id = '11'): VisionCacheEntry {
 		image_src_hash: 'sha256:abc',
 		prompt_version: 1,
 		model: 'xiaomi/mimo-v2.5',
+		input_mode: 'image',
 		provider: 'deepinfra',
 		generated_at: '2026-09-21T00:00:00.000Z',
 		title: 'Task planner over an orange gradient',

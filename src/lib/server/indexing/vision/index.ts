@@ -1,7 +1,14 @@
 import type { ArchiveBlock } from '$lib/domain/archive';
-import { isCacheHit, type VisionCache, type VisionCacheEntry, type VisionCacheKey } from './cache';
-import type { VisionClient } from './client';
+import {
+	isCacheHit,
+	type VisionCache,
+	type VisionCacheEntry,
+	type VisionCacheKey,
+	type VisionInputMode
+} from './cache';
+import type { VisionClient, VisionMedia } from './client';
 import { imageSourceHash } from './rendition';
+import { isAnimated, transcodeToVideoDataUrl, type TranscodeOptions } from './video';
 
 export interface VisionStageOptions {
 	client: VisionClient;
@@ -14,6 +21,9 @@ export interface VisionStageOptions {
 	log?: (message: string) => void;
 	signal?: AbortSignal;
 	now?: () => Date;
+	/** Read animations as motion by transcoding them locally first. Needs ffmpeg on PATH. */
+	video?: boolean;
+	transcodeOptions?: TranscodeOptions;
 	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
 	onEntry?: (entry: VisionCacheEntry) => void;
 }
@@ -27,6 +37,7 @@ export interface VisionStageSummary {
 	blocksWithImage: number;
 	cacheHits: number;
 	generated: number;
+	generatedFromVideo: number;
 	skippedTooLarge: number;
 	skippedOverLimit: number;
 	failed: VisionFailure[];
@@ -48,12 +59,18 @@ const noop = () => {};
  */
 const DEFAULT_CONCURRENCY = 32;
 
-function cacheKey(block: ArchiveBlock, client: VisionClient): VisionCacheKey {
+/** An animation is only read as video when the caller asked for it and ffmpeg can be used. */
+function inputModeFor(block: ArchiveBlock, video: boolean): VisionInputMode {
+	return video && isAnimated(block.imageContentType) ? 'video' : 'image';
+}
+
+function cacheKey(block: ArchiveBlock, client: VisionClient, video: boolean): VisionCacheKey {
 	return {
 		blockId: block.id,
 		imageSourceHash: imageSourceHash(block.imageUrl ?? ''),
 		promptVersion: client.promptVersion,
-		model: client.model
+		model: client.model,
+		inputMode: inputModeFor(block, video)
 	};
 }
 
@@ -66,16 +83,16 @@ function isRevised(block: ArchiveBlock, revise: VisionStageOptions['revise']): b
 /** What the run would cost before it costs it. */
 export function planVisionWork(
 	blocks: ArchiveBlock[],
-	options: Pick<VisionStageOptions, 'client' | 'cache' | 'revise' | 'limit'>
+	options: Pick<VisionStageOptions, 'client' | 'cache' | 'revise' | 'limit' | 'video'>
 ): { withImage: ArchiveBlock[]; cached: number; pending: ArchiveBlock[]; overLimit: number } {
-	const { client, cache, revise, limit } = options;
+	const { client, cache, revise, limit, video = false } = options;
 	const withImage = blocks.filter((block) => block.imageUrl);
 
 	const pending: ArchiveBlock[] = [];
 	let cached = 0;
 	for (const block of withImage) {
 		const hit =
-			!isRevised(block, revise) && isCacheHit(cache.get(block.id), cacheKey(block, client));
+			!isRevised(block, revise) && isCacheHit(cache.get(block.id), cacheKey(block, client, video));
 		if (hit) cached += 1;
 		else pending.push(block);
 	}
@@ -115,20 +132,24 @@ export async function describeBlocks(
 		log = noop,
 		signal,
 		now = () => new Date(),
-		onEntry
+		onEntry,
+		video = false,
+		transcodeOptions
 	} = options;
 
 	const { withImage, cached, pending, overLimit } = planVisionWork(blocks, {
 		client,
 		cache,
 		revise,
-		limit
+		limit,
+		video
 	});
 
 	const summary: VisionStageSummary = {
 		blocksWithImage: withImage.length,
 		cacheHits: cached,
 		generated: 0,
+		generatedFromVideo: 0,
 		skippedTooLarge: 0,
 		skippedOverLimit: overLimit,
 		failed: []
@@ -148,9 +169,26 @@ export async function describeBlocks(
 		if (signal?.aborted) return;
 
 		try {
+			const mode = inputModeFor(block, video);
+			let media: VisionMedia;
+
+			if (mode === 'video') {
+				const transcoded = await transcodeToVideoDataUrl(block.imageUrl!, {
+					signal,
+					...transcodeOptions
+				});
+				if (transcoded.kind === 'skipped') {
+					summary.skippedTooLarge += 1;
+					log(`  skipped ${block.id}: ${transcoded.reason}`);
+					return;
+				}
+				media = { kind: 'video', dataUrl: transcoded.dataUrl };
+			} else {
+				media = { kind: 'image', url: block.imageUrl!, bytes: block.imageBytes };
+			}
+
 			const outcome = await client.describe({
-				imageUrl: block.imageUrl!,
-				imageBytes: block.imageBytes,
+				media,
 				block: {
 					type: block.type,
 					title: block.title,
@@ -172,12 +210,14 @@ export async function describeBlocks(
 				image_src_hash: imageSourceHash(block.imageUrl!),
 				prompt_version: client.promptVersion,
 				model: client.model,
+				input_mode: mode,
 				provider: outcome.provider,
 				generated_at: now().toISOString()
 			};
 			entries.push(entry);
 			onEntry?.(entry);
 			summary.generated += 1;
+			if (mode === 'video') summary.generatedFromVideo += 1;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			summary.failed.push({ blockId: block.id, error: message });
