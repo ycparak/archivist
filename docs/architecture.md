@@ -113,9 +113,10 @@ RRF belongs in Turbopuffer, not in client code. It combines independently ranked
 2. Resolve the maintainer's own user id and discover every channel they own; fetch each channel's pages, checkpointing each completed page locally.
 3. Normalize blocks into stable documents; deduplicate by Are.na block ID while unioning channel membership. `connected_at` is a per-channel connection timestamp, not stable block metadata — when the same block is connected to more than one channel, keep the most recent `connected_at` across those channels, matching browse mode's newest-first ordering. Every other field comes from the block resource itself and doesn't need this treatment.
 4. Upsert batched rows. Re-running the same sync is idempotent.
-5. Report fetched, normalized, upserted, skipped, and failed counts.
+5. Prune: page through every document id in the namespace (id-only, `rank_by id asc`, advancing `id Gt` filter) and delete ids that were not in this sync's deduplicated set. This runs after the upsert, so a failure leaves a superset of the truth, never a partial index. It also removes blocks from channels that are now ignored or private. Because block ids are deduplicated across channels before the diff, a block still in any synced channel is never pruned.
+6. Report fetched, normalized, upserted, deleted, skipped, and failed counts.
 
-Deletion reconciliation is explicitly deferred: V1 upserts current known blocks and does not silently delete a document because one partial sync did not see it. Add a separately reviewed `--prune` workflow only after export/diff behavior is tested against multi-channel membership.
+Pruning is skipped, with the reason in the summary, when a channel failed, the sync was aborted, no blocks were fetched, or the delete would remove more than half the namespace. Pass `--allow-large-prune` to `bun run sync` to override the last guard, e.g. after deliberately ignoring most channels. The alternative of wiping and reloading the namespace was rejected: native embeddings would be recomputed for every document, and search would be empty or partial during the reload.
 
 ## V2 seam: Mastra
 

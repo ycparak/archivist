@@ -28,6 +28,7 @@ try {
 		accessToken,
 		turbopuffer: { apiKey, region, namespace },
 		log: console.log,
+		allowLargePrune: process.argv.includes('--allow-large-prune'),
 		channelFilter: {
 			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
 			allowPrivate: parseSlugList(process.env.ARENA_ALLOW_PRIVATE_CHANNELS)
@@ -57,6 +58,14 @@ try {
 	console.log(
 		`  Upserted:            ${summary.documentsUpserted} document(s) into "${namespace}" across ${summary.upsertBatches} batch(es)`
 	);
+	if (summary.pruneSkipped) {
+		console.log(`  Pruned:              skipped (${summary.pruneSkipped})`);
+		console.log(
+			'  Stale documents remain searchable. Re-run with --allow-large-prune if intended.'
+		);
+	} else {
+		console.log(`  Pruned:              ${summary.documentsDeleted} stale document(s)`);
+	}
 } catch (error) {
 	console.error('Sync failed:', error instanceof Error ? error.message : error);
 	process.exit(1);
