@@ -44,6 +44,7 @@ export interface VisionStageSummary {
 	generated: number;
 	generatedFromVideo: number;
 	skippedTooLarge: number;
+	skippedUnsupported: number;
 	skippedOverLimit: number;
 	failed: VisionFailure[];
 }
@@ -63,6 +64,20 @@ const noop = () => {};
  * before this hurts, and the client retries 429s with backoff.
  */
 const DEFAULT_CONCURRENCY = 32;
+
+/**
+ * Formats a vision provider will accept. SVG is excluded deliberately: Are.na's resizer returns a
+ * 500 for it, so the provider fetches a JSON error and reports an invalid image. One block in the
+ * reference archive is affected, and without this it fails on every run forever.
+ */
+const DESCRIBABLE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+/** Why this block cannot be shown to the model at all, or null when it can. */
+export function unsupportedFormatReason(contentType: string | null | undefined): string | null {
+	const normalized = contentType?.toLowerCase().trim();
+	if (!normalized) return null; // Unknown type: let the provider decide rather than pre-judging.
+	return DESCRIBABLE_TYPES.has(normalized) ? null : `${normalized} is not a describable image`;
+}
 
 /** An animation is only read as video when the caller asked for it and ffmpeg can be used. */
 function inputModeFor(block: ArchiveBlock, video: boolean): VisionInputMode {
@@ -156,6 +171,7 @@ export async function describeBlocks(
 		generated: 0,
 		generatedFromVideo: 0,
 		skippedTooLarge: 0,
+		skippedUnsupported: 0,
 		skippedOverLimit: overLimit,
 		failed: []
 	};
@@ -179,6 +195,13 @@ export async function describeBlocks(
 		if (signal?.aborted) return;
 
 		try {
+			const unsupported = unsupportedFormatReason(block.imageContentType);
+			if (unsupported) {
+				summary.skippedUnsupported += 1;
+				log(`  skipped ${block.id}: ${unsupported}`);
+				return;
+			}
+
 			const mode = inputModeFor(block, video);
 			let media: VisionMedia;
 
