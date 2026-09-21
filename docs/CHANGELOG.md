@@ -13,8 +13,8 @@ User-visible changes, newest first.
   no description. `bun run sync` generates a description once per block and never again unless the
   image changes or you pass `--revision`, so re-running it is free; `--vision-dry-run` reports what
   a run would cost before spending anything. Where the maintainer owns the block, `--push-arena`
-  can write a short, specific title and a description back to Are.na, replacing the ones that carry
-  no information: upload filenames, hashes and bare URLs, and the platform boilerplate you get from
+  can write a short, specific title and a description back to Are.na (`--push-arena` to preview,
+  `--push-arena-apply` to write), replacing the ones that carry no information: upload filenames, hashes and bare URLs, and the platform boilerplate you get from
   a shared post (`Seth Thompson on X: "Searching my library is now fast enough…" / X`), where the
   title is a 250-character copy of the description. Titles that already say something are left
   alone, however long they are, and a description you have written is never overwritten.

@@ -24,6 +24,12 @@ export type ArenaContentSort =
 	| 'updated_at_asc'
 	| 'updated_at_desc';
 
+export interface ArenaBlockUpdate {
+	title?: string;
+	description?: string;
+	metadata?: Record<string, string | number | boolean | null>;
+}
+
 export interface ArenaClientOptions {
 	accessToken: string;
 	fetchFn?: typeof fetch;
@@ -193,6 +199,18 @@ export class ArenaClient {
 			return arenaMeSchema.parse(body);
 		} catch (error) {
 			throw mapSdkError(error, 'fetching current user');
+		}
+	}
+
+	/**
+	 * Are.na rejects an update to a block the token's owner did not author, so callers must filter
+	 * by ownership first. Metadata uses merge semantics: keys sent are set, keys omitted are left.
+	 */
+	async updateBlock(id: number, body: ArenaBlockUpdate): Promise<void> {
+		try {
+			await this.arena.blocks.update(id, body);
+		} catch (error) {
+			throw mapSdkError(error, `updating block ${id}`);
 		}
 	}
 

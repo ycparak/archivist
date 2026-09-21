@@ -18,6 +18,8 @@ export const archiveBlockSchema = z.object({
 	/** Sync-time only: lets the vision stage apply its size guard without a HEAD request. */
 	imageBytes: z.number().int().nonnegative().nullable().optional(),
 	imageContentType: z.string().nullable().optional(),
+	/** Are.na user id of the block's author; write-back is owner-only. */
+	ownerId: z.number().int().nullable().optional(),
 	createdAt: z.coerce.date().optional(),
 	connectedAt: z.coerce.date().optional(),
 	channels: z.array(
