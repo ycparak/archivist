@@ -599,3 +599,117 @@ describe('syncArchive', () => {
 		});
 	});
 });
+
+function imageBlock(id: number) {
+	return {
+		id,
+		type: 'Image',
+		title: `image-${id}.png`,
+		description: null,
+		created_at: '2023-01-15T10:30:00Z',
+		connection: { connected_at: '2023-01-15T10:30:00Z' },
+		image: {
+			src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif',
+			file_size: 1000,
+			content_type: 'image/gif',
+			small: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif' },
+			medium: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif' },
+			large: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif', width: 10, height: 10 },
+			square: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif' }
+		}
+	};
+}
+
+const VISION_RESULT = {
+	title: 'Generated title',
+	description: 'Generated description',
+	ocr: '',
+	palette: ['#000000'],
+	medium: 'screenshot' as const,
+	tags: ['tag']
+};
+
+function visionClient(
+	describe = vi.fn(async () => ({
+		kind: 'described' as const,
+		result: VISION_RESULT,
+		provider: 'test'
+	}))
+) {
+	return { model: 'test-model', promptVersion: 1, describe };
+}
+
+function visionFetch() {
+	return routedFetch({
+		'/v3/me': () => meResponse(7, 'maintainer'),
+		'/v3/users/7/contents': () => contentsResponse([ownedChannel(1, 'alpha', 'Alpha')]),
+		'/v3/channels/alpha/contents': () => contentsResponse([imageBlock(11), textBlock(12)])
+	});
+}
+
+describe('syncArchive — vision stage', () => {
+	it('leaves sync untouched when no vision options are passed', async () => {
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {}
+		});
+
+		expect(result.summary.vision).toBeNull();
+		expect(result.visionCache).toBeNull();
+	});
+
+	it('describes only blocks that have an image', async () => {
+		const client = visionClient();
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			vision: { client, cache: new Map() }
+		});
+
+		expect(client.describe).toHaveBeenCalledOnce();
+		expect(result.summary.vision).toMatchObject({ blocksWithImage: 1, generated: 1 });
+		expect(result.visionCache).toHaveLength(1);
+		expect(result.visionCache?.[0]).toMatchObject({ block_id: '11', title: 'Generated title' });
+	});
+
+	it('spends nothing and writes no cache on a dry run', async () => {
+		const client = visionClient();
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			vision: { client, cache: new Map(), dryRun: true }
+		});
+
+		expect(client.describe).not.toHaveBeenCalled();
+		expect(result.visionCache).toBeNull();
+		expect(result.summary.vision).toMatchObject({ blocksWithImage: 1, generated: 0 });
+	});
+
+	it('drops cache entries for blocks that have left the archive', async () => {
+		const stale = {
+			...VISION_RESULT,
+			block_id: '999',
+			image_src_hash: 'sha256:old',
+			prompt_version: 1,
+			model: 'test-model',
+			provider: 'test',
+			generated_at: '2026-01-01T00:00:00.000Z'
+		};
+
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			vision: { client: visionClient(), cache: new Map([['999', stale]]) }
+		});
+
+		expect(result.visionCache?.map((entry) => entry.block_id)).toEqual(['11']);
+	});
+});
