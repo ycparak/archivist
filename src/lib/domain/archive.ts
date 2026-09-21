@@ -30,6 +30,17 @@ export const archiveBlockSchema = z.object({
 
 export type ArchiveBlock = z.infer<typeof archiveBlockSchema>;
 
+/**
+ * Generated text for one block, structurally matching a vision cache entry. Declared here rather
+ * than imported so the domain layer stays independent of the indexing pipeline.
+ */
+export type BlockVisionText = {
+	title: string;
+	description: string;
+	ocr: string;
+	medium: string;
+};
+
 export type SearchDocument = {
 	id: string;
 	search_text: string;
@@ -47,19 +58,33 @@ export type SearchDocument = {
 	image_width: number | null;
 	image_height: number | null;
 	source_title: string | null;
+	vision_title: string | null;
+	vision_description: string | null;
+	vision_ocr: string | null;
+	vision_medium: string | null;
 };
 
 const normalizeText = (value: string | null | undefined) =>
 	value?.replace(/\s+/g, ' ').trim() ?? '';
 
-export function toSearchDocument(block: ArchiveBlock): SearchDocument {
+/**
+ * `vision` is the generated description for this block, when one exists. It is appended to
+ * `search_text` after the block's own metadata so a block that already describes itself keeps
+ * leading the corpus, and omitted entirely when absent.
+ */
+export function toSearchDocument(
+	block: ArchiveBlock,
+	vision?: BlockVisionText | null
+): SearchDocument {
 	const channels = [...new Map(block.channels.map((channel) => [channel.slug, channel])).values()];
 	const searchText = [
 		block.title,
 		block.description,
 		block.content,
 		block.sourceTitle,
-		...channels.map((channel) => channel.title)
+		...channels.map((channel) => channel.title),
+		vision?.description,
+		vision?.ocr
 	]
 		.map(normalizeText)
 		.filter(Boolean)
@@ -81,6 +106,10 @@ export function toSearchDocument(block: ArchiveBlock): SearchDocument {
 		image_alt: normalizeText(block.imageAlt) || null,
 		image_width: block.imageWidth ?? null,
 		image_height: block.imageHeight ?? null,
-		source_title: normalizeText(block.sourceTitle) || null
+		source_title: normalizeText(block.sourceTitle) || null,
+		vision_title: normalizeText(vision?.title) || null,
+		vision_description: normalizeText(vision?.description) || null,
+		vision_ocr: normalizeText(vision?.ocr) || null,
+		vision_medium: normalizeText(vision?.medium) || null
 	};
 }

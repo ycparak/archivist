@@ -44,8 +44,12 @@ function completion(result: unknown, provider = 'deepinfra') {
 
 const block = { type: 'Image', title: 'cleanshot-2025.png' };
 
-function client(fetchFn: typeof fetch) {
-	return createVisionClient({ apiKey: 'test-key', fetchFn });
+function client(
+	fetchFn: typeof fetch,
+	overrides: Partial<Parameters<typeof createVisionClient>[0]> = {}
+) {
+	// Retries are exercised without waiting on them.
+	return createVisionClient({ apiKey: 'test-key', fetchFn, sleepFn: async () => {}, ...overrides });
 }
 
 describe('createVisionClient', () => {
@@ -179,9 +183,9 @@ describe('describe — response handling', () => {
 		expect(outcome).toEqual({ kind: 'described', result: RESULT, provider: 'venice' });
 	});
 
-	it('raises with the status on a transport failure, so a retry can tell 429 from 400', async () => {
+	it('raises with the status once retries are exhausted', async () => {
 		const fetchFn = respond({ error: 'nope' }, { status: 429 });
-		const failure = client(fetchFn as unknown as typeof fetch).describe({
+		const failure = client(fetchFn as unknown as typeof fetch, { maxRetries: 1 }).describe({
 			imageUrl: ARENA_URL,
 			block
 		});
@@ -271,5 +275,86 @@ describe('describe — response handling', () => {
 		await expect(
 			client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block })
 		).rejects.toThrow(/did not match the expected shape/);
+	});
+});
+
+describe('describe — retries', () => {
+	function failThenSucceed(status: number, failures: number) {
+		let calls = 0;
+		return vi.fn<typeof fetch>(async () => {
+			calls += 1;
+			if (calls <= failures) return Response.json({ error: 'transient' }, { status });
+			return Response.json(completion(RESULT));
+		});
+	}
+
+	it.each([429, 500, 503, 408])('retries a %i and succeeds', async (status) => {
+		const fetchFn = failThenSucceed(status, 2);
+		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
+			imageUrl: ARENA_URL,
+			block
+		});
+
+		expect(outcome.kind).toBe('described');
+		expect(fetchFn).toHaveBeenCalledTimes(3);
+	});
+
+	it('does not retry a request that will never succeed', async () => {
+		const fetchFn = respond({ error: 'bad model' }, { status: 400 });
+		await expect(
+			client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block })
+		).rejects.toMatchObject({ status: 400 });
+		expect(fetchFn).toHaveBeenCalledOnce();
+	});
+
+	it('stops after maxRetries rather than looping forever', async () => {
+		const fetchFn = respond({ error: 'nope' }, { status: 503 });
+		await expect(
+			client(fetchFn as unknown as typeof fetch, { maxRetries: 2 }).describe({
+				imageUrl: ARENA_URL,
+				block
+			})
+		).rejects.toBeInstanceOf(VisionRequestError);
+		expect(fetchFn).toHaveBeenCalledTimes(3);
+	});
+
+	it('honours Retry-After ahead of its own backoff', async () => {
+		const slept: number[] = [];
+		let calls = 0;
+		const fetchFn = vi.fn<typeof fetch>(async () => {
+			calls += 1;
+			if (calls === 1) {
+				return new Response('{}', { status: 429, headers: { 'retry-after': '7' } });
+			}
+			return Response.json(completion(RESULT));
+		});
+
+		await createVisionClient({
+			apiKey: 'k',
+			fetchFn: fetchFn as unknown as typeof fetch,
+			sleepFn: async (ms) => {
+				slept.push(ms);
+			}
+		}).describe({ imageUrl: ARENA_URL, block });
+
+		expect(slept).toEqual([7000]);
+	});
+
+	it('backs off exponentially without a Retry-After header', async () => {
+		const slept: number[] = [];
+		const fetchFn = respond({ error: 'nope' }, { status: 503 });
+
+		await expect(
+			createVisionClient({
+				apiKey: 'k',
+				fetchFn: fetchFn as unknown as typeof fetch,
+				maxRetries: 3,
+				sleepFn: async (ms) => {
+					slept.push(ms);
+				}
+			}).describe({ imageUrl: ARENA_URL, block })
+		).rejects.toBeInstanceOf(VisionRequestError);
+
+		expect(slept).toEqual([1000, 2000, 4000]);
 	});
 });

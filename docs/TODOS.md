@@ -53,14 +53,22 @@ Work these in order — each one is shippable on its own.
       chars), so the client now clamps at a sentence boundary; and `medium` is the least reliable
       field — a grainy photograph was labelled `painting`. Do not promote `vision_medium` to a UI
       facet without measuring it.
-- [ ] **5. Schema, `search_text`, and the full backfill.** Add `vision_description`, `vision_ocr`,
-      `vision_title`, `vision_medium` to the Turbopuffer schema (additive — no namespace bump;
-      `vision_medium` is stored but unproven — see task 4's note before exposing it);
-      extend `toSearchDocument`; run the full backfill (≈ $0.49); commit
-      `src/lib/server/indexing/vision-cache.jsonl`. Re-run `evaluate:search` and compare against
-      the step-1 baseline. If retrieval regressed for Link blocks, tighten the length cap or move
-      to a separate embedded field before continuing. Update the schema table and sync lifecycle in
-      [`architecture.md`](./architecture.md) in the same change.
+- [~] **5. Schema, `search_text`, and the full backfill.** Code complete and committed; the
+  backfill run is handed off — see
+  [handoff worksheet](./specs/worksheet-vision-backfill-handoff.md).
+  Done: four additive `vision_*` attributes in the Turbopuffer schema (no namespace bump);
+  `toSearchDocument(block, vision?)` folding `vision_description` and `vision_ocr` into
+  `search_text` after the block's own metadata; retry with exponential backoff on 429/5xx
+  honouring `Retry-After`; cache checkpointing every 25 entries so a multi-hour run survives
+  interruption; `--vision-concurrency=N`; architecture.md schema table and sync lifecycle
+  updated. 305 tests pass.
+  Fixed along the way: sync now indexes the vision cache on **every** run, not only with
+  `--vision`. Previously a plain `bun run sync` after the backfill would have silently stripped
+  every generated description back out of the namespace. Verified against the live namespace.
+  **Remaining, for the maintainer:** run `bun run sync --vision` (~2,570 blocks, ~$0.50,
+  roughly 1–3.5h), commit `vision-cache.jsonl`, re-run `evaluate:search`, promote the five
+  pending cases, and check `exact-phrase-link` / `combined-filter` ranks against the baseline
+  for dilution.
 - [ ] **6. Are.na write-back.** `ArenaClient.updateBlock`, ownership filter
       (`block.user.id === me.id` — only 2,050 of 2,594 blocks qualify), and
       `vision/titles.ts` implementing `isLowQualityTitle` with its four triggers — filename-shaped

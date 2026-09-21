@@ -14,6 +14,8 @@ export interface VisionStageOptions {
 	log?: (message: string) => void;
 	signal?: AbortSignal;
 	now?: () => Date;
+	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
+	onEntry?: (entry: VisionCacheEntry) => void;
 }
 
 export interface VisionFailure {
@@ -104,7 +106,8 @@ export async function describeBlocks(
 		concurrency = DEFAULT_CONCURRENCY,
 		log = noop,
 		signal,
-		now = () => new Date()
+		now = () => new Date(),
+		onEntry
 	} = options;
 
 	const { withImage, cached, pending, overLimit } = planVisionWork(blocks, {
@@ -155,7 +158,7 @@ export async function describeBlocks(
 				return;
 			}
 
-			entries.push({
+			const entry = {
 				...outcome.result,
 				block_id: block.id,
 				image_src_hash: imageSourceHash(block.imageUrl!),
@@ -163,7 +166,9 @@ export async function describeBlocks(
 				model: client.model,
 				provider: outcome.provider,
 				generated_at: now().toISOString()
-			});
+			};
+			entries.push(entry);
+			onEntry?.(entry);
 			summary.generated += 1;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
