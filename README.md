@@ -100,6 +100,9 @@ bun run sync --push-arena-apply --push-arena-limit=5       # apply a handful, th
 bun run sync --push-arena-apply                            # apply the rest
 ```
 
+`--push-arena-limit=N` caps how many blocks one run writes; the `skipped` line accounts for the
+rest of your archive, so the numbers should reconcile against your block count.
+
 It replaces titles that carry no information — filenames, hashes, bare URLs, and the platform
 boilerplate you get from a shared post (`Seth Thompson on X: "…" / X`, where the title is a
 250-character copy of the description) — and adds descriptions where there are none.
@@ -134,7 +137,7 @@ was planned:
 
 ```
 Are.na written:      5 of 5 planned block(s)     ← worked
-Are.na written:      0 of 25 planned block(s)    ← wrote nothing; see FAILED below it
+Are.na written:      0 of 5 planned block(s)     ← wrote nothing; see FAILED below it
 ```
 
 To confirm independently, open one of the blocks the diff listed and check its title actually

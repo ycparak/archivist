@@ -104,6 +104,9 @@ export interface WriteBackFailure {
 }
 
 export interface WriteBackSummary {
+	/** Blocks this run intended to write. Not the sum of the field counts below — one block can
+	 * change both its title and its description. */
+	blocksPlanned: number;
 	titlesAdded: number;
 	titlesReplaced: number;
 	descriptionsAdded: number;
@@ -114,6 +117,7 @@ export interface WriteBackSummary {
 
 export function summarizePlans(plans: WriteBackPlan[], skipped: WriteBackSkips): WriteBackSummary {
 	return {
+		blocksPlanned: plans.length,
 		titlesAdded: plans.filter((plan) => plan.title?.action.kind === 'add').length,
 		titlesReplaced: plans.filter((plan) => plan.title?.action.kind === 'replace').length,
 		descriptionsAdded: plans.filter((plan) => plan.description).length,
