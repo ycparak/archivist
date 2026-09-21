@@ -1,4 +1,7 @@
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css' layer(utilities);
 @import '../styles/tokens.css';
-@import '../styles/reset.css';
 @import '../styles/globals.css';
 @import '../styles/primitives.css';

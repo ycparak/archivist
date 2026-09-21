@@ -85,13 +85,13 @@ and result metadata. Use the mono stack only for operational identifiers, raw
 tokens, timestamps, code, or other intentionally technical values. Do not use
 mono for a whole sentence or entire card just to create texture.
 
-| Role       | Token                                      | Use                                           |
-| ---------- | ------------------------------------------ | --------------------------------------------- |
-| Body       | `--text-size-md`                           | Default reading text and primary result copy. |
-| Small      | `--text-size-sm`                           | Labels and secondary controls.                |
-| Metadata   | `--text-size-meta`                         | Quiet source, date, type, and count context.  |
-| Large body | `--text-size-lg`                           | Short introductory or lead copy.              |
-| Headings   | `--text-size-xl` through `--text-size-3xl` | Structural hierarchy only.                    |
+| Role       | Token                            | Use                                           |
+| ---------- | -------------------------------- | --------------------------------------------- |
+| Body       | `--text-md`                      | Default reading text and primary result copy. |
+| Small      | `--text-sm`                      | Labels and secondary controls.                |
+| Metadata   | `--text-meta`                    | Quiet source, date, type, and count context.  |
+| Large body | `--text-lg`                      | Short introductory or lead copy.              |
+| Headings   | `--text-xl` through `--text-3xl` | Structural hierarchy only.                    |
 
 Keep body text at or above 1rem, regular labels at or above 0.875rem, and
 metadata at or above 0.8125rem. Do not shrink type to make a layout fit. Rewrite,
@@ -109,8 +109,8 @@ generic taglines, and internal implementation language.
 ## Layout and rhythm
 
 Use a shared content edge. `.container` owns the responsive outer gutter and
-maximum width; `.reading-width` limits prose; `.stack`, `.cluster`, and `.grid`
-own relationships between children. Every gap should have one owner. Group
+maximum width; `.reading-width` limits prose; `.stack`, `.cluster`, and Tailwind's
+`grid` own relationships between children. Every gap should have one owner. Group
 related content before applying a stack or grid rather than repairing siblings
 with arbitrary margins.
 
@@ -172,26 +172,39 @@ introduces transitions.
 
 ## CSS architecture
 
-Global CSS is intentionally layered:
+Styling uses Tailwind CSS v4 through `@tailwindcss/vite`. The design tokens _are_ the
+Tailwind theme: Tailwind's default palette and scales are deliberately not imported, so a
+utility exists only if the design system defines it (`bg-background`, `text-text-secondary`,
+`border-border-subtle`, `text-meta`, `rounded-md`, `leading-copy`, `tracking-heading`,
+`font-mono`, `ease-standard`). There is no `bg-red-500`; add a token first.
 
-1. [`src/styles/tokens.css`](../src/styles/tokens.css) defines raw values and
-   semantic aliases.
-2. [`src/styles/reset.css`](../src/styles/reset.css) normalizes browser defaults.
-3. [`src/styles/globals.css`](../src/styles/globals.css) sets document defaults,
-   native controls, and focus behavior.
-4. [`src/styles/primitives.css`](../src/styles/primitives.css) exposes small,
-   reusable layout and accessibility helpers.
-5. [`src/routes/layout.css`](../src/routes/layout.css) is the global import entry.
+Global CSS is layered, with the entry at
+[`src/routes/layout.css`](../src/routes/layout.css) declaring
+`theme, base, components, utilities`:
 
-Future components should keep their styles colocated with their component code.
-Use the global tokens and primitives; do not add component selectors to the
-global layer merely for convenience. Prefer semantic component classes over
-element selectors when a rule belongs to one component. Keep provider-specific
-data shapes and search behavior out of CSS.
+1. [`src/styles/tokens.css`](../src/styles/tokens.css) is a `@theme static` block of raw
+   values and semantic aliases. `static` keeps every token available as a `var(--…)` for
+   scoped component CSS, not only the ones a utility happens to use.
+2. Tailwind's preflight is the reset (`base` layer).
+3. [`src/styles/globals.css`](../src/styles/globals.css) sets document defaults, native
+   controls, and focus behavior inside `@layer base`.
+4. [`src/styles/primitives.css`](../src/styles/primitives.css) defines `container`,
+   `reading-width`, `stack`, `cluster`, `surface`, `divider`, `meta`, `eyebrow`, `muted`,
+   and `visually-hidden` as `@utility` rules, so they take variants (`md:stack`) and lose
+   to more specific utilities instead of fighting them.
 
-PostCSS is configured as an explicit seam for future transformations. Do not add
-a plugin or a second styling language without a concrete browser-support or
-authoring benefit.
+Spacing: `--spacing` is `0.125rem`, so `p-4` is `--space-4` (0.5rem) and the numbers in
+this document match the utilities. This differs from Tailwind's default, where `p-4` is 1rem.
+Text sizes follow the `--text-*` names (`text-md`, `text-meta`, `text-3xl`). Durations and
+control heights have no Tailwind namespace: use `duration-(--duration-fast)` and
+`h-(--control-md)`. Breakpoints are `sm` 30rem, `md` 48rem, `lg` 64rem, `xl` 80rem.
+
+Prefer utilities in markup for one-off layout and spacing. Keep a scoped `<style>` block
+when a component has real structure (pseudo-elements, line clamping, child selectors).
+Scoped blocks that use `@apply` or `theme()` need `@reference '../../routes/layout.css';`.
+Unlayered scoped CSS beats every utility, so do not put a scoped rule and a utility on the
+same property. Class order is enforced by `prettier-plugin-tailwindcss` (`bun run format`).
+Keep provider-specific data shapes and search behavior out of CSS.
 
 ## Things to avoid
 

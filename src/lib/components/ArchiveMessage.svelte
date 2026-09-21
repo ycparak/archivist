@@ -23,11 +23,11 @@
 
 	h2 {
 		margin: 0;
-		font-size: var(--text-size-xl);
+		font-size: var(--text-xl);
 	}
 
 	.detail {
 		color: var(--color-text-secondary);
-		font-size: var(--text-size-sm);
+		font-size: var(--text-sm);
 	}
 </style>
