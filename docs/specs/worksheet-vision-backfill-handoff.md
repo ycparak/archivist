@@ -108,3 +108,45 @@ versioned because the attributes are additive.
 - **Cost is not metered per run.** The estimate comes from OpenRouter's published per-token price,
   not from the response's `usage` block. If the bill matters to you more than the estimate does,
   check your OpenRouter dashboard after the run.
+
+## Are.na write-back
+
+Separate from the backfill, and the only part of this feature that writes to your actual archive.
+Nothing here has run.
+
+**Review first — writes nothing:**
+
+```bash
+bun run sync --push-arena
+```
+
+It prints the first 20 planned changes and a summary. A dry run against the current cache plans
+**609 blocks**.
+
+**Then apply, staged:**
+
+```bash
+bun run sync --push-arena-apply --push-arena-limit=25
+```
+
+Check those 25 on Are.na, then drop the limit to do the rest.
+
+### What it will and will not touch
+
+- **Only blocks you authored.** `PUT /v3/blocks/:id` is owner-only; 21% of the archive is other
+  people's and is skipped.
+- **Titles** are replaced only when they carry no information — filename, opaque hash or URL,
+  platform boilerplate, or a long title restating its own description — and added when missing.
+  Validated against the live archive: 892 replacements, 15 additions.
+- **Descriptions** are only ever written when there is none. Prose you wrote is never overwritten.
+- Each write also sets `metadata.vision_v`, `vision_at` and `vision_src`.
+
+### Consequences worth knowing before you run it
+
+- It bumps `updated_at` on every block it touches, which will show as a burst of activity on your
+  Are.na account, visible to anyone following those channels. `--push-arena-limit` exists partly
+  for this.
+- **There is no undo.** The previous titles are not stored anywhere. The generated values are in
+  `vision-cache.jsonl`, but the originals are only in Are.na until they are replaced. If that
+  matters, export the affected blocks' current titles before applying.
+- Writes are paced at ~300ms, so 609 blocks takes roughly three minutes.
