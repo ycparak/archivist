@@ -40,23 +40,29 @@ Namespace: `arena-blocks-v1` by default, configurable with `TURBOPUFFER_NAMESPAC
 
 Turbopuffer requires stable types per attribute and does not permit in-place type changes. Therefore version the namespace for a breaking schema change (`arena-blocks-v2`) and document the migration in an ADR in [`docs/decisions/`](./decisions/).
 
-| Attribute          | Type / index                               | Purpose                                    |
-| ------------------ | ------------------------------------------ | ------------------------------------------ |
-| `id`               | string, `block:<Are.na id>`                | deterministic document key                 |
-| `search_text`      | string, `full_text_search`, native `embed` | single canonical lexical + semantic corpus |
-| `block_type`       | string, filterable                         | type filter                                |
-| `channel_slugs`    | `[]string`, filterable                     | membership filter                          |
-| `connection_count` | uint, filterable                           | browse ordering (most connected first)     |
-| `connected_at`     | datetime, filterable                       | browse tiebreak and date filter            |
-| `created_at`       | datetime, unindexed                        | result metadata                            |
-| `title`            | string, unindexed                          | card copy                                  |
-| `description`      | string, unindexed                          | card copy                                  |
-| `source_url`       | string, unindexed                          | original source link                       |
-| `arena_url`        | string, unindexed                          | canonical result link                      |
-| `image_url`        | string, unindexed                          | gallery image                              |
-| `source_title`     | string, unindexed                          | attribution                                |
+| Attribute            | Type / index                               | Purpose                                               |
+| -------------------- | ------------------------------------------ | ----------------------------------------------------- |
+| `id`                 | string, `block:<Are.na id>`                | deterministic document key                            |
+| `search_text`        | string, `full_text_search`, native `embed` | single canonical lexical + semantic corpus            |
+| `block_type`         | string, filterable                         | type filter                                           |
+| `channel_slugs`      | `[]string`, filterable                     | membership filter                                     |
+| `connection_count`   | uint, filterable                           | browse ordering (most connected first)                |
+| `connected_at`       | datetime, filterable                       | browse tiebreak and date filter                       |
+| `created_at`         | datetime, unindexed                        | result metadata                                       |
+| `title`              | string, unindexed                          | card copy                                             |
+| `description`        | string, unindexed                          | card copy                                             |
+| `source_url`         | string, unindexed                          | original source link                                  |
+| `arena_url`          | string, unindexed                          | canonical result link                                 |
+| `image_url`          | string, unindexed                          | gallery image                                         |
+| `source_title`       | string, unindexed                          | attribution                                           |
+| `vision_title`       | string, unindexed                          | generated short title                                 |
+| `vision_description` | string, unindexed                          | generated visual description                          |
+| `vision_ocr`         | string, unindexed                          | text read out of the image                            |
+| `vision_medium`      | string, filterable                         | generated medium; unproven, nothing depends on it yet |
 
-`search_text` is deterministic whitespace-normalized concatenation of non-empty `title`, `description`, plain text content (only if supplied by Are.na), `source_title`, and channel titles. Retain display fields separately; never attempt to parse media or scrape a source URL during V1.
+`search_text` is deterministic whitespace-normalized concatenation of non-empty `title`, `description`, plain text content (only if supplied by Are.na), `source_title`, channel titles, and then — when a generated description exists for the block — `vision_description` and `vision_ocr`. Generated text goes last so a block that already describes itself keeps leading the corpus. Retain display fields separately; never scrape a source URL during V1.
+
+The `vision_*` attributes are populated from `src/lib/server/indexing/vision-cache.jsonl`, which is committed. They are written on every sync, not only when the vision stage runs — a sync without `--vision` still indexes what earlier runs generated, rather than stripping it back out. See [`decisions/adr-vision-indexing.md`](./decisions/adr-vision-indexing.md).
 
 The initial native embedding model is `nvidia/nemotron-3-embed-8b` with 1024 dimensions, as shown in Turbopuffer’s current native embedding guide. Keep the model in the schema creator, not the query route. A model/dimension change is a namespace migration.
 
@@ -112,9 +118,10 @@ RRF belongs in Turbopuffer, not in client code. It combines independently ranked
 1. Validate `ARENA_ACCESS_TOKEN`, Turbopuffer config, and the namespace schema.
 2. Resolve the maintainer's own user id and discover every channel they own; fetch each channel's pages, checkpointing each completed page locally.
 3. Normalize blocks into stable documents; deduplicate by Are.na block ID while unioning channel membership. `connected_at` is a per-channel connection timestamp, not stable block metadata — when the same block is connected to more than one channel, keep the most recent `connected_at` across those channels, matching browse mode's newest-first ordering. Every other field comes from the block resource itself and doesn't need this treatment.
-4. Upsert batched rows. Re-running the same sync is idempotent.
-5. Prune: page through every document id in the namespace (id-only, `rank_by id asc`, advancing `id Gt` filter) and delete ids that were not in this sync's deduplicated set. This runs after the upsert, so a failure leaves a superset of the truth, never a partial index. It also removes blocks from channels that are now ignored or private. Because block ids are deduplicated across channels before the diff, a block still in any synced channel is never pruned.
-6. Report fetched, normalized, upserted, deleted, skipped, and failed counts.
+4. With `--vision`, describe every deduplicated block that has an image and is not already in the vision cache, at bounded concurrency. A cache hit is decided before any network call, so re-running costs nothing for work already done. Per-block failures are collected, not fatal, and leave no cache entry, so the next run retries them. Entries are checkpointed to disk every 25 descriptions, so an interrupted backfill loses at most 25. Without `--vision` this step is skipped and the existing cache is indexed as-is.
+5. Upsert batched rows, folding any generated text into `search_text`. Re-running the same sync is idempotent.
+6. Prune: page through every document id in the namespace (id-only, `rank_by id asc`, advancing `id Gt` filter) and delete ids that were not in this sync's deduplicated set. This runs after the upsert, so a failure leaves a superset of the truth, never a partial index. It also removes blocks from channels that are now ignored or private. Because block ids are deduplicated across channels before the diff, a block still in any synced channel is never pruned.
+7. Report fetched, normalized, upserted, deleted, skipped, and failed counts, plus vision cache hits, generations, size skips and failures when the stage ran.
 
 Pruning is skipped, with the reason in the summary, when a channel failed, the sync was aborted, no blocks were fetched, or the delete would remove more than half the namespace. Pass `--allow-large-prune` to `bun run sync` to override the last guard, e.g. after deliberately ignoring most channels. The alternative of wiping and reloading the namespace was rejected: native embeddings would be recomputed for every document, and search would be empty or partial during the reload.
 

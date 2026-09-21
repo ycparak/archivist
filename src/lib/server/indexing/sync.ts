@@ -33,18 +33,25 @@ export interface SyncOptions {
 	maxPruneFraction?: number;
 	/** Bypass `maxPruneFraction`, e.g. after deliberately ignoring most channels. */
 	allowLargePrune?: boolean;
-	/** Omit to leave sync exactly as it was before vision indexing existed. */
+	/**
+	 * Generated text to index. Supplied on every run, not only when the stage is enabled — a sync
+	 * without `vision` must still index what previous runs generated, or it would silently strip
+	 * every description back out of the namespace.
+	 */
+	visionCache?: VisionCache;
+	/** Omit to index the existing cache without generating anything new. */
 	vision?: VisionSyncOptions;
 }
 
 export interface VisionSyncOptions {
 	client: VisionClient;
-	cache: VisionCache;
 	limit?: number;
 	revise?: boolean | ReadonlySet<string>;
 	concurrency?: number;
 	/** Report what would be generated and what it would cost, then write nothing. */
 	dryRun?: boolean;
+	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
+	onEntry?: (entry: VisionCacheEntry) => void;
 }
 
 export interface ChannelSyncFailure {
@@ -132,6 +139,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		channelFilter = EMPTY_CHANNEL_FILTER,
 		maxPruneFraction = DEFAULT_MAX_PRUNE_FRACTION,
 		allowLargePrune = false,
+		visionCache: existingVisionCache = new Map<string, VisionCacheEntry>(),
 		vision
 	} = options;
 	const client = new ArenaClient({ accessToken, fetchFn });
@@ -223,9 +231,10 @@ export async function syncArchive(options: SyncOptions): Promise<{
 
 	// Runs on the deduplicated set, so a block in five channels is described once.
 	let visionCache: VisionCacheEntry[] | null = null;
+	let visionText: VisionCache = existingVisionCache;
 	if (vision) {
 		if (vision.dryRun) {
-			const plan = planVisionWork(blocks, vision);
+			const plan = planVisionWork(blocks, { ...vision, cache: existingVisionCache });
 			summary.vision = {
 				blocksWithImage: plan.withImage.length,
 				cacheHits: plan.cached,
@@ -240,15 +249,21 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		} else {
 			const { entries, summary: visionSummary } = await describeBlocks(blocks, {
 				...vision,
+				cache: existingVisionCache,
 				log,
 				signal
 			});
 			summary.vision = visionSummary;
-			visionCache = mergeVisionCache(vision.cache, entries, new Set(blocks.map((b) => b.id)));
+			visionCache = mergeVisionCache(
+				existingVisionCache,
+				entries,
+				new Set(blocks.map((block) => block.id))
+			);
+			visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
 		}
 	}
 
-	const documents = blocks.map(toSearchDocument);
+	const documents = blocks.map((block) => toSearchDocument(block, visionText.get(block.id)));
 	const { batches, rowsUpserted } = await upsertSearchDocuments(documents, turbopuffer, { log });
 	summary.documentsUpserted = rowsUpserted;
 	summary.upsertBatches = batches;
