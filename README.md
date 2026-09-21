@@ -19,13 +19,13 @@ syncs every channel that user owns. Run it and you get your archive, not anyone 
 
 ## What you need
 
-|                                                  | Why                                      | Cost                                |
-| ------------------------------------------------ | ---------------------------------------- | ----------------------------------- |
-| [Bun](https://bun.sh) 1.4+                       | runtime and package manager              | free                                |
-| An Are.na account                                | the source of truth                      | free tier is fine                   |
-| A [Turbopuffer](https://turbopuffer.com) account | search index + embeddings                | free tier covers a personal archive |
-| An [OpenRouter](https://openrouter.ai) account   | vision descriptions — **optional**       | ~$0.50 for 2,600 images             |
-| A [Cloudflare](https://cloudflare.com) account   | deploying the public site — **optional** | free tier is fine                   |
+|                                                  | Why                                                                | Cost                                |
+| ------------------------------------------------ | ------------------------------------------------------------------ | ----------------------------------- |
+| [Bun](https://bun.sh) 1.4+                       | runtime and package manager                                        | free                                |
+| An Are.na account                                | the source of truth (read token; read + write only for write-back) | free tier is fine                   |
+| A [Turbopuffer](https://turbopuffer.com) account | search index + embeddings                                          | free tier covers a personal archive |
+| An [OpenRouter](https://openrouter.ai) account   | vision descriptions — **optional**                                 | ~$0.50 for 2,600 images             |
+| A [Cloudflare](https://cloudflare.com) account   | deploying the public site — **optional**                           | free tier is fine                   |
 
 You can run everything locally without Cloudflare, and skip OpenRouter entirely if you only want
 metadata search.
@@ -52,9 +52,10 @@ ARENA_ALLOW_PRIVATE_CHANNELS= # private channels are skipped unless listed here
 OPENROUTER_API_KEY=          # only needed for --vision
 ```
 
-**Are.na token scope.** A read-only token is enough for everything except `--push-arena-apply`,
-which writes titles and descriptions back to your blocks. Only grant write scope if you intend to
-use that.
+**Are.na token scope.** A **read** token covers everything here except one command. Syncing,
+indexing and vision descriptions never write to Are.na. Only `--push-arena-apply` does, and it needs
+a token with **read + write** — see [the gotcha below](#gotcha-a-read-only-token-cannot-write-back)
+before you try it.
 
 Private channels are excluded by default, so nothing private is published by accident — you have to
 name a channel explicitly to include it.
@@ -95,7 +96,7 @@ Also optional, and the only thing here that modifies your actual archive:
 
 ```bash
 bun run sync --push-arena                                  # print the diff, write nothing
-bun run sync --push-arena-apply --push-arena-limit=25      # apply, staged
+bun run sync --push-arena-apply --push-arena-limit=5       # apply a handful, then go and look
 bun run sync --push-arena-apply                            # apply the rest
 ```
 
@@ -110,6 +111,35 @@ Are.na only allows a block's author to update it.
 There is no undo. Your original titles exist only in Are.na until they are replaced, so export them
 first if that matters to you.
 
+#### Gotcha: a read-only token cannot write back
+
+This is the one thing most likely to waste your time, because everything _else_ in the project works
+fine with a read-only token, so you will probably have one.
+
+`ARENA_ACCESS_TOKEN` needs **read + write** scope for `--push-arena-apply`. Create a personal access
+token with both at [dev.are.na](https://dev.are.na) and put it in `.env`. The rest of the project
+never exercises the write scope.
+
+With a read-only token every update is rejected. The run now stops after five consecutive failures
+and says so:
+
+```
+Aborting Are.na write-back: the first 5 writes all failed (most recently block 36703616:
+Are.na request failed with status 401 updating block 36703616). This usually means
+ARENA_ACCESS_TOKEN is read-only — writing titles and descriptions needs write scope.
+```
+
+Always read the summary line rather than assuming success — it reports what was written against what
+was planned:
+
+```
+Are.na written:      5 of 5 planned block(s)     ← worked
+Are.na written:      0 of 25 planned block(s)    ← wrote nothing; see FAILED below it
+```
+
+To confirm independently, open one of the blocks the diff listed and check its title actually
+changed. `updated_at` on the block is the giveaway.
+
 ## Commands
 
 | Command                               | What it does                                             |
@@ -122,7 +152,8 @@ first if that matters to you.
 | `bun run sync --vision-concurrency=N` | parallel description requests (default 32)               |
 | `bun run sync --revision[=slug,…]`    | ignore the cache, for everything or named channels       |
 | `bun run sync --push-arena`           | preview Are.na write-back                                |
-| `bun run sync --push-arena-apply`     | perform Are.na write-back                                |
+| `bun run sync --push-arena-apply`     | perform Are.na write-back (needs a read + write token)   |
+| `bun run sync --push-arena-limit=N`   | write back at most N blocks this run                     |
 | `bun run sync --allow-large-prune`    | permit a prune of more than half the index               |
 | `bun run evaluate:search`             | run the search evaluation against your index             |
 | `bun run check`                       | generate types, then typecheck                           |
