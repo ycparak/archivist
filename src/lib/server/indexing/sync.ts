@@ -15,6 +15,9 @@ import {
 import { EMPTY_CHANNEL_FILTER, exclusionReason, type ChannelFilter } from './channel-filter';
 import type { ChannelManifestEntry } from './channel-manifest';
 import { toArchiveBlock } from './normalize';
+import { describeBlocks, planVisionWork, type VisionStageSummary } from './vision';
+import { mergeVisionCache, type VisionCache, type VisionCacheEntry } from './vision/cache';
+import type { VisionClient } from './vision/client';
 
 export interface SyncOptions {
 	accessToken: string;
@@ -30,6 +33,18 @@ export interface SyncOptions {
 	maxPruneFraction?: number;
 	/** Bypass `maxPruneFraction`, e.g. after deliberately ignoring most channels. */
 	allowLargePrune?: boolean;
+	/** Omit to leave sync exactly as it was before vision indexing existed. */
+	vision?: VisionSyncOptions;
+}
+
+export interface VisionSyncOptions {
+	client: VisionClient;
+	cache: VisionCache;
+	limit?: number;
+	revise?: boolean | ReadonlySet<string>;
+	concurrency?: number;
+	/** Report what would be generated and what it would cost, then write nothing. */
+	dryRun?: boolean;
 }
 
 export interface ChannelSyncFailure {
@@ -52,6 +67,8 @@ export interface SyncSummary {
 	documentsDeleted: number;
 	/** Why stale documents were left in the namespace, or null when pruning ran. */
 	pruneSkipped: string | null;
+	/** Null when the vision stage did not run. */
+	vision: VisionStageSummary | null;
 }
 
 const noop = () => {};
@@ -100,6 +117,7 @@ function pruneBlockReason(
 export async function syncArchive(options: SyncOptions): Promise<{
 	blocks: ArchiveBlock[];
 	channels: ChannelManifestEntry[];
+	visionCache: VisionCacheEntry[] | null;
 	summary: SyncSummary;
 }> {
 	const {
@@ -113,7 +131,8 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		maxLeadingChannelFailures = DEFAULT_MAX_LEADING_CHANNEL_FAILURES,
 		channelFilter = EMPTY_CHANNEL_FILTER,
 		maxPruneFraction = DEFAULT_MAX_PRUNE_FRACTION,
-		allowLargePrune = false
+		allowLargePrune = false,
+		vision
 	} = options;
 	const client = new ArenaClient({ accessToken, fetchFn });
 
@@ -130,7 +149,8 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		documentsUpserted: 0,
 		upsertBatches: 0,
 		documentsDeleted: 0,
-		pruneSkipped: null
+		pruneSkipped: null,
+		vision: null
 	};
 
 	const me = await client.me();
@@ -200,6 +220,34 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	summary.uniqueBlocks = blocksById.size;
 
 	const blocks = [...blocksById.values()];
+
+	// Runs on the deduplicated set, so a block in five channels is described once.
+	let visionCache: VisionCacheEntry[] | null = null;
+	if (vision) {
+		if (vision.dryRun) {
+			const plan = planVisionWork(blocks, vision);
+			summary.vision = {
+				blocksWithImage: plan.withImage.length,
+				cacheHits: plan.cached,
+				generated: 0,
+				skippedTooLarge: 0,
+				skippedOverLimit: plan.overLimit,
+				failed: []
+			};
+			log(
+				`Vision (dry run): ${plan.withImage.length} block(s) with an image, ${plan.cached} cached, ${plan.pending.length} would be described`
+			);
+		} else {
+			const { entries, summary: visionSummary } = await describeBlocks(blocks, {
+				...vision,
+				log,
+				signal
+			});
+			summary.vision = visionSummary;
+			visionCache = mergeVisionCache(vision.cache, entries, new Set(blocks.map((b) => b.id)));
+		}
+	}
+
 	const documents = blocks.map(toSearchDocument);
 	const { batches, rowsUpserted } = await upsertSearchDocuments(documents, turbopuffer, { log });
 	summary.documentsUpserted = rowsUpserted;
@@ -226,5 +274,5 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	}
 	if (summary.pruneSkipped) log(`Skipped pruning: ${summary.pruneSkipped}`);
 
-	return { blocks, channels, summary };
+	return { blocks, channels, visionCache, summary };
 }

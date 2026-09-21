@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { visionResultSchema, type VisionResult } from './cache';
 import {
 	buildContextText,
+	MAX_DESCRIPTION_CHARS,
 	MAX_TITLE_CHARS,
 	PROMPT_VERSION,
 	SYSTEM_PROMPT,
@@ -89,6 +90,27 @@ function extractContent(body: unknown): { content: string; provider: string | nu
 	return { content, provider: parsed.data.provider ?? null };
 }
 
+/**
+ * The model treats the length guidance as a suggestion — a first live call came back 640 characters
+ * against a 500 limit. The cap exists to stop generated prose drowning out a block's own
+ * description in `search_text`, so it is enforced here rather than hoped for, cutting at the last
+ * sentence that fits so the text still ends cleanly.
+ */
+function clampDescription(description: string): string {
+	if (description.length <= MAX_DESCRIPTION_CHARS) return description;
+
+	const head = description.slice(0, MAX_DESCRIPTION_CHARS);
+	const lastSentence = Math.max(
+		head.lastIndexOf('. '),
+		head.lastIndexOf('! '),
+		head.lastIndexOf('? ')
+	);
+	if (lastSentence >= MAX_DESCRIPTION_CHARS / 2) return head.slice(0, lastSentence + 1);
+
+	const lastSpace = head.lastIndexOf(' ');
+	return `${head.slice(0, lastSpace > 0 ? lastSpace : head.length).trimEnd()}…`;
+}
+
 function parseResult(content: string, block: BlockContext): VisionResult {
 	let raw: unknown;
 	try {
@@ -102,7 +124,7 @@ function parseResult(content: string, block: BlockContext): VisionResult {
 		throw new VisionResponseError(`model output failed validation: ${parsed.error.message}`);
 	}
 
-	const result = parsed.data;
+	const result = { ...parsed.data, description: clampDescription(parsed.data.description) };
 	const supplied = block.title?.replace(/\s+/g, ' ').trim().toLowerCase();
 	if (supplied && result.title.toLowerCase() === supplied) {
 		throw new VisionResponseError('model echoed the supplied title instead of writing one');
@@ -169,8 +191,11 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 			});
 
 			if (!response.ok) {
+				// The body carries the actual cause — an unreachable image, an unroutable provider —
+				// and a bare status code sends you diagnosing the wrong thing.
+				const detail = (await response.text().catch(() => '')).slice(0, 300).trim();
 				throw new VisionRequestError(
-					`OpenRouter request failed with status ${response.status}`,
+					`OpenRouter request failed with status ${response.status}${detail ? `: ${detail}` : ''}`,
 					response.status
 				);
 			}

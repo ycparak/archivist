@@ -1,11 +1,77 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import {
 	buildChannelManifest,
 	serializeChannelManifest
 } from '$lib/server/indexing/channel-manifest';
 import { parseSlugList } from '$lib/server/indexing/channel-filter';
-import { syncArchive } from '$lib/server/indexing/sync';
+import { syncArchive, type VisionSyncOptions } from '$lib/server/indexing/sync';
+import { createVisionClient } from '$lib/server/indexing/vision/client';
+import {
+	parseVisionCache,
+	serializeVisionCache,
+	type VisionCacheEntry
+} from '$lib/server/indexing/vision/cache';
 import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
+
+const VISION_CACHE_URL = new URL('../src/lib/server/indexing/vision-cache.jsonl', import.meta.url);
+
+function flagValue(name: string): string | undefined {
+	const prefix = `--${name}=`;
+	return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
+}
+
+function hasFlag(name: string): boolean {
+	return process.argv.includes(`--${name}`) || flagValue(name) !== undefined;
+}
+
+/** `--revision` revises everything; `--revision=a,b` revises only those channels. */
+function parseRevise(): boolean | Set<string> | undefined {
+	if (!hasFlag('revision')) return undefined;
+	const value = flagValue('revision');
+	if (!value) return true;
+	const slugs = value
+		.split(',')
+		.map((slug) => slug.trim())
+		.filter(Boolean);
+	return slugs.length ? new Set(slugs) : true;
+}
+
+async function readVisionCache(): Promise<Map<string, VisionCacheEntry>> {
+	try {
+		return parseVisionCache(await readFile(VISION_CACHE_URL, 'utf8'));
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Map();
+		throw error;
+	}
+}
+
+async function resolveVisionOptions(): Promise<VisionSyncOptions | undefined> {
+	const dryRun = hasFlag('vision-dry-run');
+	if (!hasFlag('vision') && !dryRun) return undefined;
+
+	const apiKey = process.env.OPENROUTER_API_KEY;
+	if (!apiKey) {
+		console.error(
+			'OPENROUTER_API_KEY must be set to run the vision stage. Copy .env.example to .env and fill it in.'
+		);
+		process.exit(1);
+	}
+
+	const limitValue = flagValue('vision-limit');
+	const limit = limitValue === undefined ? undefined : Number(limitValue);
+	if (limit !== undefined && (!Number.isInteger(limit) || limit < 0)) {
+		console.error(`--vision-limit must be a non-negative integer, got "${limitValue}"`);
+		process.exit(1);
+	}
+
+	return {
+		client: createVisionClient({ apiKey }),
+		cache: await readVisionCache(),
+		limit,
+		revise: parseRevise(),
+		dryRun
+	};
+}
 
 const accessToken = process.env.ARENA_ACCESS_TOKEN;
 if (!accessToken) {
@@ -23,17 +89,25 @@ if (!apiKey || !region) {
 }
 const namespace = process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE;
 
+const vision = await resolveVisionOptions();
+
 try {
-	const { channels, summary } = await syncArchive({
+	const { channels, visionCache, summary } = await syncArchive({
 		accessToken,
 		turbopuffer: { apiKey, region, namespace },
 		log: console.log,
-		allowLargePrune: process.argv.includes('--allow-large-prune'),
+		allowLargePrune: hasFlag('allow-large-prune'),
+		vision,
 		channelFilter: {
 			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
 			allowPrivate: parseSlugList(process.env.ARENA_ALLOW_PRIVATE_CHANNELS)
 		}
 	});
+
+	if (visionCache) {
+		await writeFile(VISION_CACHE_URL, serializeVisionCache(visionCache));
+		console.log(`Wrote vision cache: ${visionCache.length} entr(ies)`);
+	}
 
 	const manifest = buildChannelManifest(channels);
 	const manifestPath = new URL('../src/lib/server/indexing/channel-manifest.json', import.meta.url);
@@ -58,6 +132,26 @@ try {
 	console.log(
 		`  Upserted:            ${summary.documentsUpserted} document(s) into "${namespace}" across ${summary.upsertBatches} batch(es)`
 	);
+	if (summary.vision) {
+		const v = summary.vision;
+		console.log(`  Blocks with image:   ${v.blocksWithImage}`);
+		console.log(`  Vision cache hits:   ${v.cacheHits} (no model call, no cost)`);
+		if (vision?.dryRun) {
+			const would = v.blocksWithImage - v.cacheHits - v.skippedOverLimit;
+			console.log(`  Vision would run:    ${would} block(s) — dry run, nothing spent`);
+		} else {
+			console.log(`  Vision generated:    ${v.generated}`);
+		}
+		if (v.skippedTooLarge) console.log(`  Vision too large:    ${v.skippedTooLarge}`);
+		if (v.skippedOverLimit) console.log(`  Vision over limit:   ${v.skippedOverLimit}`);
+		if (v.failed.length) {
+			console.log(`  Vision failed:       ${v.failed.length}`);
+			for (const failure of v.failed.slice(0, 10)) {
+				console.log(`    - ${failure.blockId}: ${failure.error}`);
+			}
+			if (v.failed.length > 10) console.log(`    ... and ${v.failed.length - 10} more`);
+		}
+	}
 	if (summary.pruneSkipped) {
 		console.log(`  Pruned:              skipped (${summary.pruneSkipped})`);
 		console.log(
