@@ -1,0 +1,132 @@
+import { describe, expect, it, vi } from 'vitest';
+import { FfmpegMissingError, isAnimated, MAX_SOURCE_BYTES, transcodeToVideoDataUrl } from './video';
+
+/**
+ * These drive the real ffmpeg binary against a generated clip rather than mocking `spawn`, because
+ * the thing worth testing is that the arguments actually produce a file a provider will accept —
+ * a mocked child process would pass with any arguments at all.
+ */
+
+const GENERATED_GIF_URL = 'https://cdn.example/animation.gif';
+
+/** A tiny animation, made by ffmpeg so the fixture is not a committed binary. */
+async function sampleGif(): Promise<Buffer> {
+	const { spawnSync } = await import('node:child_process');
+	const { mkdtempSync, readFileSync, rmSync } = await import('node:fs');
+	const { tmpdir } = await import('node:os');
+	const { join } = await import('node:path');
+
+	const dir = mkdtempSync(join(tmpdir(), 'archivist-test-'));
+	const out = join(dir, 'in.gif');
+	spawnSync('ffmpeg', [
+		'-y',
+		'-loglevel',
+		'error',
+		'-f',
+		'lavfi',
+		'-i',
+		'testsrc=size=320x240:rate=10:duration=1',
+		out
+	]);
+	const bytes = readFileSync(out);
+	rmSync(dir, { recursive: true, force: true });
+	return bytes;
+}
+
+function respondWith(body: Buffer, init: { status?: number } = {}) {
+	return vi.fn<typeof fetch>(
+		async () => new Response(new Uint8Array(body), { status: init.status ?? 200 })
+	);
+}
+
+describe('isAnimated', () => {
+	it('recognises the content type Are.na reports for animations', () => {
+		expect(isAnimated('image/gif')).toBe(true);
+		expect(isAnimated('IMAGE/GIF ')).toBe(true);
+	});
+
+	it('leaves stills on the image path', () => {
+		for (const type of ['image/jpeg', 'image/png', 'image/webp', null, undefined, '']) {
+			expect(isAnimated(type)).toBe(false);
+		}
+	});
+});
+
+describe('transcodeToVideoDataUrl', () => {
+	it('produces an mp4 data url the model can be handed', async () => {
+		const fetchFn = respondWith(await sampleGif());
+		const result = await transcodeToVideoDataUrl(GENERATED_GIF_URL, { fetchFn });
+
+		expect(result.kind).toBe('video');
+		if (result.kind !== 'video') return;
+		expect(result.dataUrl.startsWith('data:video/mp4;base64,')).toBe(true);
+		expect(result.bytes).toBeGreaterThan(0);
+
+		// Decodes to a real MP4: bytes 4-8 of the ftyp box.
+		const payload = Buffer.from(result.dataUrl.split(',')[1], 'base64');
+		expect(payload.subarray(4, 8).toString()).toBe('ftyp');
+	});
+
+	it('shrinks the source substantially, which is the whole point', async () => {
+		const source = await sampleGif();
+		const result = await transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+			fetchFn: respondWith(source)
+		});
+
+		if (result.kind !== 'video') throw new Error('expected a transcode');
+		expect(result.bytes).toBeLessThan(source.byteLength);
+	});
+
+	it('skips a source too large to be worth downloading', async () => {
+		const fetchFn = respondWith(Buffer.alloc(1024));
+		const result = await transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+			fetchFn,
+			maxSourceBytes: 512
+		});
+
+		expect(result).toEqual({
+			kind: 'skipped',
+			reason: expect.stringContaining('over the') as unknown as string
+		});
+	});
+
+	it('skips when the transcode still lands over the inline limit', async () => {
+		const result = await transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+			fetchFn: respondWith(await sampleGif()),
+			maxTranscodedBytes: 1
+		});
+
+		expect(result.kind).toBe('skipped');
+		if (result.kind !== 'skipped') return;
+		expect(result.reason).toContain('inline limit');
+	});
+
+	it('skips an unreachable source rather than failing the run', async () => {
+		const result = await transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+			fetchFn: respondWith(Buffer.alloc(0), { status: 404 })
+		});
+
+		expect(result).toEqual({ kind: 'skipped', reason: 'source returned HTTP 404' });
+	});
+
+	it('names ffmpeg and how to install it when the binary is missing', async () => {
+		await expect(
+			transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+				fetchFn: respondWith(await sampleGif()),
+				command: 'ffmpeg-that-does-not-exist'
+			})
+		).rejects.toBeInstanceOf(FfmpegMissingError);
+	});
+
+	it('surfaces ffmpeg output when it fails on the input', async () => {
+		await expect(
+			transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+				fetchFn: respondWith(Buffer.from('this is not an animation'))
+			})
+		).rejects.toThrow(/ffmpeg exited with code/);
+	});
+
+	it('defaults to a source ceiling above the largest animation in the archive', () => {
+		expect(MAX_SOURCE_BYTES).toBeGreaterThan(24.2 * 1024 * 1024);
+	});
+});
