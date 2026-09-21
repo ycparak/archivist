@@ -58,16 +58,31 @@ function routedFetch(routes: Record<string, () => Response>) {
 	});
 }
 
-function okTurbopufferFetch() {
-	return vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+function okTurbopufferFetch(existingIds: string[] = []) {
+	return vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
 		const body = JSON.parse(init.body as string);
+		if (url.endsWith('/query')) {
+			const after = body.filters?.[2] as string | undefined;
+			const rows = existingIds
+				.filter((id) => after === undefined || id > after)
+				.sort()
+				.slice(0, body.limit)
+				.map((id) => ({ id }));
+			return jsonResponse({ rows, billing: {}, performance: {} });
+		}
 		return jsonResponse({
 			status: 'OK',
 			message: 'ok',
-			rows_affected: body.upsert_rows?.length ?? 0,
+			rows_affected: body.upsert_rows?.length ?? body.deletes?.length ?? 0,
 			billing: {}
 		});
 	});
+}
+
+function writeBodies(fetchFn: ReturnType<typeof okTurbopufferFetch>) {
+	return fetchFn.mock.calls
+		.filter(([url]) => !(url as string).endsWith('/query'))
+		.map(([, init]) => JSON.parse((init as RequestInit).body as string));
 }
 
 function turbopufferConfig(fetchFn = okTurbopufferFetch()) {
@@ -437,7 +452,7 @@ describe('syncArchive', () => {
 
 		expect(summary.documentsUpserted).toBe(1);
 		expect(summary.upsertBatches).toBe(1);
-		expect(turbopufferFetch).toHaveBeenCalledTimes(1);
+		expect(writeBodies(turbopufferFetch)).toHaveLength(1);
 
 		const [url, init] = turbopufferFetch.mock.calls[0] as [string, RequestInit];
 		expect(url).toBe('https://r.turbopuffer.com/v2/namespaces/archivist-test');
@@ -464,5 +479,123 @@ describe('syncArchive', () => {
 		expect(summary.documentsUpserted).toBe(0);
 		expect(summary.upsertBatches).toBe(0);
 		expect(turbopufferFetch).not.toHaveBeenCalled();
+	});
+
+	describe('pruning', () => {
+		const twoChannelsFetch = (failing = false) =>
+			routedFetch({
+				'/v3/me': () => meResponse(1, 'me'),
+				'/v3/users/1/contents': () =>
+					contentsResponse([
+						ownedChannel(10, 'channel-a', 'Channel A'),
+						ownedChannel(11, 'channel-b', 'Channel B')
+					]),
+				'/v3/channels/channel-a/contents': () => contentsResponse([textBlock(100), textBlock(101)]),
+				'/v3/channels/channel-b/contents': () =>
+					failing
+						? jsonResponse({ error: 'boom' }, { status: 500 })
+						: contentsResponse([textBlock(102)])
+			});
+
+		it('deletes indexed documents that were not fetched, after upserting', async () => {
+			const turbopufferFetch = okTurbopufferFetch([
+				'block:100',
+				'block:101',
+				'block:102',
+				'block:9'
+			]);
+
+			const { summary } = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(),
+				channelDelayMs: 0,
+				turbopuffer: turbopufferConfig(turbopufferFetch)
+			});
+
+			expect(summary.documentsDeleted).toBe(1);
+			expect(summary.pruneSkipped).toBeNull();
+			const writes = writeBodies(turbopufferFetch);
+			expect(writes[0].upsert_rows).toHaveLength(3);
+			expect(writes[1]).toEqual({ deletes: ['block:9'] });
+		});
+
+		it('deletes several stale documents in one batch', async () => {
+			const stale = Array.from({ length: 3 }, (_, i) => `block:stale-${i}`);
+			const turbopufferFetch = okTurbopufferFetch([
+				'block:100',
+				'block:101',
+				'block:102',
+				...stale
+			]);
+
+			const { summary } = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(),
+				channelDelayMs: 0,
+				maxPruneFraction: 1,
+				turbopuffer: turbopufferConfig(turbopufferFetch)
+			});
+
+			expect(summary.documentsDeleted).toBe(3);
+		});
+
+		it('does not prune when a channel failed to sync', async () => {
+			const turbopufferFetch = okTurbopufferFetch(['block:100', 'block:102']);
+
+			const { summary } = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(true),
+				channelDelayMs: 0,
+				turbopuffer: turbopufferConfig(turbopufferFetch)
+			});
+
+			expect(summary.channelsFailed).toHaveLength(1);
+			expect(summary.documentsDeleted).toBe(0);
+			expect(summary.pruneSkipped).toMatch(/failed/);
+			expect(turbopufferFetch.mock.calls.some(([url]) => (url as string).endsWith('/query'))).toBe(
+				false
+			);
+		});
+
+		it('skips pruning above the safety limit unless explicitly allowed', async () => {
+			const existing = ['block:100', 'block:101', 'block:102', 'block:7', 'block:8', 'block:9'];
+
+			const guarded = okTurbopufferFetch(existing);
+			const skipped = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(),
+				channelDelayMs: 0,
+				maxPruneFraction: 0.4,
+				turbopuffer: turbopufferConfig(guarded)
+			});
+			expect(skipped.summary.documentsDeleted).toBe(0);
+			expect(skipped.summary.pruneSkipped).toMatch(/3 of 6/);
+			expect(writeBodies(guarded)).toHaveLength(1);
+
+			const allowed = okTurbopufferFetch(existing);
+			const forced = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(),
+				channelDelayMs: 0,
+				maxPruneFraction: 0.4,
+				allowLargePrune: true,
+				turbopuffer: turbopufferConfig(allowed)
+			});
+			expect(forced.summary.documentsDeleted).toBe(3);
+		});
+
+		it('does nothing when the namespace already matches', async () => {
+			const turbopufferFetch = okTurbopufferFetch(['block:100', 'block:101', 'block:102']);
+
+			const { summary } = await syncArchive({
+				accessToken: 't',
+				fetchFn: twoChannelsFetch(),
+				channelDelayMs: 0,
+				turbopuffer: turbopufferConfig(turbopufferFetch)
+			});
+
+			expect(summary.documentsDeleted).toBe(0);
+			expect(writeBodies(turbopufferFetch)).toHaveLength(1);
+		});
 	});
 });

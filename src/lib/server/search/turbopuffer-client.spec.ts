@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SearchDocument } from '$lib/domain/archive';
-import { upsertSearchDocuments } from './turbopuffer-client';
+import {
+	deleteSearchDocuments,
+	listDocumentIds,
+	upsertSearchDocuments
+} from './turbopuffer-client';
 
 function document(id: string): SearchDocument {
 	return {
@@ -124,5 +128,78 @@ describe('upsertSearchDocuments', () => {
 			JSON.parse((init as RequestInit).body as string).upsert_rows.map((r: { id: string }) => r.id)
 		);
 		expect(requestedIds).not.toContain('block:5');
+	});
+});
+
+describe('listDocumentIds', () => {
+	const config = (fetchFn: typeof fetch) => ({
+		apiKey: 'k',
+		region: 'r',
+		namespace: 'ns',
+		fetchFn
+	});
+	const queryResponse = (ids: string[]) =>
+		new Response(
+			JSON.stringify({ rows: ids.map((id) => ({ id })), billing: {}, performance: {} }),
+			{
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			}
+		);
+
+	it('pages by advancing an id filter, fetching no attributes', async () => {
+		const fetchFn = vi
+			.fn()
+			.mockResolvedValueOnce(queryResponse(['a', 'b']))
+			.mockResolvedValueOnce(queryResponse(['c']));
+
+		const ids = await listDocumentIds(config(fetchFn as unknown as typeof fetch), { pageSize: 2 });
+
+		expect(ids).toEqual(['a', 'b', 'c']);
+		const [first, second] = fetchFn.mock.calls.map(([, init]) =>
+			JSON.parse((init as RequestInit).body as string)
+		);
+		expect(first).toMatchObject({ rank_by: ['id', 'asc'], limit: 2, include_attributes: false });
+		expect(first.filters).toBeUndefined();
+		expect(second.filters).toEqual(['id', 'Gt', 'b']);
+	});
+
+	it('returns an empty list for an empty namespace', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		expect(await listDocumentIds(config(fetchFn as unknown as typeof fetch))).toEqual([]);
+		expect(fetchFn).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('deleteSearchDocuments', () => {
+	it('deletes ids in batches', async () => {
+		const fetchFn = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+			const { deletes } = JSON.parse(init.body as string);
+			return okResponse(deletes.length);
+		});
+
+		const result = await deleteSearchDocuments(
+			['a', 'b', 'c'],
+			{ apiKey: 'k', region: 'r', namespace: 'ns', fetchFn },
+			{ batchSize: 2 }
+		);
+
+		expect(result).toEqual({ batches: 2, rowsDeleted: 3 });
+		const bodies = fetchFn.mock.calls.map(([, init]) =>
+			JSON.parse((init as RequestInit).body as string)
+		);
+		expect(bodies).toEqual([{ deletes: ['a', 'b'] }, { deletes: ['c'] }]);
+	});
+
+	it('does nothing for an empty list', async () => {
+		const fetchFn = vi.fn();
+		const result = await deleteSearchDocuments([], {
+			apiKey: 'k',
+			region: 'r',
+			namespace: 'ns',
+			fetchFn
+		});
+		expect(result).toEqual({ batches: 0, rowsDeleted: 0 });
+		expect(fetchFn).not.toHaveBeenCalled();
 	});
 });
