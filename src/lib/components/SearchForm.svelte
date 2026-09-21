@@ -150,7 +150,7 @@
 		min-inline-size: 0;
 		block-size: var(--control-lg);
 		padding-inline: var(--space-6);
-		font-size: var(--text-size-md);
+		font-size: var(--text-md);
 	}
 
 	.search-row button {
@@ -158,7 +158,7 @@
 		padding-inline: var(--space-12);
 		color: var(--color-text-inverse);
 		background: var(--color-accent);
-		font-size: var(--text-size-sm);
+		font-size: var(--text-sm);
 	}
 
 	.search-row button:hover {
@@ -186,7 +186,7 @@
 	.control legend {
 		padding: 0;
 		color: var(--color-text-secondary);
-		font-size: var(--text-size-sm);
+		font-size: var(--text-sm);
 		line-height: var(--leading-interface);
 	}
 
@@ -194,7 +194,7 @@
 	.control input[type='date'] {
 		block-size: var(--control-md);
 		padding-inline: var(--space-4);
-		font-size: var(--text-size-sm);
+		font-size: var(--text-sm);
 	}
 
 	.types {
@@ -224,7 +224,7 @@
 		gap: var(--space-3);
 		align-items: center;
 		color: var(--color-text-secondary);
-		font-size: var(--text-size-sm);
+		font-size: var(--text-sm);
 	}
 
 	.checkbox input {

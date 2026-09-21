@@ -10,7 +10,7 @@
 <main class="container">
 	<header class="masthead">
 		<h1>About Archivist</h1>
-		<p class="reading-width lead">
+		<p class="lead reading-width">
 			Archivist is a search and gallery surface for one maintainer's Are.na archive. It exists so a
 			visual reference, idea, or phrase can find its original block again — not to summarize, tag,
 			or reinterpret the archive.
@@ -77,18 +77,18 @@
 
 	h1 {
 		margin: 0;
-		font-size: var(--text-size-2xl);
+		font-size: var(--text-2xl);
 	}
 
 	h2 {
 		margin: 0;
-		font-size: var(--text-size-xl);
+		font-size: var(--text-xl);
 	}
 
 	.lead {
 		margin: 0;
 		color: var(--color-text-secondary);
-		font-size: var(--text-size-lg);
+		font-size: var(--text-lg);
 	}
 
 	section p {

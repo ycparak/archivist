@@ -46,7 +46,7 @@
 <main class="container">
 	<header class="masthead">
 		<h1>Archivist</h1>
-		<p class="reading-width lead">
+		<p class="lead reading-width">
 			Search one maintainer’s Are.na archive by exact words or by idea. Every result is an original
 			block and links back to Are.na.
 		</p>
@@ -57,7 +57,7 @@
 
 	<ActiveFilters {state} />
 
-	<p class="meta results-status" role="status" aria-live="polite">{status}</p>
+	<p class="results-status meta" role="status" aria-live="polite">{status}</p>
 
 	{#if data.kind === 'unavailable'}
 		<ArchiveMessage heading="Search is unavailable">
@@ -111,13 +111,13 @@
 
 	h1 {
 		margin: 0;
-		font-size: var(--text-size-2xl);
+		font-size: var(--text-2xl);
 	}
 
 	.lead {
 		margin: 0;
 		color: var(--color-text-secondary);
-		font-size: var(--text-size-lg);
+		font-size: var(--text-lg);
 	}
 
 	.results-status {
