@@ -260,6 +260,30 @@ describe('describeBlocks', () => {
 		expect(peak).toBe(2);
 	});
 
+	it('reports progress on a short run, which a fixed interval of 25 never did', async () => {
+		const lines: string[] = [];
+		await describeBlocks(
+			Array.from({ length: 12 }, (_, index) => block({ id: String(index) })),
+			{ client: stubClient(), cache: new Map(), concurrency: 4, now, log: (m) => lines.push(m) }
+		);
+
+		const progress = lines.filter((line) => line.includes('described'));
+		expect(progress.length).toBeGreaterThan(1);
+		expect(progress.at(-1)).toBe('  12/12 described');
+	});
+
+	it('keeps a long run to roughly ten updates rather than hundreds', async () => {
+		const lines: string[] = [];
+		await describeBlocks(
+			Array.from({ length: 400 }, (_, index) => block({ id: String(index) })),
+			{ client: stubClient(), cache: new Map(), concurrency: 8, now, log: (m) => lines.push(m) }
+		);
+
+		const progress = lines.filter((line) => line.includes('described'));
+		expect(progress.length).toBeLessThanOrEqual(17);
+		expect(progress.at(-1)).toBe('  400/400 described');
+	});
+
 	it('reports the final block, so the tail does not look like a hang', async () => {
 		const lines: string[] = [];
 		await describeBlocks(
@@ -267,7 +291,7 @@ describe('describeBlocks', () => {
 			{ client: stubClient(), cache: new Map(), concurrency: 4, now, log: (m) => lines.push(m) }
 		);
 
-		expect(lines).toContain('  25/27 described');
+		// The interval adapts to the run size; what must always hold is that the last block reports.
 		expect(lines).toContain('  27/27 described');
 	});
 });
