@@ -33,6 +33,12 @@ export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_RETRIES = 4;
 const RETRY_BASE_MS = 1_000;
 
+/**
+ * Generous against the observed 20-160s spread, but finite: without it one stalled socket hangs a
+ * multi-hour backfill forever, with nothing in the log to say so.
+ */
+const DEFAULT_REQUEST_TIMEOUT_MS = 240_000;
+
 function isRetryable(status: number): boolean {
 	return status === 408 || status === 429 || status >= 500;
 }
@@ -68,6 +74,7 @@ export interface VisionClientOptions {
 	renditionWidth?: number;
 	maxImageBytes?: number;
 	maxRetries?: number;
+	requestTimeoutMs?: number;
 	/** Injectable so tests exercise the retry path without waiting on it. */
 	sleepFn?: (ms: number) => Promise<void>;
 }
@@ -158,6 +165,7 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 		renditionWidth,
 		maxImageBytes = MAX_IMAGE_BYTES,
 		maxRetries = DEFAULT_MAX_RETRIES,
+		requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 		sleepFn = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 	} = options;
 
@@ -197,12 +205,29 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 
 			let response: Response | undefined;
 			for (let attempt = 0; ; attempt += 1) {
-				response = await fetchFn(OPENROUTER_URL, {
-					method: 'POST',
-					signal,
-					headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-					body
-				});
+				const timeout = AbortSignal.timeout(requestTimeoutMs);
+				try {
+					response = await fetchFn(OPENROUTER_URL, {
+						method: 'POST',
+						signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+						headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+						body
+					});
+				} catch (error) {
+					// A caller-driven abort is the run shutting down; a timeout is one stalled socket,
+					// which the next attempt routes elsewhere.
+					if (signal?.aborted || !timeout.aborted) throw error;
+					if (attempt >= maxRetries) {
+						throw new VisionRequestError(
+							`OpenRouter request timed out after ${requestTimeoutMs}ms, ${attempt + 1} attempt(s)`,
+							null,
+							{ cause: error }
+						);
+					}
+					await sleepFn(RETRY_BASE_MS * 2 ** attempt);
+					continue;
+				}
+
 				if (response.ok) break;
 
 				if (!isRetryable(response.status) || attempt >= maxRetries || signal?.aborted) {
