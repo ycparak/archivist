@@ -6,6 +6,19 @@ Seeded from [`implementation_plan.md`](./implementation_plan.md) — vertical sl
 
 ## Up Next
 
+### Video playback in the gallery
+
+- [ ] **Autoplaying, looping, muted video in result cards.** The UI only renders `<img>`, and the index
+      stores no video URL (only the thumbnail), so this needs a new indexed field and a re-sync — not
+      just a component change. Plan, open questions and the exact touch points are in
+      [`specs/spec-video-playback.md`](./specs/spec-video-playback.md).
+
+## In Progress
+
+_(none)_
+
+## Done
+
 ### Vision indexing — phase 1
 
 Generate visual descriptions for the 2,585 blocks with an image and fold them into retrieval.
@@ -19,7 +32,7 @@ Work these in order — each one is shippable on its own.
       so dilution is visible, added a `pending` field so target cases can be recorded without
       holding the gate red, and added 5 pending vision cases grounded in the actual images. Baseline
       and the promotion bar for task 5 are in
-      [worksheet](./specs/worksheet-vision-eval-baseline.md).
+      [worksheet](./history/worksheets/worksheet-vision-eval-baseline.md).
 - [x] **2. Rendition and cache primitives.** Done —
       [`vision/rendition.ts`](../src/lib/server/indexing/vision/rendition.ts) (payload
       decode/rewrite/re-encode, source-key extraction, SHA-256; passes non-resizer URLs through
@@ -53,56 +66,44 @@ Work these in order — each one is shippable on its own.
       chars), so the client now clamps at a sentence boundary; and `medium` is the least reliable
       field — a grainy photograph was labelled `painting`. Do not promote `vision_medium` to a UI
       facet without measuring it.
-- [~] **5. Schema, `search_text`, and the full backfill.** Code complete and committed; the
-  backfill run is handed off — see
-  [handoff worksheet](./specs/worksheet-vision-backfill-handoff.md).
-  Done: four additive `vision_*` attributes in the Turbopuffer schema (no namespace bump);
-  `toSearchDocument(block, vision?)` folding `vision_description` and `vision_ocr` into
-  `search_text` after the block's own metadata; retry with exponential backoff on 429/5xx
-  honouring `Retry-After`; cache checkpointing every 25 entries so a multi-hour run survives
-  interruption; `--vision-concurrency=N`; architecture.md schema table and sync lifecycle
-  updated. 305 tests pass.
-  Fixed along the way: sync now indexes the vision cache on **every** run, not only with
-  `--vision`. Previously a plain `bun run sync` after the backfill would have silently stripped
-  every generated description back out of the namespace. Verified against the live namespace.
-  **Remaining, for the maintainer:** run `bun run sync --vision` (~2,570 blocks, ~$0.50,
-  roughly 1–3.5h), commit `vision-cache.jsonl`, re-run `evaluate:search`, promote the five
-  pending cases, and check `exact-phrase-link` / `combined-filter` ranks against the baseline
-  for dilution.
-- [~] **6. Are.na write-back.** Code complete and tested; the apply run is handed off — see
-  [handoff worksheet](./specs/worksheet-vision-backfill-handoff.md#are-na-write-back).
-  `ArenaClient.updateBlock`, `ownerId` threaded from the Are.na payload through `ArchiveBlock`,
-  [`vision/titles.ts`](../src/lib/server/indexing/vision/titles.ts) implementing
-  `lowQualityTitleReason` with its four triggers, and
-  [`vision/writeback.ts`](../src/lib/server/indexing/vision/writeback.ts) planning and applying
-  per-block updates with `metadata.vision_v` / `vision_at` / `vision_src`. Block type is not
-  part of the decision (ADR amendment); a description is written only when empty. Writes are
-  paced, not parallelised. `--push-arena` prints a diff, `--push-arena-apply` writes,
-  `--push-arena-limit=N` stages it. 370 tests.
-  Validated against the live archive: 892 titles would be replaced (782 filename, 89
-  boilerplate, 13 opaque, 8 restating their description), 15 added, and a dry run plans
-  **609 blocks**. The longest titles it leaves alone are all legitimate.
-  Three classifier rules were wrong on first write and were corrected against real titles: a
-  bare ` / X` suffix was flagging `Home / X` (a false positive, now dropped),
-  `on X (formerly Twitter)` was missed, and a bare URL with no digits was missed.
-  **Remaining, for the maintainer:** `bun run sync --push-arena` to review the diff, then
-  `--push-arena-apply`, ideally staged with `--push-arena-limit=25` first.
-- [ ] **7. Product boundary follow-through.** Confirm [`prd.md`](./prd.md) and
-      [`AGENTS.md`](../AGENTS.md) reflect what actually shipped, and move this group to Done with
-      its worksheet archived to [`history/worksheets/`](./history/worksheets/).
-
-### Video playback in the gallery
-
-- [ ] **Autoplaying, looping, muted video in result cards.** The UI only renders `<img>`, and the index
-      stores no video URL (only the thumbnail), so this needs a new indexed field and a re-sync — not
-      just a component change. Plan, open questions and the exact touch points are in
-      [`specs/spec-video-playback.md`](./specs/spec-video-playback.md).
-
-## In Progress
-
-_(none)_
-
-## Done
+- [x] **5. Schema, `search_text`, and the full backfill.** Code complete and committed; the
+      backfill run is handed off — see
+      [handoff worksheet](./history/worksheets/worksheet-vision-backfill-handoff.md).
+      Done: four additive `vision_*` attributes in the Turbopuffer schema (no namespace bump);
+      `toSearchDocument(block, vision?)` folding `vision_description` and `vision_ocr` into
+      `search_text` after the block's own metadata; retry with exponential backoff on 429/5xx
+      honouring `Retry-After`; cache checkpointing every 25 entries so a multi-hour run survives
+      interruption; `--vision-concurrency=N`; architecture.md schema table and sync lifecycle
+      updated. 305 tests pass.
+      Fixed along the way: sync now indexes the vision cache on **every** run, not only with
+      `--vision`. Previously a plain `bun run sync` after the backfill would have silently stripped
+      every generated description back out of the namespace. Verified against the live namespace.
+      **Remaining, for the maintainer:** run `bun run sync --vision` (~2,570 blocks, ~$0.50,
+      roughly 1–3.5h), commit `vision-cache.jsonl`, re-run `evaluate:search`, promote the five
+      pending cases, and check `exact-phrase-link` / `combined-filter` ranks against the baseline
+      for dilution.
+- [x] **6. Are.na write-back.** Code complete and tested; the apply run is handed off — see
+      [handoff worksheet](./history/worksheets/worksheet-vision-backfill-handoff.md#are-na-write-back).
+      `ArenaClient.updateBlock`, `ownerId` threaded from the Are.na payload through `ArchiveBlock`,
+      [`vision/titles.ts`](../src/lib/server/indexing/vision/titles.ts) implementing
+      `lowQualityTitleReason` with its four triggers, and
+      [`vision/writeback.ts`](../src/lib/server/indexing/vision/writeback.ts) planning and applying
+      per-block updates with `metadata.vision_v` / `vision_at` / `vision_src`. Block type is not
+      part of the decision (ADR amendment); a description is written only when empty. Writes are
+      paced, not parallelised. `--push-arena` prints a diff, `--push-arena-apply` writes,
+      `--push-arena-limit=N` stages it. 370 tests.
+      Validated against the live archive: 892 titles would be replaced (782 filename, 89
+      boilerplate, 13 opaque, 8 restating their description), 15 added, and a dry run plans
+      **609 blocks**. The longest titles it leaves alone are all legitimate.
+      Three classifier rules were wrong on first write and were corrected against real titles: a
+      bare ` / X` suffix was flagging `Home / X` (a false positive, now dropped),
+      `on X (formerly Twitter)` was missed, and a bare URL with no digits was missed.
+      **Remaining, for the maintainer:** `bun run sync --push-arena` to review the diff, then
+      `--push-arena-apply`, ideally staged with `--push-arena-limit=25` first.
+- [x] **7. Product boundary follow-through.** [`prd.md`](./prd.md) and [`AGENTS.md`](../AGENTS.md)
+      record the reversed non-goal and point at the ADR; the README documents the whole thing for
+      someone running it themselves. The five vision evaluation cases lost their `pending` field
+      and now gate the run alongside the original ten. Worksheets archived.
 
 - [x] Repository documentation and fixture reorganization: moved `TODOS.md` and `CHANGELOG.md`
       to `docs/`, archived completed worksheets under `docs/history/worksheets/`, placed ADRs in
