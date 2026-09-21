@@ -28,7 +28,11 @@ When I have a visual reference or an idea in mind, help me find the original rel
 
 - Multi-user search, accounts, or OAuth for visitors.
 - Live sync, webhooks, scheduled jobs, or editing Are.na content.
-- OCR, linked-page crawling, PDF extraction, generated captions, auto-tagging, clustering, or result reranking with an LLM.
+- Linked-page crawling, PDF text extraction, auto-tagging, clustering, or result reranking with an LLM.
+- ~~OCR and generated captions~~ — reversed. A vision model now describes blocks the maintainer has
+  already synced, and that text is indexed for retrieval; see
+  [`decisions/adr-vision-indexing.md`](./decisions/adr-vision-indexing.md). Query time stays
+  LLM-free, and results remain original Are.na blocks.
 - Search over content that the maintainer has not intentionally synced.
 - A chat/agent experience in V1.
 

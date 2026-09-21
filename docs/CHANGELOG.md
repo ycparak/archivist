@@ -4,6 +4,20 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- _(Planned, not yet shipped — tracked as the "Vision indexing — phase 1" group in
+  [`TODOS.md`](./TODOS.md). Remove this marker when the backfill lands.)_ Search now finds blocks by
+  what the image actually looks like, not just what Are.na says about it. A vision model describes
+  every block with an image — subject, composition, palette, typography, medium, and any text it can
+  read — and that description is indexed alongside the block's own metadata. This mostly helps image
+  blocks, which usually arrive titled with a filename (`cleanshot-2025-02-28-at-17.36.56.png`) and
+  no description. `bun run sync` generates a description once per block and never again unless the
+  image changes or you pass `--revision`, so re-running it is free; `--vision-dry-run` reports what
+  a run would cost before spending anything. Where the maintainer owns the block, `--push-arena`
+  can write a short, specific title and a description back to Are.na, replacing the ones that carry
+  no information: upload filenames, hashes and bare URLs, and the platform boilerplate you get from
+  a shared post (`Seth Thompson on X: "Searching my library is now fast enough…" / X`), where the
+  title is a 250-character copy of the description. Titles that already say something are left
+  alone, however long they are, and a description you have written is never overwritten.
 - `bun run sync` now deletes documents that are no longer in your Are.na archive, including blocks from channels you ignore or make private. Pruning is skipped if any channel failed to sync, and when it would delete more than half the index; pass `--allow-large-prune` to override that limit.
 - Removed the active-filter pills under the search bar (the Channel and Block type menus show a count instead), made checkboxes 16px, and moved component styling to Tailwind utilities. Filter-row text is now cap-height trimmed throughout, so labels, menus, selects and date fields share one baseline.
 - The gallery now loads more blocks as you scroll instead of stopping at 24, and with no search term it lists the most-connected blocks first (ties go to the newest). Ordering needs a re-sync (`bun run sync`) to index the new `connection_count` attribute; until then, browse returns "Search is unavailable". The rule above the sidebar and page headings sits 16px from the top of the page.
