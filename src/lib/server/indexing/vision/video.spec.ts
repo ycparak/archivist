@@ -16,7 +16,7 @@ import {
 const GENERATED_GIF_URL = 'https://cdn.example/animation.gif';
 
 /** A tiny animation, made by ffmpeg so the fixture is not a committed binary. */
-async function sampleGif(): Promise<Buffer> {
+async function sampleGif(size = '320x240'): Promise<Buffer> {
 	const { spawnSync } = await import('node:child_process');
 	const { mkdtempSync, readFileSync, rmSync } = await import('node:fs');
 	const { tmpdir } = await import('node:os');
@@ -31,7 +31,7 @@ async function sampleGif(): Promise<Buffer> {
 		'-f',
 		'lavfi',
 		'-i',
-		'testsrc=size=320x240:rate=10:duration=1',
+		`testsrc=size=${size}:rate=10:duration=1`,
 		out
 	]);
 	const bytes = readFileSync(out);
@@ -224,5 +224,30 @@ describe('cleanupStaleTranscodes', () => {
 
 	it('does not fail a run when the directory cannot be read', async () => {
 		await expect(cleanupStaleTranscodes('/no/such/directory')).resolves.toEqual({ removed: 0 });
+	});
+});
+
+describe('transcodeToVideoDataUrl — awkward source dimensions', () => {
+	/**
+	 * libx264 at yuv420p refuses odd dimensions. A real run hit this on three blocks (401x402,
+	 * 439x440, 503x714) because the scale expression only forced the height even.
+	 */
+	it.each(['401x402', '439x440', '503x714', '321x241'])(
+		'transcodes a %s source instead of failing the encoder',
+		async (size) => {
+			const result = await transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+				fetchFn: respondWith(await sampleGif(size))
+			});
+
+			expect(result.kind).toBe('video');
+		}
+	);
+
+	it('keeps a source narrower than the target at its own width', async () => {
+		const result = await transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+			fetchFn: respondWith(await sampleGif('100x80'))
+		});
+
+		expect(result.kind).toBe('video');
 	});
 });

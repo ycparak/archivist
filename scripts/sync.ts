@@ -194,6 +194,8 @@ try {
 		if (v.generatedFromVideo) console.log(`  Vision from video:   ${v.generatedFromVideo}`);
 		if (v.skippedTooLarge)
 			console.log(`  Vision skipped:      ${v.skippedTooLarge} (media too large)`);
+		if (v.skippedUnsupported)
+			console.log(`  Vision skipped:      ${v.skippedUnsupported} (format not describable)`);
 		if (v.skippedOverLimit) console.log(`  Vision over limit:   ${v.skippedOverLimit}`);
 		if (v.failed.length) {
 			console.log(`  Vision failed:       ${v.failed.length}`);

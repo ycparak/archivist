@@ -128,7 +128,9 @@ export async function transcodeToVideoDataUrl(
 				'-pix_fmt',
 				'yuv420p',
 				'-vf',
-				`scale='min(${TARGET_WIDTH},iw)':-2:flags=lanczos,fps=${TARGET_FPS}`,
+				// Both dimensions must be even for libx264 at yuv420p. `-2` only guarantees that for
+				// height; an odd source width passes straight through and the encoder refuses it.
+				`scale='2*trunc(min(${TARGET_WIDTH},iw)/2)':-2:flags=lanczos,fps=${TARGET_FPS}`,
 				'-c:v',
 				'libx264',
 				'-crf',
