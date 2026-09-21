@@ -201,10 +201,12 @@ try {
 	}
 	if (summary.writeBack) {
 		const w = summary.writeBack;
-		const verb = pushArena?.apply ? 'Are.na written' : 'Are.na would write';
-		console.log(
-			`  ${verb}:${' '.repeat(Math.max(1, 20 - verb.length - 1))}${w.blocksUpdated || w.titlesAdded + w.titlesReplaced + w.descriptionsAdded} block(s)`
-		);
+		const planned = w.titlesAdded + w.titlesReplaced + w.descriptionsAdded;
+		if (pushArena?.apply) {
+			console.log(`  Are.na written:      ${w.blocksUpdated} of ${planned} planned block(s)`);
+		} else {
+			console.log(`  Are.na would write:  ${planned} block(s) — nothing written`);
+		}
 		console.log(`    titles replaced:   ${w.titlesReplaced}`);
 		console.log(`    titles added:      ${w.titlesAdded}`);
 		console.log(`    descriptions:      ${w.descriptionsAdded}`);
@@ -212,13 +214,14 @@ try {
 			`    skipped:           ${w.skipped.notOwned} not yours, ${w.skipped.noVisionResult} no description, ${w.skipped.nothingToChange} already fine`
 		);
 		if (w.failed.length) {
-			console.log(`    failed:            ${w.failed.length}`);
+			console.log(`    FAILED:            ${w.failed.length}`);
 			for (const failure of w.failed.slice(0, 10)) {
 				console.log(`      - ${failure.blockId}: ${failure.error}`);
 			}
+			if (w.failed.length > 10) console.log(`      ... and ${w.failed.length - 10} more`);
 		}
 		if (!pushArena?.apply) {
-			console.log('    Nothing was written. Re-run with --push-arena-apply to write.');
+			console.log('    Re-run with --push-arena-apply to write.');
 		}
 	}
 	if (summary.pruneSkipped) {
