@@ -263,6 +263,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 				generated: 0,
 				generatedFromVideo: 0,
 				skippedTooLarge: 0,
+				skippedUnsupported: 0,
 				skippedOverLimit: plan.overLimit,
 				failed: []
 			};
