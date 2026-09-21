@@ -137,7 +137,8 @@ export const arenaOwnedChannelSchema = z.object({
 	id: z.number(),
 	type: z.literal('Channel'),
 	slug: z.string(),
-	title: z.string()
+	title: z.string(),
+	visibility: z.enum(['public', 'closed', 'private'])
 });
 
 export type ArenaOwnedChannel = z.infer<typeof arenaOwnedChannelSchema>;

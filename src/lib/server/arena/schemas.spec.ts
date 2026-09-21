@@ -207,6 +207,7 @@ describe('arenaOwnedChannelSchema', () => {
 			type: 'Channel',
 			slug: 'discover-earth',
 			title: '❋ Discover Earth',
+			visibility: 'private',
 			owner: { id: 1 },
 			counts: { blocks: 3 }
 		});
@@ -214,7 +215,8 @@ describe('arenaOwnedChannelSchema', () => {
 			id: 5650061,
 			type: 'Channel',
 			slug: 'discover-earth',
-			title: '❋ Discover Earth'
+			title: '❋ Discover Earth',
+			visibility: 'private'
 		});
 	});
 });
@@ -222,7 +224,7 @@ describe('arenaOwnedChannelSchema', () => {
 describe('arenaOwnedChannelsResponseSchema', () => {
 	it('parses a page of discovered channels', () => {
 		const response = arenaOwnedChannelsResponseSchema.parse({
-			data: [{ id: 1, type: 'Channel', slug: 'a', title: 'A' }],
+			data: [{ id: 1, type: 'Channel', slug: 'a', title: 'A', visibility: 'public' }],
 			meta: {
 				current_page: 1,
 				next_page: null,

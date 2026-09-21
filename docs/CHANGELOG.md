@@ -4,6 +4,21 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- Restyled the app with the design system from the maintainer's personal site: ABC Areal (with
+  Neureal Mono, copied to `static/fonts/`), a 13px interface size, an oklch gray ramp, blue
+  accents, and square 1px-bordered controls. Color tokens are now role-based (surfaces, text,
+  rules, controls, action/state) instead of the previous ad-hoc aliases; see `docs/design.md`.
+- New layout: a recessed sidebar beside a gray pane, with the search field and one row of filters
+  above a justified-row gallery where each image row shares a height. Result cards now show only
+  the block's image and title; the introduction paragraph, the type/source/date/channel metadata,
+  and the clickable channel links on cards are gone. Channels are filtered from the form's Channel
+  control (shown once `bun run sync` has written the channel manifest), and the result status now
+  sits at the right of the filter row. The `/about` page is linked from the sidebar.
+- `bun run sync` now skips private channels by default. Set `ARENA_ALLOW_PRIVATE_CHANNELS` to a
+  comma-separated list of channel slugs to index specific private channels, and
+  `ARENA_IGNORE_CHANNELS` to exclude any channel (the ignore list wins). Skipped channels are also
+  left out of the channel manifest. Blocks already indexed from a channel that is now skipped are
+  not removed until deletion reconciliation exists.
 - Hybrid search results are now capped at the same server-owned limit as other modes after
   deduplication, so the result count and status message stay aligned.
 - Protected the gallery and search API with a shared edge request limit before they query the

@@ -1,24 +1,17 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
-	import type { ArchiveSearchState, SearchResult } from '$lib/domain/search';
-	import { toArchiveSearchHref, withChannel } from '$lib/domain/search';
-	import { blockDisplayTitle, formatArchiveDate } from './format';
+	import type { SearchResult } from '$lib/domain/search';
+	import { blockDisplayTitle } from './format';
 
-	let {
-		result,
-		state,
-		eager = false
-	}: { result: SearchResult; state: ArchiveSearchState; eager?: boolean } = $props();
+	let { result, eager = false }: { result: SearchResult; eager?: boolean } = $props();
 
 	const title = $derived(blockDisplayTitle(result.title, result.blockType));
-	const connectedOn = $derived(formatArchiveDate(result.connectedAt));
 	const hasIntrinsicSize = $derived(Boolean(result.imageWidth && result.imageHeight));
 </script>
 
 <article class="card">
-	<a class="card-link" href={result.arenaUrl} rel="external">
-		{#if result.imageUrl}
-			<span class="card-media" class:card-media--fixed={!hasIntrinsicSize}>
+	<a class="card-link" href={result.arenaUrl} rel="external" {title}>
+		<span class="card-media" class:card-media--fixed={!hasIntrinsicSize}>
+			{#if result.imageUrl}
 				<img
 					src={result.imageUrl}
 					alt={result.imageAlt ?? ''}
@@ -28,134 +21,69 @@
 					decoding="async"
 					referrerpolicy="no-referrer"
 				/>
-			</span>
-		{/if}
-		<h3 class="card-title" class:untitled={!result.title}>{title}</h3>
+			{:else if result.description}
+				<span class="card-excerpt">{result.description}</span>
+			{/if}
+		</span>
+		<span class="card-title" class:untitled={!result.title}>{title}</span>
 	</a>
-
-	{#if result.description}
-		<p class="card-description">{result.description}</p>
-	{/if}
-
-	<p class="card-meta meta">
-		<span>{result.blockType}</span>
-		{#if result.sourceTitle}
-			<span aria-hidden="true">·</span>
-			<span>{result.sourceTitle}</span>
-		{/if}
-		{#if connectedOn}
-			<span aria-hidden="true">·</span>
-			<time datetime={result.connectedAt}>{connectedOn}</time>
-		{/if}
-	</p>
-
-	{#if result.channelSlugs.length}
-		<ul class="card-channels">
-			{#each result.channelSlugs as slug (slug)}
-				<li>
-					<a class="channel-link" href={resolve(toArchiveSearchHref(withChannel(state, slug)))}>
-						{slug}
-					</a>
-				</li>
-			{/each}
-		</ul>
-	{/if}
 </article>
 
 <style>
 	.card {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
 		min-inline-size: 0;
 	}
 
 	.card-link {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-4);
+		gap: calc(var(--spacing) * 2.5);
+		color: var(--color-text-tertiary);
 		text-decoration: none;
+	}
+
+	.card-link:hover {
+		color: var(--color-text);
 	}
 
 	.card-media {
 		display: block;
+		aspect-ratio: var(--ratio);
 		overflow: hidden;
-		background: var(--color-background-subtle);
-		border-radius: var(--radius-md);
+		background: var(--color-background-sunken);
 	}
 
 	.card-media img {
 		display: block;
 		inline-size: 100%;
-		block-size: auto;
-	}
-
-	/* Are.na didn't supply intrinsic dimensions for this block's image: fall back to a
-	   placeholder box instead of letting the image size the card unpredictably. */
-	.card-media--fixed {
-		aspect-ratio: 4 / 3;
-	}
-
-	.card-media--fixed img {
 		block-size: 100%;
 		object-fit: cover;
 	}
 
-	.card-title {
-		margin: 0;
-		overflow-wrap: anywhere;
-		font-size: var(--text-md);
-		line-height: var(--leading-interface);
-		text-decoration: underline;
-		text-decoration-color: var(--color-border-emphasis);
+	/* Are.na didn't supply intrinsic dimensions: hold a placeholder box instead of letting the
+	   image size the card unpredictably. */
+	.card-media--fixed {
+		aspect-ratio: 4 / 3;
 	}
 
-	.card-link:hover .card-title {
-		text-decoration-color: currentcolor;
+	.card-excerpt {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 10;
+		line-clamp: 10;
+		padding: calc(var(--spacing) * 3);
+		overflow: hidden;
+		color: var(--color-text-secondary);
+		overflow-wrap: anywhere;
+	}
+
+	.card-title {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.untitled {
-		color: var(--color-text-tertiary);
-	}
-
-	.card-description {
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 3;
-		line-clamp: 3;
-		margin: 0;
-		overflow: hidden;
-		color: var(--color-text-secondary);
-		font-size: var(--text-sm);
-	}
-
-	.card-meta {
-		display: flex;
-		overflow-wrap: anywhere;
-		flex-wrap: wrap;
-		gap: var(--space-2);
-		margin: 0;
-	}
-
-	.card-channels {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-2) var(--space-4);
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-
-	.channel-link {
-		overflow-wrap: anywhere;
-		color: var(--color-text-tertiary);
-		font-family: var(--font-mono);
-		font-size: var(--text-meta);
-		text-decoration: none;
-	}
-
-	.channel-link::before {
-		content: '#';
-		color: var(--color-border-emphasis);
+		font-style: oblique 12deg;
 	}
 </style>

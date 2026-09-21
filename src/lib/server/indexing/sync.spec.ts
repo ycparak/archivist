@@ -40,8 +40,13 @@ function textBlock(id: number, connectedAt = '2023-01-15T10:30:00Z') {
 	};
 }
 
-function ownedChannel(id: number, slug: string, title: string) {
-	return { id, type: 'Channel', slug, title };
+function ownedChannel(
+	id: number,
+	slug: string,
+	title: string,
+	visibility: 'public' | 'closed' | 'private' = 'public'
+) {
+	return { id, type: 'Channel', slug, title, visibility };
 }
 
 function routedFetch(routes: Record<string, () => Response>) {
@@ -75,6 +80,43 @@ function turbopufferConfig(fetchFn = okTurbopufferFetch()) {
 }
 
 describe('syncArchive', () => {
+	it('skips ignored and private channels, but syncs allow-listed private ones', async () => {
+		const fetchFn = routedFetch({
+			'/v3/me': () => meResponse(1, 'me'),
+			'/v3/users/1/contents': () =>
+				contentsResponse([
+					ownedChannel(10, 'public-a', 'Public A'),
+					ownedChannel(11, 'ignored-b', 'Ignored B'),
+					ownedChannel(12, 'private-c', 'Private C', 'private'),
+					ownedChannel(13, 'private-allowed', 'Private Allowed', 'private'),
+					ownedChannel(14, 'closed-e', 'Closed E', 'closed'),
+					ownedChannel(15, 'private-ignored', 'Private Ignored', 'private')
+				]),
+			'/v3/channels/public-a/contents': () => contentsResponse([textBlock(100)]),
+			'/v3/channels/private-allowed/contents': () => contentsResponse([textBlock(101)]),
+			'/v3/channels/closed-e/contents': () => contentsResponse([textBlock(102)])
+		});
+
+		const { channels, summary } = await syncArchive({
+			accessToken: 't',
+			fetchFn,
+			channelDelayMs: 0,
+			turbopuffer: turbopufferConfig(),
+			channelFilter: {
+				ignore: new Set(['ignored-b', 'private-ignored']),
+				allowPrivate: new Set(['private-allowed', 'private-ignored'])
+			}
+		});
+
+		expect(channels.map((c) => c.slug)).toEqual(['public-a', 'private-allowed', 'closed-e']);
+		expect(summary).toMatchObject({
+			channelsDiscovered: 6,
+			channelsIgnored: 2,
+			channelsPrivateSkipped: 1,
+			channelsSynced: 3
+		});
+	});
+
 	it('discovers channels, syncs each one, and returns normalized, deduplicated blocks', async () => {
 		const fetchFn = routedFetch({
 			'/v3/me': () => meResponse(1, 'me'),

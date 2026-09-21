@@ -1,105 +1,107 @@
 @theme static {
-	--color-white: #ffffff;
-	--color-black: #000000;
-	--color-grey-50: #f8f8f8;
-	--color-grey-100: #eeeeee;
-	--color-grey-200: #e5e5e5;
-	--color-grey-300: #dbdbdb;
-	--color-grey-400: #b7b7b7;
-	--color-grey-500: #9b9b9b;
-	--color-grey-600: #8f8f8f;
-	--color-grey-700: #686868;
-	--color-grey-800: #454545;
-	--color-grey-900: #363636;
-	--color-grey-950: #272727;
-	--color-grey-1000: #1d1d1d;
-	--color-green-100: #a5f4cf;
-	--color-green-700: #01b461;
-	--color-green-1000: #015a31;
-	--color-green-1100: #013d21;
-	--color-red-100: #fbeae9;
-	--color-red-1000: #d13415;
+	/* Raw values. Components read the semantic roles below, not these. */
+	--color-white: oklch(100% 0 0); /* #ffffff */
+	--color-black: oklch(0% 0 0); /* #000000 */
 
-	--color-background: var(--color-white);
-	--color-background-subtle: var(--color-grey-50);
-	--color-surface: var(--color-white);
-	--color-surface-raised: var(--color-grey-50);
-	--color-text: var(--color-grey-1000);
-	--color-text-secondary: var(--color-grey-800);
-	--color-text-tertiary: var(--color-grey-700);
-	--color-text-placeholder: var(--color-grey-500);
-	--color-text-disabled: var(--color-grey-400);
+	--color-gray-50: oklch(98.5104% 0 0); /* #fafafa */
+	--color-gray-100: oklch(97.0151% 0 0); /* #f5f5f5 */
+	--color-gray-150: oklch(95.514% 0 0); /* #f0f0f0 */
+	--color-gray-200: oklch(93.0999% 0 0); /* #e8e8e8 */
+	--color-gray-250: oklch(90.3652% 0 0); /* #dfdfdf */
+	--color-gray-300: oklch(87.3021% 0 0); /* #d5d5d5 */
+	--color-gray-350: oklch(83.9014% 0 0); /* #cacaca */
+	--color-gray-400: oklch(80.1517% 0 0); /* #bebebe */
+	--color-gray-450: oklch(76.3576% 0 0); /* #b2b2b2 */
+	--color-gray-500: oklch(72.1933% 0 0); /* #a5a5a5 */
+	--color-gray-550: oklch(68.6223% 0 0); /* #9a9a9a */
+	--color-gray-600: oklch(62.6754% 0 0); /* #888888 */
+	--color-gray-650: oklch(57.6099% 0 0); /* #797979 */
+	--color-gray-700: oklch(52.4304% 0 0); /* #6a6a6a */
+	--color-gray-750: oklch(46.4002% 0 0); /* #595959 */
+	--color-gray-800: oklch(40.5398% 0 0); /* #494949 */
+	--color-gray-850: oklch(33.6799% 0 0); /* #373737 */
+	--color-gray-900: oklch(26.448% 0 0); /* #252525 */
+	--color-gray-950: oklch(18.6741% 0 0); /* #131313 */
+
+	--color-blue: oklch(58.9506% 0.21857 258.035); /* #0075fb */
+	--color-green: oklch(74.2826% 0.19049 148.509); /* #38cb62 */
+	--color-paprika: oklch(67.9171% 0.21515 39.546); /* #ff5800 */
+	--color-pink: oklch(77.034% 0.18101 337.43); /* #fb82dd */
+	--color-lilac: oklch(73.8211% 0.07807 305.582); /* #b69ed2 */
+	--color-yellow: oklch(83.2757% 0.17157 82.058); /* #ffbb00 */
+
+	/*
+	 * Semantic roles, grouped by what they paint. Every text role clears WCAG AA (4.5:1) on
+	 * --color-background except placeholder and disabled, which are for affordances only.
+	 * Use the strongest role that fits; do not reach past a role to a raw gray.
+	 */
+
+	/* Surfaces: the canvas, and what sits below or above it. */
+	--color-background: var(--color-gray-150);
+	--color-background-sunken: var(--color-gray-200);
+	--color-surface: var(--color-gray-50);
+	--color-surface-hover: var(--color-white);
+
+	/* Text, strongest to quietest. */
+	--color-text: var(--color-black);
+	--color-text-secondary: var(--color-gray-750);
+	--color-text-tertiary: var(--color-gray-700);
+	--color-text-placeholder: var(--color-gray-550);
+	--color-text-disabled: var(--color-gray-450);
 	--color-text-inverse: var(--color-white);
-	--color-border-subtle: var(--color-grey-100);
-	--color-border: var(--color-grey-200);
-	--color-border-emphasis: var(--color-grey-300);
-	--color-accent: var(--color-green-1000);
-	--color-accent-strong: var(--color-green-700);
-	--color-accent-hover: var(--color-green-1100);
-	--color-danger: var(--color-red-1000);
-	--color-danger-subtle: var(--color-red-100);
-	--color-control: var(--color-grey-50);
-	--color-control-hover: var(--color-grey-100);
-	--color-selection: var(--color-green-100);
 
-	--font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-	--font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	/* Rules and outlines, quietest to strongest. */
+	--color-border-subtle: var(--color-gray-250);
+	--color-border: var(--color-gray-300);
+	--color-border-emphasis: var(--color-gray-500);
+
+	/* Interactive controls other than the text field, which uses --color-surface. */
+	--color-control: var(--color-gray-100);
+	--color-control-hover: var(--color-gray-50);
+
+	/* Action and state. --color-accent-strong is the AA-safe text/link variant of the accent. */
+	--color-accent: var(--color-blue);
+	--color-accent-strong: color-mix(in oklab, var(--color-blue) 80%, var(--color-black));
+	--color-accent-subtle: color-mix(in oklab, var(--color-blue) 8%, transparent);
+	--color-danger: color-mix(in oklab, var(--color-paprika) 70%, var(--color-black));
+	--color-danger-subtle: color-mix(in oklab, var(--color-paprika) 10%, transparent);
+	--color-selection: var(--color-blue);
+	--color-selection-text: var(--color-white);
+
+	--font-sans: 'ABC Areal', Arial, ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'ABC Areal', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	--font-sans--font-variation-settings: 'MONO' 0;
+	--font-mono--font-variation-settings: 'MONO' 100;
 	--font-weight-regular: 400;
 	--font-weight-medium: 500;
 	--font-weight-bold: 700;
-	--text-xs: 0.75rem;
-	--text-meta: 0.8125rem;
-	--text-sm: 0.875rem;
-	--text-md: 1rem;
-	--text-lg: 1.125rem;
-	--text-xl: 1.25rem;
-	--text-2xl: 1.5rem;
-	--text-3xl: clamp(2rem, 6vw, 4rem);
-	--leading-tight: 1.18;
-	--leading-interface: 1.36;
-	--leading-copy: 1.4;
-	--tracking-heading: -0.007em;
-	--tracking-copy: 0.005em;
 
-	--spacing: 0.125rem;
+	/* One interface size; hierarchy comes from color, position, and space rather than scale. */
+	--text-base: 13px;
+	--text-base--line-height: 15px;
+	--text-article: 13.9665px;
+	--text-article--line-height: 18px;
+	--tracking-mono: -0.01em;
+
+	--spacing: 0.25rem;
 
 	--breakpoint-sm: 30rem;
-	--breakpoint-md: 48rem;
-	--breakpoint-lg: 64rem;
-	--breakpoint-xl: 80rem;
+	--breakpoint-md: 45rem;
+	--breakpoint-lg: 60rem;
+	--breakpoint-xl: 75rem;
 
-	--page-gutter: clamp(1rem, 5vw, 6rem);
-	--content-width: 72rem;
-	--reading-width: 42rem;
-
-	--radius-sm: 0.25rem;
-	--radius-md: 0.5rem;
-	--radius-lg: 0.75rem;
-	--radius-pill: 999px;
-	--control-sm: 2rem;
-	--control-md: 2.25rem;
-	--control-lg: 2.5rem;
+	--gutter: calc(var(--spacing) * 3);
+	--sidebar-width: 14rem;
+	--reading-width: 36rem;
+	--control-sm: calc(var(--spacing) * 7);
+	--control-lg: calc(var(--spacing) * 9);
 	--border-width: 1px;
-	--focus-ring: 0 0 0 0.1875rem var(--color-green-100);
-	--shadow-subtle: 0 0.25rem 1rem rgb(0 0 0 / 0.06);
+	--focus-ring: 0 0 0 3px color-mix(in oklab, var(--color-blue) 25%, transparent);
 	--duration-fast: 120ms;
 	--duration-standard: 180ms;
-	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--ease-standard: cubic-bezier(0.33, 0, 0.66, 1);
 }
 
-/* Aliases for scoped component CSS; utilities read --spacing directly (p-4 = --space-4). */
 :root {
 	color-scheme: light;
-
-	--space-1: calc(var(--spacing) * 1);
-	--space-2: calc(var(--spacing) * 2);
-	--space-3: calc(var(--spacing) * 3);
-	--space-4: calc(var(--spacing) * 4);
-	--space-5: calc(var(--spacing) * 5);
-	--space-6: calc(var(--spacing) * 6);
-	--space-8: calc(var(--spacing) * 8);
-	--space-12: calc(var(--spacing) * 12);
-	--space-16: calc(var(--spacing) * 16);
-	--space-24: calc(var(--spacing) * 24);
-	--space-32: calc(var(--spacing) * 32);
 }

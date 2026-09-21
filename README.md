@@ -29,4 +29,4 @@ bun run build
 
 See [AGENTS.md](AGENTS.md) for the implementation contract shared by Codex and Claude Code.
 
-See [docs/design.md](docs/design.md) for the light-only visual and interaction contract.
+See [docs/design.md](docs/design.md) for the light-only visual and interaction contract (the personal-site design system: ABC Areal, a 13px gray interface, role-based color tokens).
