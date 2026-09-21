@@ -17,6 +17,8 @@ const blockImageSchema = z.object({
 	src: z.url(),
 	alt_text: z.string().nullable().optional(),
 	blurhash: z.string().nullable().optional(),
+	content_type: z.string().nullable().optional(),
+	file_size: z.number().nullable().optional(),
 	width: z.number().nullable().optional(),
 	height: z.number().nullable().optional(),
 	small: blockImageVersionSchema,
