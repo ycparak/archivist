@@ -414,3 +414,61 @@ describe('describe — request timeout', () => {
 		expect(fetchFn).toHaveBeenCalledOnce();
 	});
 });
+
+describe('describe — malformed output', () => {
+	function badThenGood(bad: unknown) {
+		let calls = 0;
+		return vi.fn<typeof fetch>(async () => {
+			calls += 1;
+			return Response.json(calls === 1 ? bad : completion(RESULT));
+		});
+	}
+
+	it('retries output that is not valid JSON, which usually succeeds second time', async () => {
+		const fetchFn = badThenGood({
+			choices: [{ message: { content: 'sorry, here is a picture' } }]
+		});
+		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
+			imageUrl: ARENA_URL,
+			block
+		});
+
+		expect(outcome.kind).toBe('described');
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+	});
+
+	it('retries output that parses but fails the schema', async () => {
+		const fetchFn = badThenGood(completion({ ...RESULT, medium: 'sculpture' }));
+		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
+			imageUrl: ARENA_URL,
+			block
+		});
+
+		expect(outcome.kind).toBe('described');
+	});
+
+	it('accepts JSON a provider wrapped in a markdown fence', async () => {
+		const fenced = '```json\n' + JSON.stringify(RESULT) + '\n```';
+		const fetchFn = respond({ choices: [{ message: { content: fenced } }] });
+		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
+			imageUrl: ARENA_URL,
+			block
+		});
+
+		expect(outcome).toMatchObject({ kind: 'described', result: RESULT });
+		expect(fetchFn).toHaveBeenCalledOnce();
+	});
+
+	it('names the truncation and quotes the output once retries are spent', async () => {
+		const fetchFn = respond({
+			choices: [{ message: { content: '{"title":"half a des' }, finish_reason: 'length' }]
+		});
+
+		await expect(
+			client(fetchFn as unknown as typeof fetch, { maxRetries: 1 }).describe({
+				imageUrl: ARENA_URL,
+				block
+			})
+		).rejects.toThrow(/truncated: finish_reason=length.*20 chars starting "\{\\"title/);
+	});
+});
