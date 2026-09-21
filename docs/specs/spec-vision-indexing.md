@@ -144,8 +144,12 @@ supplied title.
 }
 ```
 
-The 200–500 character cap on `description` is a retrieval decision, not a style one — see
-Risks below.
+The 200–500 character cap on `description` is a retrieval decision, not a style one — see Risks
+below — and it is **enforced in code, not requested**. A first live call returned 640 characters
+against a 500-character instruction, so `client.ts` clamps at the last sentence that fits.
+
+`medium` proved the least reliable field in the first live batch: a grainy film photograph came
+back as `painting`. It is stored, but nothing should depend on it until its accuracy is measured.
 
 ### Cache format
 

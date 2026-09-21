@@ -221,6 +221,44 @@ describe('describe — response handling', () => {
 		).rejects.toThrow(/far over the 70/);
 	});
 
+	it('clamps an over-long description at a sentence boundary', async () => {
+		const long = `${'A grid of widget tiles on black. '.repeat(30)}Trailing clause`;
+		const fetchFn = respond(completion({ ...RESULT, description: long }));
+		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
+			imageUrl: ARENA_URL,
+			block
+		});
+
+		expect(outcome.kind).toBe('described');
+		const { description } = (outcome as { result: { description: string } }).result;
+		expect(description.length).toBeLessThanOrEqual(500);
+		expect(description.endsWith('.')).toBe(true);
+		expect(description).toContain('A grid of widget tiles on black.');
+	});
+
+	it('leaves a description inside the cap untouched', async () => {
+		const fetchFn = respond(completion(RESULT));
+		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
+			imageUrl: ARENA_URL,
+			block
+		});
+
+		expect((outcome as { result: { description: string } }).result.description).toBe(
+			RESULT.description
+		);
+	});
+
+	it('puts the failure body in the error, not just the status code', async () => {
+		const fetchFn = respond(
+			{ error: { message: 'Received 404 status code when fetching image from URL' } },
+			{ status: 400 }
+		);
+
+		await expect(
+			client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block })
+		).rejects.toThrow(/404 status code when fetching image/);
+	});
+
 	it('rejects an empty completion', async () => {
 		const fetchFn = respond({ choices: [{ message: { content: '  ' } }] });
 		await expect(
