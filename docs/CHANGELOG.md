@@ -4,6 +4,7 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- `bun run sync` now deletes documents that are no longer in your Are.na archive, including blocks from channels you ignore or make private. Pruning is skipped if any channel failed to sync, and when it would delete more than half the index; pass `--allow-large-prune` to override that limit.
 - Removed the active-filter pills under the search bar (the Channel and Block type menus show a count instead), made checkboxes 16px, and moved component styling to Tailwind utilities. Filter-row text is now cap-height trimmed throughout, so labels, menus, selects and date fields share one baseline.
 - The gallery now loads more blocks as you scroll instead of stopping at 24, and with no search term it lists the most-connected blocks first (ties go to the newest). Ordering needs a re-sync (`bun run sync`) to index the new `connection_count` attribute; until then, browse returns "Search is unavailable". The rule above the sidebar and page headings sits 16px from the top of the page.
 - The result status at the right of the filter row now shows Turbopuffer timings (`time: 0.85s (query: 0.02s, rerank: 0.00s)`); the sentence it replaced is still announced to screen readers. The search bar is 32px, the Ranking label is visually hidden, filters share one centered row, and the sidebar and pane rules line up 12px above their headings.
@@ -25,7 +26,7 @@ User-visible changes, newest first.
   comma-separated list of channel slugs to index specific private channels, and
   `ARENA_IGNORE_CHANNELS` to exclude any channel (the ignore list wins). Skipped channels are also
   left out of the channel manifest. Blocks already indexed from a channel that is now skipped are
-  not removed until deletion reconciliation exists.
+  removed on the next sync.
 - Hybrid search results are now capped at the same server-owned limit as other modes after
   deduplication, so the result count and status message stay aligned.
 - Protected the gallery and search API with a shared edge request limit before they query the

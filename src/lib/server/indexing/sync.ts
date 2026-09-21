@@ -7,6 +7,8 @@ import {
 	paginateOwnedChannels
 } from '$lib/server/arena/client';
 import {
+	deleteSearchDocuments,
+	listDocumentIds,
 	upsertSearchDocuments,
 	type TurbopufferConfig
 } from '$lib/server/search/turbopuffer-client';
@@ -24,6 +26,10 @@ export interface SyncOptions {
 	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
 	maxLeadingChannelFailures?: number;
 	channelFilter?: ChannelFilter;
+	/** Refuse to prune when it would delete more than this fraction of the namespace. */
+	maxPruneFraction?: number;
+	/** Bypass `maxPruneFraction`, e.g. after deliberately ignoring most channels. */
+	allowLargePrune?: boolean;
 }
 
 export interface ChannelSyncFailure {
@@ -43,11 +49,15 @@ export interface SyncSummary {
 	uniqueBlocks: number;
 	documentsUpserted: number;
 	upsertBatches: number;
+	documentsDeleted: number;
+	/** Why stale documents were left in the namespace, or null when pruning ran. */
+	pruneSkipped: string | null;
 }
 
 const noop = () => {};
 const DEFAULT_CHANNEL_DELAY_MS = 300;
 const DEFAULT_MAX_LEADING_CHANNEL_FAILURES = 3;
+const DEFAULT_MAX_PRUNE_FRACTION = 0.5;
 
 function maxDate(a: Date | undefined, b: Date | undefined): Date | undefined {
 	if (!a) return b;
@@ -74,6 +84,19 @@ function mergeBlock(blocksById: Map<string, ArchiveBlock>, block: ArchiveBlock):
 	});
 }
 
+function pruneBlockReason(
+	summary: SyncSummary,
+	documentCount: number,
+	signal: AbortSignal | undefined
+): string | null {
+	if (signal?.aborted) return 'sync was aborted before every channel was fetched';
+	if (summary.channelsFailed.length > 0) {
+		return `${summary.channelsFailed.length} channel(s) failed, so their blocks would look stale`;
+	}
+	if (documentCount === 0) return 'no blocks were fetched';
+	return null;
+}
+
 export async function syncArchive(options: SyncOptions): Promise<{
 	blocks: ArchiveBlock[];
 	channels: ChannelManifestEntry[];
@@ -88,7 +111,9 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		channelDelayMs = DEFAULT_CHANNEL_DELAY_MS,
 		delayFn = delay,
 		maxLeadingChannelFailures = DEFAULT_MAX_LEADING_CHANNEL_FAILURES,
-		channelFilter = EMPTY_CHANNEL_FILTER
+		channelFilter = EMPTY_CHANNEL_FILTER,
+		maxPruneFraction = DEFAULT_MAX_PRUNE_FRACTION,
+		allowLargePrune = false
 	} = options;
 	const client = new ArenaClient({ accessToken, fetchFn });
 
@@ -103,7 +128,9 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		blocksNormalized: 0,
 		uniqueBlocks: 0,
 		documentsUpserted: 0,
-		upsertBatches: 0
+		upsertBatches: 0,
+		documentsDeleted: 0,
+		pruneSkipped: null
 	};
 
 	const me = await client.me();
@@ -178,6 +205,26 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	summary.documentsUpserted = rowsUpserted;
 	summary.upsertBatches = batches;
 	log(`Upserted ${rowsUpserted} document(s) into Turbopuffer across ${batches} batch(es) total`);
+
+	const pruneBlocker = pruneBlockReason(summary, documents.length, signal);
+	if (pruneBlocker) {
+		summary.pruneSkipped = pruneBlocker;
+	} else {
+		const keep = new Set(documents.map((document) => document.id));
+		const stale = (await listDocumentIds(turbopuffer)).filter((id) => !keep.has(id));
+		const existingCount = keep.size + stale.length;
+
+		if (stale.length === 0) {
+			log('No stale documents to prune');
+		} else if (!allowLargePrune && stale.length > existingCount * maxPruneFraction) {
+			summary.pruneSkipped = `would delete ${stale.length} of ${existingCount} document(s), over the ${maxPruneFraction * 100}% safety limit`;
+		} else {
+			const { rowsDeleted } = await deleteSearchDocuments(stale, turbopuffer, { log });
+			summary.documentsDeleted = rowsDeleted;
+			log(`Pruned ${rowsDeleted} stale document(s) from Turbopuffer`);
+		}
+	}
+	if (summary.pruneSkipped) log(`Skipped pruning: ${summary.pruneSkipped}`);
 
 	return { blocks, channels, summary };
 }
