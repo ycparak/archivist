@@ -29,6 +29,14 @@ export const DEFAULT_PROVIDER_ORDER = ['deepinfra', 'streamlake', 'venice'] as c
  */
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
+/** A backfill makes thousands of calls over hours; transient 429s and 5xxs are expected, not news. */
+const DEFAULT_MAX_RETRIES = 4;
+const RETRY_BASE_MS = 1_000;
+
+function isRetryable(status: number): boolean {
+	return status === 408 || status === 429 || status >= 500;
+}
+
 export class VisionRequestError extends Error {
 	readonly status: number | null;
 
@@ -59,6 +67,9 @@ export interface VisionClientOptions {
 	providerOrder?: readonly string[];
 	renditionWidth?: number;
 	maxImageBytes?: number;
+	maxRetries?: number;
+	/** Injectable so tests exercise the retry path without waiting on it. */
+	sleepFn?: (ms: number) => Promise<void>;
 }
 
 export interface DescribeInput {
@@ -145,7 +156,9 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 		model = DEFAULT_MODEL,
 		providerOrder = DEFAULT_PROVIDER_ORDER,
 		renditionWidth,
-		maxImageBytes = MAX_IMAGE_BYTES
+		maxImageBytes = MAX_IMAGE_BYTES,
+		maxRetries = DEFAULT_MAX_RETRIES,
+		sleepFn = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 	} = options;
 
 	if (!apiKey) throw new Error('createVisionClient requires an OpenRouter API key');
@@ -165,38 +178,48 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 				};
 			}
 
-			const response = await fetchFn(OPENROUTER_URL, {
-				method: 'POST',
-				signal,
-				headers: {
-					Authorization: `Bearer ${apiKey}`,
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					model,
-					provider: { require_parameters: true, order: [...providerOrder] },
-					reasoning: { enabled: false },
-					response_format: { type: 'json_schema', json_schema: VISION_JSON_SCHEMA },
-					messages: [
-						{ role: 'system', content: SYSTEM_PROMPT },
-						{
-							role: 'user',
-							content: [
-								{ type: 'image_url', image_url: { url } },
-								{ type: 'text', text: buildContextText(block) }
-							]
-						}
-					]
-				})
+			const body = JSON.stringify({
+				model,
+				provider: { require_parameters: true, order: [...providerOrder] },
+				reasoning: { enabled: false },
+				response_format: { type: 'json_schema', json_schema: VISION_JSON_SCHEMA },
+				messages: [
+					{ role: 'system', content: SYSTEM_PROMPT },
+					{
+						role: 'user',
+						content: [
+							{ type: 'image_url', image_url: { url } },
+							{ type: 'text', text: buildContextText(block) }
+						]
+					}
+				]
 			});
 
-			if (!response.ok) {
-				// The body carries the actual cause — an unreachable image, an unroutable provider —
-				// and a bare status code sends you diagnosing the wrong thing.
-				const detail = (await response.text().catch(() => '')).slice(0, 300).trim();
-				throw new VisionRequestError(
-					`OpenRouter request failed with status ${response.status}${detail ? `: ${detail}` : ''}`,
-					response.status
+			let response: Response | undefined;
+			for (let attempt = 0; ; attempt += 1) {
+				response = await fetchFn(OPENROUTER_URL, {
+					method: 'POST',
+					signal,
+					headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+					body
+				});
+				if (response.ok) break;
+
+				if (!isRetryable(response.status) || attempt >= maxRetries || signal?.aborted) {
+					// The body carries the actual cause — an unreachable image, an unroutable provider —
+					// and a bare status code sends you diagnosing the wrong thing.
+					const detail = (await response.text().catch(() => '')).slice(0, 300).trim();
+					throw new VisionRequestError(
+						`OpenRouter request failed with status ${response.status}${detail ? `: ${detail}` : ''}`,
+						response.status
+					);
+				}
+
+				const retryAfter = Number(response.headers.get('retry-after'));
+				await sleepFn(
+					Number.isFinite(retryAfter) && retryAfter > 0
+						? retryAfter * 1000
+						: RETRY_BASE_MS * 2 ** attempt
 				);
 			}
 

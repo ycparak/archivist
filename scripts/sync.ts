@@ -45,7 +45,7 @@ async function readVisionCache(): Promise<Map<string, VisionCacheEntry>> {
 	}
 }
 
-async function resolveVisionOptions(): Promise<VisionSyncOptions | undefined> {
+function resolveVisionOptions(): Omit<VisionSyncOptions, 'onEntry'> | undefined {
 	const dryRun = hasFlag('vision-dry-run');
 	if (!hasFlag('vision') && !dryRun) return undefined;
 
@@ -57,20 +57,27 @@ async function resolveVisionOptions(): Promise<VisionSyncOptions | undefined> {
 		process.exit(1);
 	}
 
-	const limitValue = flagValue('vision-limit');
-	const limit = limitValue === undefined ? undefined : Number(limitValue);
-	if (limit !== undefined && (!Number.isInteger(limit) || limit < 0)) {
-		console.error(`--vision-limit must be a non-negative integer, got "${limitValue}"`);
-		process.exit(1);
-	}
+	const limit = positiveIntFlag('vision-limit');
+	const concurrency = positiveIntFlag('vision-concurrency');
 
 	return {
 		client: createVisionClient({ apiKey }),
-		cache: await readVisionCache(),
 		limit,
+		concurrency,
 		revise: parseRevise(),
 		dryRun
 	};
+}
+
+function positiveIntFlag(name: string): number | undefined {
+	const raw = flagValue(name);
+	if (raw === undefined) return undefined;
+	const value = Number(raw);
+	if (!Number.isInteger(value) || value < 0) {
+		console.error(`--${name} must be a non-negative integer, got "${raw}"`);
+		process.exit(1);
+	}
+	return value;
 }
 
 const accessToken = process.env.ARENA_ACCESS_TOKEN;
@@ -89,24 +96,52 @@ if (!apiKey || !region) {
 }
 const namespace = process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE;
 
-const vision = await resolveVisionOptions();
+const vision = resolveVisionOptions();
+const visionCache = await readVisionCache();
+
+/**
+ * A full backfill runs for hours. Checkpointing every 25 entries means a crash, a rate-limit wall
+ * or a Ctrl-C costs at most 25 descriptions instead of the whole run — and the next run resumes
+ * from the file, because a cached block is never re-sent.
+ */
+const CHECKPOINT_EVERY = 25;
+const live = new Map(visionCache);
+let sinceCheckpoint = 0;
+
+async function writeVisionCache(entries: Iterable<VisionCacheEntry>) {
+	await writeFile(VISION_CACHE_URL, serializeVisionCache(entries));
+}
+
+const onEntry = (entry: VisionCacheEntry) => {
+	live.set(entry.block_id, entry);
+	if (++sinceCheckpoint < CHECKPOINT_EVERY) return;
+	sinceCheckpoint = 0;
+	void writeVisionCache(live.values()).catch((error) => {
+		console.error('  checkpoint write failed:', error instanceof Error ? error.message : error);
+	});
+};
 
 try {
-	const { channels, visionCache, summary } = await syncArchive({
+	const {
+		channels,
+		visionCache: mergedVisionCache,
+		summary
+	} = await syncArchive({
 		accessToken,
 		turbopuffer: { apiKey, region, namespace },
 		log: console.log,
 		allowLargePrune: hasFlag('allow-large-prune'),
-		vision,
+		visionCache,
+		vision: vision && { ...vision, onEntry },
 		channelFilter: {
 			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
 			allowPrivate: parseSlugList(process.env.ARENA_ALLOW_PRIVATE_CHANNELS)
 		}
 	});
 
-	if (visionCache) {
-		await writeFile(VISION_CACHE_URL, serializeVisionCache(visionCache));
-		console.log(`Wrote vision cache: ${visionCache.length} entr(ies)`);
+	if (mergedVisionCache) {
+		await writeVisionCache(mergedVisionCache);
+		console.log(`Wrote vision cache: ${mergedVisionCache.length} entr(ies)`);
 	}
 
 	const manifest = buildChannelManifest(channels);

@@ -667,7 +667,7 @@ describe('syncArchive — vision stage', () => {
 			turbopuffer: turbopufferConfig(),
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
-			vision: { client, cache: new Map() }
+			vision: { client }
 		});
 
 		expect(client.describe).toHaveBeenCalledOnce();
@@ -683,7 +683,7 @@ describe('syncArchive — vision stage', () => {
 			turbopuffer: turbopufferConfig(),
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
-			vision: { client, cache: new Map(), dryRun: true }
+			vision: { client, dryRun: true }
 		});
 
 		expect(client.describe).not.toHaveBeenCalled();
@@ -707,7 +707,8 @@ describe('syncArchive — vision stage', () => {
 			turbopuffer: turbopufferConfig(),
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
-			vision: { client: visionClient(), cache: new Map([['999', stale]]) }
+			visionCache: new Map([['999', stale]]),
+			vision: { client: visionClient() }
 		});
 
 		expect(result.visionCache?.map((entry) => entry.block_id)).toEqual(['11']);
