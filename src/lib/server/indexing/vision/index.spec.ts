@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ArchiveBlock } from '$lib/domain/archive';
 import type { VisionCacheEntry } from './cache';
 import type { DescribeInput, DescribeOutcome, VisionClient } from './client';
-import { describeBlocks, planVisionWork } from './index';
+import { describeBlocks, planVisionWork, unsupportedFormatReason } from './index';
 import { imageSourceHash } from './rendition';
 
 const IMAGE = 'https://d2w9rnfcy7mm78.cloudfront.net/1/original.gif';
@@ -335,5 +335,41 @@ describe('describeBlocks — animated blocks', () => {
 		expect(summary.skippedTooLarge).toBe(1);
 		expect(summary.failed).toEqual([]);
 		expect(client.describe).not.toHaveBeenCalled();
+	});
+});
+
+describe('unsupportedFormatReason', () => {
+	it.each(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'IMAGE/PNG '])(
+		'accepts %s',
+		(type) => {
+			expect(unsupportedFormatReason(type)).toBeNull();
+		}
+	);
+
+	/** Are.na's resizer 500s on SVG, so the provider fetches a JSON error and rejects the image. */
+	it('rejects svg, which no provider can be shown', () => {
+		expect(unsupportedFormatReason('image/svg+xml')).toBe(
+			'image/svg+xml is not a describable image'
+		);
+	});
+
+	it('lets an unknown type through rather than pre-judging it', () => {
+		expect(unsupportedFormatReason(null)).toBeNull();
+		expect(unsupportedFormatReason('')).toBeNull();
+	});
+});
+
+describe('describeBlocks — undescribable formats', () => {
+	it('skips an svg block without calling the model, and does not count it as failed', async () => {
+		const client = stubClient();
+		const { entries, summary } = await describeBlocks(
+			[block({ imageContentType: 'image/svg+xml' })],
+			{ client, cache: new Map(), now }
+		);
+
+		expect(client.describe).not.toHaveBeenCalled();
+		expect(entries).toEqual([]);
+		expect(summary.skippedUnsupported).toBe(1);
+		expect(summary.failed).toEqual([]);
 	});
 });
