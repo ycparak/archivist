@@ -8,7 +8,12 @@ import {
 } from './cache';
 import type { VisionClient, VisionMedia } from './client';
 import { imageSourceHash } from './rendition';
-import { isAnimated, transcodeToVideoDataUrl, type TranscodeOptions } from './video';
+import {
+	cleanupStaleTranscodes,
+	isAnimated,
+	transcodeToVideoDataUrl,
+	type TranscodeOptions
+} from './video';
 
 export interface VisionStageOptions {
 	client: VisionClient;
@@ -161,6 +166,11 @@ export async function describeBlocks(
 	}
 
 	log(`Vision: ${cached} cached, describing ${pending.length} block(s)`);
+
+	if (video) {
+		const { removed } = await cleanupStaleTranscodes();
+		if (removed) log(`  cleared ${removed} scratch director(ies) from an interrupted run`);
+	}
 
 	const entries: VisionCacheEntry[] = [];
 	let completed = 0;
