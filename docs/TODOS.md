@@ -171,6 +171,35 @@ Work these in order — each one is shippable on its own.
      still needed. Bump `PROMPT_VERSION` or scope the revision so only these 134 regenerate, not the
      whole archive. Audio is explicitly out of scope. The 46 Embed blocks stay thumbnail-only
      regardless: they are YouTube/Vimeo links, not files the pipeline can hand over.
+- **Index `vision_tags`.** Tags are generated and cached on every block already but reach neither
+  Turbopuffer nor `search_text`, which was an oversight in the spec rather than a decision.
+  Measured over the 2,526 cached entries: **44% of tags (7,992 of 18,143) contain wording that
+  appears nowhere else in the indexed text** — `cyberpunk`, `dark mode`, `typography`,
+  `web design`, `user interface`. That is search vocabulary being thrown away.
+  Costs **nothing to generate**: the values are in `vision-cache.jsonl`, so no `PROMPT_VERSION`
+  bump and no OpenRouter spend. Add a `vision_tags` `[]string` attribute (filterable, for a future
+  tag facet), fold it into `search_text`, and re-upsert. Re-run `evaluate:search` afterwards and
+  compare against the baseline — eight short tags is far less text than a 500-character
+  description, so dilution risk is low, but it is not zero and the baseline exists for this.
+
+- **Colour search via `vision_palette`.** Viable, and worth doing after tags. The model already
+  returns 3-5 dominant colours per block as hex, cached and otherwise unused.
+  The design constraint to solve first: Turbopuffer string filters are exact-match, so
+  `#b494e4` cannot match "a slightly different purple". Storing raw hex alone gives you nothing.
+  The workable shape is to **quantize at index time**: map each palette entry to a coarse bucket
+  (a dozen or so hue names plus black/white/grey, with saturation and lightness bands where it
+  matters) and store those as a filterable `[]string` alongside the raw hex. A colour picker then
+  resolves the chosen colour to its bucket and queries that bucket plus its neighbours, which is
+  what "or closely related colours" means in practice.
+  Keep the raw hex too — it is what lets you re-bucket later without regenerating anything, and
+  what a swatch strip on a result card would render.
+  Unresolved before building: how many buckets before neighbouring ones stop feeling distinct;
+  whether a block should match on any palette entry or only a dominant one; and whether the picker
+  belongs in the existing filter row or somewhere of its own. This is as much a design question as
+  an indexing one — see [`docs/design.md`](./design.md).
+  Nothing here needs the model again: it is an additive attribute, a bucketing function with
+  tests, a re-upsert, and UI.
+
 - **Batch/async backfill mode.** A `--vision-batch` path for large regenerations if a prompt
   revision ever makes a full 2,585-block re-run routine.
 - **trigger.dev**, if sync moves off the maintainer's machine. Revisit only when there is an
