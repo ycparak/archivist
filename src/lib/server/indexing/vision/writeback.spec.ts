@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ArchiveBlock } from '$lib/domain/archive';
 import type { VisionCacheEntry } from './cache';
+import { ArenaRateLimitError } from '$lib/server/arena/client';
 import { applyWriteBack, planWriteBack } from './writeback';
 
 const OWNER = 558206;
@@ -214,7 +215,8 @@ describe('applyWriteBack', () => {
 			}
 		});
 
-		expect(delays).toEqual([300]);
+		// Are.na allows 120 requests/minute for an authenticated free account.
+		expect(delays).toEqual([500]);
 	});
 
 	it('stops when the run is aborted', async () => {
@@ -282,5 +284,99 @@ describe('applyWriteBack — a credential that cannot write', () => {
 
 		expect(summary.blocksUpdated).toBe(1);
 		expect(summary.failed).toHaveLength(7);
+	});
+});
+
+describe('applyWriteBack — rate limiting', () => {
+	const skipped = { notOwned: 0, noVisionResult: 0, nothingToChange: 0 };
+
+	function plansFor(count: number) {
+		const blocks = Array.from({ length: count }, (_, i) => block({ id: String(i + 1) }));
+		const cacheFor = new Map(blocks.map((b) => [b.id, entry(b.id)]));
+		return planWriteBack(blocks, cacheFor, { ownerId: OWNER, now }).plans;
+	}
+
+	it('waits out a rate limit and writes the block rather than losing it', async () => {
+		let calls = 0;
+		const updateBlock = vi.fn(async () => {
+			calls += 1;
+			if (calls === 1) throw new ArenaRateLimitError('Rate limited updating block', 4000);
+		});
+		const waits: number[] = [];
+
+		const summary = await applyWriteBack(plansFor(1), skipped, {
+			updateBlock,
+			delayFn: async (ms) => {
+				waits.push(ms);
+			}
+		});
+
+		expect(summary.blocksUpdated).toBe(1);
+		expect(summary.failed).toEqual([]);
+		expect(waits).toContain(4000);
+	});
+
+	it('honours the delay Are.na asked for rather than its own', async () => {
+		const updateBlock = vi.fn(async () => {
+			throw new ArenaRateLimitError('Rate limited', 9000);
+		});
+		const waits: number[] = [];
+
+		await applyWriteBack(plansFor(1), skipped, {
+			updateBlock,
+			rateLimitRetries: 2,
+			delayFn: async (ms) => {
+				waits.push(ms);
+			}
+		});
+
+		expect(waits).toEqual([9000, 9000]);
+	});
+
+	it('gives up on a block after its retries and keeps going', async () => {
+		const updateBlock = vi.fn(async (id: number) => {
+			if (id === 1) throw new ArenaRateLimitError('Rate limited', 10);
+		});
+
+		const summary = await applyWriteBack(plansFor(2), skipped, {
+			updateBlock,
+			rateLimitRetries: 1,
+			delayFn: async () => {}
+		});
+
+		expect(summary.blocksUpdated).toBe(1);
+		expect(summary.failed).toHaveLength(1);
+	});
+
+	it('does not retry an error Are.na did not ask us to wait on', async () => {
+		const updateBlock = vi.fn(async () => {
+			throw new Error('404 not found');
+		});
+
+		await applyWriteBack(plansFor(1), skipped, { updateBlock, delayFn: async () => {} });
+
+		expect(updateBlock).toHaveBeenCalledOnce();
+	});
+});
+
+describe('applyWriteBack — counts describe what happened', () => {
+	const skipped = { notOwned: 0, noVisionResult: 0, nothingToChange: 0 };
+
+	it('does not credit a title to a block whose write failed', async () => {
+		const blocks = [block({ id: '1' }), block({ id: '2' })];
+		const cacheFor = new Map(blocks.map((b) => [b.id, entry(b.id)]));
+		const { plans } = planWriteBack(blocks, cacheFor, { ownerId: OWNER, now });
+		const updateBlock = vi.fn(async (id: number) => {
+			if (id === 2) throw new Error('boom');
+		});
+
+		const summary = await applyWriteBack(plans, skipped, { updateBlock, delayFn: async () => {} });
+
+		expect(summary).toMatchObject({
+			blocksPlanned: 2,
+			blocksUpdated: 1,
+			titlesReplaced: 1,
+			descriptionsAdded: 1
+		});
 	});
 });
