@@ -19,17 +19,14 @@ That describes every block with an image that is not already cached, folds the t
 Expect **~2,570 blocks** and **about $0.50**. Twelve blocks are already cached and will be skipped
 for free.
 
-**Duration is the uncertain part.** One cold call took 39s; the batched runs were faster per block.
-At the default concurrency of 8 that puts the range somewhere between roughly 1 and 3.5 hours. If
-you want it faster:
+**Duration: a few hours** at the default concurrency of 32.
 
-```bash
-bun run sync --vision --vision-concurrency=16
-```
-
-Higher concurrency risks OpenRouter rate-limiting, which the client now handles — 429s and 5xxs are
-retried with exponential backoff, honouring `Retry-After` — but sustained limiting will slow it
-down more than the parallelism gains.
+This estimate was wrong the first time. It was extrapolated from a single 39s call; the real
+distribution is 20–160s per description (mean ~60s), because the model emits several hundred
+completion tokens. At the original default of 8 the backfill projected to ~16 hours. Per-slot
+throughput stays roughly flat as slots are added, so 32 is now the default and
+`--vision-concurrency=N` overrides it. Sustained 429s are retried with backoff honouring
+`Retry-After`, so raising it degrades to slower rather than broken.
 
 ## Interrupting it is safe
 

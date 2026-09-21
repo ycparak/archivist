@@ -116,8 +116,13 @@ GMICloud, which supports neither `structured_outputs` nor `response_format`; wit
 pipeline receives prose where it expects JSON, intermittently. The explicit `order` makes runs
 reproducible.
 
-Concurrency 8, exponential backoff on 429/5xx, per-block failures recorded and reported in the sync
-summary rather than aborting the run.
+Concurrency defaults to **32**, with exponential backoff on 429/5xx and per-block failures recorded
+and reported in the sync summary rather than aborting the run.
+
+That default is measured, not assumed. A single description takes 20–160s (mean ~60s) because the
+model emits several hundred completion tokens; per-slot throughput stays roughly flat as slots are
+added, so wall time scales close to linearly with concurrency. At 8 the full backfill projected to
+~16 hours; at 32 it completed in a few. `--vision-concurrency=N` overrides it.
 
 **The prompt carries the block's existing text alongside the image.** The user turn includes the
 current title, description and source title (truncated, clearly labelled as untrusted context) so
