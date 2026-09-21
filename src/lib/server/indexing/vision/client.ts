@@ -62,7 +62,14 @@ export class VisionResponseError extends Error {
 }
 
 const completionSchema = z.object({
-	choices: z.array(z.object({ message: z.object({ content: z.string().nullable() }) })).min(1),
+	choices: z
+		.array(
+			z.object({
+				message: z.object({ content: z.string().nullable() }),
+				finish_reason: z.string().nullable().optional()
+			})
+		)
+		.min(1),
 	provider: z.string().nullable().optional()
 });
 
@@ -96,16 +103,31 @@ export interface VisionClient {
 	describe(input: DescribeInput): Promise<DescribeOutcome>;
 }
 
-function extractContent(body: unknown): { content: string; provider: string | null } {
+function extractContent(body: unknown): {
+	content: string;
+	provider: string | null;
+	finishReason: string | null;
+} {
 	const parsed = completionSchema.safeParse(body);
 	if (!parsed.success) {
 		throw new VisionResponseError(`OpenRouter response did not match the expected shape`, {
 			cause: parsed.error
 		});
 	}
-	const content = parsed.data.choices[0].message.content;
+	const choice = parsed.data.choices[0];
+	const content = choice.message.content;
 	if (!content?.trim()) throw new VisionResponseError('OpenRouter returned an empty completion');
-	return { content, provider: parsed.data.provider ?? null };
+	return {
+		content,
+		provider: parsed.data.provider ?? null,
+		finishReason: choice.finish_reason ?? null
+	};
+}
+
+/** Some providers wrap structured output in a markdown fence despite being asked not to. */
+function stripCodeFence(content: string): string {
+	const fenced = content.trim().match(/^```(?:json)?\s*\n([\s\S]*?)\n?```$/);
+	return fenced ? fenced[1] : content;
 }
 
 /**
@@ -129,12 +151,22 @@ function clampDescription(description: string): string {
 	return `${head.slice(0, lastSpace > 0 ? lastSpace : head.length).trimEnd()}…`;
 }
 
-function parseResult(content: string, block: BlockContext): VisionResult {
+function parseResult(
+	content: string,
+	block: BlockContext,
+	finishReason: string | null
+): VisionResult {
 	let raw: unknown;
 	try {
-		raw = JSON.parse(content);
+		raw = JSON.parse(stripCodeFence(content));
 	} catch (error) {
-		throw new VisionResponseError('model output was not valid JSON', { cause: error });
+		// Without the output itself, "not valid JSON" says nothing about whether the response was
+		// truncated, fenced, or prose — and the response is gone by the time anyone looks.
+		const reason = finishReason === 'length' ? ' (truncated: finish_reason=length)' : '';
+		throw new VisionResponseError(
+			`model output was not valid JSON${reason}; ${content.length} chars starting ${JSON.stringify(content.slice(0, 120))}`,
+			{ cause: error }
+		);
 	}
 
 	const parsed = visionResultSchema.safeParse(raw);
@@ -203,8 +235,8 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 				]
 			});
 
-			let response: Response | undefined;
 			for (let attempt = 0; ; attempt += 1) {
+				let response: Response;
 				const timeout = AbortSignal.timeout(requestTimeoutMs);
 				try {
 					response = await fetchFn(OPENROUTER_URL, {
@@ -228,7 +260,23 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 					continue;
 				}
 
-				if (response.ok) break;
+				if (response.ok) {
+					// Malformed output is transient in practice: the same block that fails to parse here
+					// usually succeeds on a second ask, so it re-enters this loop rather than being
+					// written off for the whole run.
+					try {
+						const { content, provider, finishReason } = extractContent(await response.json());
+						return {
+							kind: 'described',
+							result: parseResult(content, block, finishReason),
+							provider
+						};
+					} catch (error) {
+						if (!(error instanceof VisionResponseError) || attempt >= maxRetries) throw error;
+						await sleepFn(RETRY_BASE_MS * 2 ** attempt);
+						continue;
+					}
+				}
 
 				if (!isRetryable(response.status) || attempt >= maxRetries || signal?.aborted) {
 					// The body carries the actual cause — an unreachable image, an unroutable provider —
@@ -247,9 +295,6 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 						: RETRY_BASE_MS * 2 ** attempt
 				);
 			}
-
-			const { content, provider } = extractContent(await response.json());
-			return { kind: 'described', result: parseResult(content, block), provider };
 		}
 	};
 }
