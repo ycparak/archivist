@@ -83,10 +83,15 @@ mean decoding and re-encoding locally, which means a native image dependency —
 [`AGENTS.md`](../../AGENTS.md) asks that a dependency remove meaningful production code, and this
 one would add it for 43 blocks.
 
-So phase 1 **skips** any non-resizable image over `MAX_IMAGE_BYTES` (5 MB, the common provider
-ceiling) and reports it, leaving 2,542 of 2,585 blocks processed. The right fix is phase 2's video
-input: these are animated GIFs, and sending them as video is both more accurate and the path that
-already has a task.
+So phase 1 **skipped** any non-resizable image over `MAX_IMAGE_BYTES` (5 MB) and reported it.
+
+**Superseded in phase 2.** Animated blocks are now transcoded locally with ffmpeg and sent as a
+`video_url` part — see [`video.ts`](../../src/lib/server/indexing/vision/video.ts). Transcoding at
+512px/6fps/CRF 32 turns a 24.2 MB GIF into 145 KB in about half a second, so the size ceiling stops
+binding, and the model reads motion rather than one frame. The transcoded clip is inlined as a
+`data:` URL because the provider cannot fetch a file that only exists on the sync machine.
+`input_mode` (`image` | `video`) joins the cache entry and the skip key so a change of reading
+regenerates only the affected blocks.
 
 The guard needs no network round-trip — `image.file_size` comes back on the block payload, and is
 now carried through `ArchiveBlock.imageBytes`.

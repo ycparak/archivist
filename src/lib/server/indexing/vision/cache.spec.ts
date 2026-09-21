@@ -15,6 +15,7 @@ function entry(overrides: Partial<VisionCacheEntry> = {}): VisionCacheEntry {
 		image_src_hash: 'sha256:abc',
 		prompt_version: 1,
 		model: 'xiaomi/mimo-v2.5',
+		input_mode: 'image',
 		provider: 'deepinfra',
 		generated_at: '2026-09-21T14:02:11.000Z',
 		title: 'Dark-mode watch complications',
@@ -31,7 +32,8 @@ const key: VisionCacheKey = {
 	blockId: '17698965',
 	imageSourceHash: 'sha256:abc',
 	promptVersion: 1,
-	model: 'xiaomi/mimo-v2.5'
+	model: 'xiaomi/mimo-v2.5',
+	inputMode: 'image'
 };
 
 describe('isCacheHit', () => {

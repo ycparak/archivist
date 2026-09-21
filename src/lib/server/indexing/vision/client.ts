@@ -86,9 +86,12 @@ export interface VisionClientOptions {
 	sleepFn?: (ms: number) => Promise<void>;
 }
 
+/** A still is handed over as a URL the provider fetches; a transcoded animation rides along inline. */
+export type VisionMedia =
+	{ kind: 'image'; url: string; bytes?: number | null } | { kind: 'video'; dataUrl: string };
+
 export interface DescribeInput {
-	imageUrl: string;
-	imageBytes?: number | null;
+	media: VisionMedia;
 	block: BlockContext;
 	signal?: AbortSignal;
 }
@@ -207,15 +210,22 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 		model,
 		promptVersion: PROMPT_VERSION,
 
-		async describe({ imageUrl, imageBytes, block, signal }): Promise<DescribeOutcome> {
-			const url = renditionUrl(imageUrl, renditionWidth);
+		async describe({ media, block, signal }): Promise<DescribeOutcome> {
+			let mediaPart: Record<string, unknown>;
 
-			// Only meaningful when the rendition is the original: a resized URL is always small.
-			if (url === imageUrl && imageBytes != null && imageBytes > maxImageBytes) {
-				return {
-					kind: 'skipped',
-					reason: `image is ${(imageBytes / 1024 / 1024).toFixed(1)}MB and cannot be resized (limit ${(maxImageBytes / 1024 / 1024).toFixed(0)}MB)`
-				};
+			if (media.kind === 'video') {
+				mediaPart = { type: 'video_url', video_url: { url: media.dataUrl } };
+			} else {
+				const url = renditionUrl(media.url, renditionWidth);
+
+				// Only meaningful when the rendition is the original: a resized URL is always small.
+				if (url === media.url && media.bytes != null && media.bytes > maxImageBytes) {
+					return {
+						kind: 'skipped',
+						reason: `image is ${(media.bytes / 1024 / 1024).toFixed(1)}MB and cannot be resized (limit ${(maxImageBytes / 1024 / 1024).toFixed(0)}MB)`
+					};
+				}
+				mediaPart = { type: 'image_url', image_url: { url } };
 			}
 
 			const body = JSON.stringify({
@@ -227,10 +237,7 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 					{ role: 'system', content: SYSTEM_PROMPT },
 					{
 						role: 'user',
-						content: [
-							{ type: 'image_url', image_url: { url } },
-							{ type: 'text', text: buildContextText(block) }
-						]
+						content: [mediaPart, { type: 'text', text: buildContextText(block) }]
 					}
 				]
 			});

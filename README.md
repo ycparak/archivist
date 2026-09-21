@@ -22,6 +22,7 @@ syncs every channel that user owns. Run it and you get your archive, not anyone 
 |                                                  | Why                                                                | Cost                                |
 | ------------------------------------------------ | ------------------------------------------------------------------ | ----------------------------------- |
 | [Bun](https://bun.sh) 1.4+                       | runtime and package manager                                        | free                                |
+| [ffmpeg](https://ffmpeg.org) on PATH             | transcodes animated blocks before describing them — **optional**   | free                                |
 | An Are.na account                                | the source of truth (read token; read + write only for write-back) | free tier is fine                   |
 | A [Turbopuffer](https://turbopuffer.com) account | search index + embeddings                                          | free tier covers a personal archive |
 | An [OpenRouter](https://openrouter.ai) account   | vision descriptions — **optional**                                 | ~$0.50 for 2,600 images             |
@@ -88,7 +89,24 @@ the expensive artifact — keeping it in the repo means a teammate, a fresh clon
 index costs nothing to restore.
 
 A block is only ever described again if its image changed, you bump `PROMPT_VERSION`, you switch
-models, or you pass `--revision`.
+models, you pass `--revision`, or the way it is read changes (see animations below).
+
+#### Animations are read as motion, not as one frame
+
+Are.na keeps animated GIFs on a CDN that publishes no smaller version, so the image path had to skip
+anything over the provider's 5 MB limit and describe the rest from a single still. Neither is a
+useful reading of an animation.
+
+With **ffmpeg on PATH**, animated blocks are transcoded locally to a small MP4 first and sent as
+video. A 24.2 MB GIF becomes a 145 KB clip in about half a second, which both fits comfortably and
+lets the model see what actually happens:
+
+> "A side-view depiction of a male runner… Overlaid on the scene is a semi-transparent, dark-themed
+> user interface simulating a heads-up display."
+
+This is on by default. Without ffmpeg the run stops with an explanation; pass
+`--no-vision-video` to fall back to single-frame stills instead. Animations cost roughly twice an
+image (~$0.0005 each) and take longer, since the source is downloaded before it is transcoded.
 
 ### Writing the descriptions back to Are.na
 
@@ -152,24 +170,25 @@ blocks already written are simply "already fine" and skipped, and only the failu
 
 ## Commands
 
-| Command                               | What it does                                             |
-| ------------------------------------- | -------------------------------------------------------- |
-| `bun run dev`                         | local dev server                                         |
-| `bun run sync`                        | fetch Are.na, index into Turbopuffer, prune what is gone |
-| `bun run sync --vision`               | also generate descriptions for blocks with images        |
-| `bun run sync --vision-dry-run`       | report what vision would cost; spend nothing             |
-| `bun run sync --vision-limit=N`       | describe at most N new blocks this run                   |
-| `bun run sync --vision-concurrency=N` | parallel description requests (default 32)               |
-| `bun run sync --revision[=slug,…]`    | ignore the cache, for everything or named channels       |
-| `bun run sync --push-arena`           | preview Are.na write-back                                |
-| `bun run sync --push-arena-apply`     | perform Are.na write-back (needs a read + write token)   |
-| `bun run sync --push-arena-limit=N`   | write back at most N blocks this run                     |
-| `bun run sync --allow-large-prune`    | permit a prune of more than half the index               |
-| `bun run evaluate:search`             | run the search evaluation against your index             |
-| `bun run check`                       | generate types, then typecheck                           |
-| `bun run lint`                        | prettier + eslint                                        |
-| `bun run test`                        | vitest                                                   |
-| `bun run build`                       | production build                                         |
+| Command                               | What it does                                              |
+| ------------------------------------- | --------------------------------------------------------- |
+| `bun run dev`                         | local dev server                                          |
+| `bun run sync`                        | fetch Are.na, index into Turbopuffer, prune what is gone  |
+| `bun run sync --vision`               | also generate descriptions for blocks with images         |
+| `bun run sync --vision-dry-run`       | report what vision would cost; spend nothing              |
+| `bun run sync --vision-limit=N`       | describe at most N new blocks this run                    |
+| `bun run sync --vision-concurrency=N` | parallel description requests (default 32)                |
+| `bun run sync --no-vision-video`      | describe animations from one frame instead of transcoding |
+| `bun run sync --revision[=slug,…]`    | ignore the cache, for everything or named channels        |
+| `bun run sync --push-arena`           | preview Are.na write-back                                 |
+| `bun run sync --push-arena-apply`     | perform Are.na write-back (needs a read + write token)    |
+| `bun run sync --push-arena-limit=N`   | write back at most N blocks this run                      |
+| `bun run sync --allow-large-prune`    | permit a prune of more than half the index                |
+| `bun run evaluate:search`             | run the search evaluation against your index              |
+| `bun run check`                       | generate types, then typecheck                            |
+| `bun run lint`                        | prettier + eslint                                         |
+| `bun run test`                        | vitest                                                    |
+| `bun run build`                       | production build                                          |
 
 Run `check`, `lint`, `test` and `build` before opening a pull request.
 
@@ -223,9 +242,8 @@ Are.na V3  ──►  sync (manual, local)  ──►  Turbopuffer  ──►  S
 
 ## Known limits
 
-- **Animated GIFs are described from a single frame**, and 43 in the reference archive exceed the
-  5 MB provider ceiling and are skipped entirely. Are.na publishes no smaller rendition for them.
-  Tracked as phase-2 work.
+- **Animated blocks need ffmpeg.** Without it, pass `--no-vision-video` and they fall back to a
+  single frame — and any over 5 MB are skipped entirely, since Are.na publishes no smaller version.
 - **`vision_medium` is unreliable.** A grainy photograph came back labelled `painting`. It is
   stored but nothing depends on it — don't build a facet on it without measuring first.
 - **Generated descriptions are capped at 500 characters** so they cannot drown out a block's own
