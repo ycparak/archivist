@@ -41,10 +41,10 @@ The page is a two-column shell owned by
 [`src/routes/+layout.svelte`](../src/routes/+layout.svelte):
 
 - **Sidebar** (`--sidebar-width`, `--color-background-sunken`) is full height and sticky.
-  It carries the app name and an _About_ link, and nothing else. There is deliberately no
+  It carries the app name and nothing else. There is deliberately no
   section navigation: the archive is one surface.
 - **Pane** (`--color-background`) holds the page. Each page opens with a `.rule` (a 1px
-  emphasis rule with `--spacing × 4` of padding) and a heading set at body size.
+  emphasis rule with `--spacing × 3` of padding) and a heading set at body size.
 
 Below `md` the sidebar becomes a static top bar and the pane stacks under it.
 
@@ -75,7 +75,7 @@ Archivist supports light mode only. There is no dark theme token set, system the
 override, or theme switcher. Keep the explicit `color-scheme: light` declaration so
 native controls stay predictable.
 
-Tokens have two tiers in [`src/styles/tokens.css`](../src/styles/tokens.css). The raw tier
+Tokens have two tiers in the `@theme static` block of [`src/styles/globals.css`](../src/styles/globals.css). The raw tier
 is the ramp and accents inherited from the personal site: `--color-white`, `--color-black`,
 `--color-gray-50` … `--color-gray-950` in half-steps, and `--color-blue`, `green`,
 `paprika`, `pink`, `lilac`, `yellow`. **Components read only the semantic tier**, named by
@@ -101,8 +101,7 @@ hover), use `--color-accent-strong`, which is darkened to stay AA. Pair accent c
 text, shape, or position; never rely on color alone. Do not use it to imply that a result
 is better or recommended.
 
-Reject gradients, glows, blobs, textures, glass effects, colored rails, and shadows. The
-only shadow is `--focus-ring` on a focused field.
+Reject gradients, glows, blobs, textures, glass effects, colored rails, and shadows. There are no shadows.
 
 ## Typography
 
@@ -113,7 +112,7 @@ same face at `MONO 100`, so code and identifiers stay in the same family. Neurea
 declared for occasional display use and is not loaded unless something references it.
 
 There is one interface size: `--text-base` (13px, 15px leading). Use `--text-article`
-(≈14px, 18px leading) only for long-form reading, as on the About page. Headings do not
+(≈14px, 18px leading) only for long-form reading. Headings do not
 change size or weight; they are `--color-text` at body size, and structure comes from the
 opening rule and whitespace. Emphasis is `--font-weight-medium` on `<strong>` or an
 oblique on `<em>`; do not introduce a second size to create hierarchy.
@@ -131,13 +130,12 @@ as in the gallery captions.
 
 `--spacing` is `0.25rem`, Tailwind's own default, so `p-4` is 1rem and `calc(var(--spacing)
 
-- n)`reads the same in scoped CSS.`--gutter` (12px) is the shared pane and sidebar
-padding. The rhythm is tight inside a group (`spacing × 1–3`), and `spacing × 12`between
+- n)`reads the same in scoped CSS.`--gutter` (12px) is the sidebar padding; the pane is padded 24px (`spacing × 6`). The rhythm is tight inside a group (`spacing × 1–3`), and `spacing × 12`between
 the page heading, the form, and the gallery. One element owns each gap: prefer a flex or
 grid`gap` on the parent over margins on siblings.
 
-Corners are square: there are no radius tokens, and no pills. A tag, control, field, and
-image are all rectangles.
+Corners are square except form fields, which use `--radius-field` (4px) on a white
+`--color-surface-hover` fill with a `--color-border-subtle` outline. There are no pills.
 
 ## Interaction and accessibility
 
@@ -145,8 +143,9 @@ Use semantic HTML and native controls first. Every form control needs a visible 
 programmatically associated label. Use landmarks, one descriptive `h1`, ordered
 headings, meaningful link text, visible keyboard focus, and text alternatives for images.
 
-The global focus treatment is a 2px `--color-accent` outline with a 2px offset on every
-interactive element, plus `--focus-ring` on text fields. Do not remove it. Disabled
+Links, buttons, and disclosure summaries get a 2px `--color-accent` outline with a 2px
+offset on keyboard focus. Form fields (`input`, `textarea`, `select`) deliberately show no
+focus styling; do not add one back without a design decision. Disabled
 controls use `--color-text-disabled` and must not be interactive.
 
 The channel filter is a native `<details>` disclosure, so it works without JavaScript and
@@ -168,15 +167,13 @@ Global CSS is layered, with the entry at
 `theme, base, components, utilities`:
 
 1. [`src/styles/fonts.css`](../src/styles/fonts.css) declares the `@font-face` rules.
-2. [`src/styles/tokens.css`](../src/styles/tokens.css) is a `@theme static` block of raw
-   values and semantic roles. `static` keeps every token available as a `var(--…)` for
-   scoped component CSS, not only the ones a utility happens to use.
-3. Tailwind's preflight is the reset (`base` layer).
-4. [`src/styles/globals.css`](../src/styles/globals.css) sets document defaults, text
-   trimming, native controls, selection, and focus inside `@layer base`.
-5. [`src/styles/primitives.css`](../src/styles/primitives.css) defines `reading-width`,
-   `stack`, `cluster`, `surface`, `rule`, `divider`, `meta`, `mono`, `muted`, and
-   `visually-hidden` as `@utility` rules, so they take variants and lose to more specific
+2. Tailwind's preflight is the reset (`base` layer).
+3. [`src/styles/globals.css`](../src/styles/globals.css) holds everything else, in order:
+   a `@theme static` block of raw values and semantic roles (`static` keeps every token
+   available as a `var(--…)` for scoped component CSS, not only the ones a utility happens
+   to use); document defaults, text trimming, native controls, and selection inside
+   `@layer base`; and the `reading-width`, `stack`, `cluster`, `surface`, `rule`,
+   `divider`, `meta`, `mono`, `muted`, and `visually-hidden` `@utility` rules, so they take variants and lose to more specific
    utilities instead of fighting them.
 
 Breakpoints are `sm` 30rem, `md` 45rem, `lg` 60rem, `xl` 75rem. Control heights and

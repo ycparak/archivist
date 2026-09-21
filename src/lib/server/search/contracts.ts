@@ -1,7 +1,13 @@
 import { z } from 'zod';
-import { ARCHIVE_BLOCK_TYPES, ARCHIVE_SEARCH_MODES, type SearchResult } from '$lib/domain/search';
+import {
+	ARCHIVE_BLOCK_TYPES,
+	ARCHIVE_MAX_OFFSET,
+	ARCHIVE_SEARCH_MODES,
+	type SearchResult,
+	type SearchTimings
+} from '$lib/domain/search';
 
-export type { SearchResult };
+export type { SearchResult, SearchTimings };
 
 export const searchResultSchema: z.ZodType<SearchResult> = z.object({
 	id: z.string(),
@@ -28,18 +34,27 @@ export const archiveSearchInputSchema = z.object({
 	blockTypes: z.array(z.enum(ARCHIVE_BLOCK_TYPES)).max(20).default([]),
 	from: z.coerce.date().optional(),
 	to: z.coerce.date().optional(),
-	limit: z.number().int().min(1).max(48).default(24)
+	limit: z.number().int().min(1).max(48).default(24),
+	offset: z.number().int().min(0).max(ARCHIVE_MAX_OFFSET).default(0)
 });
 
 export type ArchiveSearchInput = z.infer<typeof archiveSearchInputSchema>;
 
-export const searchSuccessResponseSchema = z.object({ results: z.array(searchResultSchema) });
+export const searchSuccessResponseSchema = z.object({
+	results: z.array(searchResultSchema),
+	hasMore: z.boolean()
+});
 
 export const searchErrorResponseSchema = z.object({
 	error: z.string(),
 	correlationId: z.string().optional()
 });
 
+export interface SearchResponse {
+	results: SearchResult[];
+	timings: SearchTimings;
+}
+
 export interface SearchRepository {
-	search(input: ArchiveSearchInput): Promise<SearchResult[]>;
+	search(input: ArchiveSearchInput): Promise<SearchResponse>;
 }

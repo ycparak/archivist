@@ -1,5 +1,8 @@
 {
 	"languages": {
+		"CSS": {
+			"language_servers": ["!biome", "..."]
+		},
 		"JavaScript": {
 			"language_servers": ["eslint", "!biome", "..."],
 			"formatter": { "language_server": { "name": "eslint" } },

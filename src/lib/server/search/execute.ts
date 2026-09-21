@@ -1,7 +1,9 @@
 import {
+	ARCHIVE_MAX_OFFSET,
 	readArchiveSearchState,
 	type ArchiveSearchState,
-	type SearchResult
+	type SearchResult,
+	type SearchTimings
 } from '$lib/domain/search';
 import type { SearchRepository } from './contracts';
 import { parseArchiveSearchRequest, SearchRequestValidationError } from './request';
@@ -13,7 +15,13 @@ export type SearchUnavailableReport = {
 };
 
 export type ArchiveSearchOutcome =
-	| { kind: 'ok'; state: ArchiveSearchState; results: SearchResult[] }
+	| {
+			kind: 'ok';
+			state: ArchiveSearchState;
+			results: SearchResult[];
+			hasMore: boolean;
+			timings: SearchTimings;
+	  }
 	| { kind: 'invalid'; state: ArchiveSearchState }
 	| { kind: 'unavailable'; state: ArchiveSearchState; correlationId: string };
 
@@ -39,8 +47,16 @@ export async function executeArchiveSearch(
 
 	try {
 		const input = parseArchiveSearchRequest(searchParams);
-		const results = await createRepository().search(input);
-		return { kind: 'ok', state, results: deduplicateById(results).slice(0, input.limit) };
+		const { results, timings } = await createRepository().search(input);
+		const ranked = deduplicateById(results);
+		const end = input.offset + input.limit;
+		return {
+			kind: 'ok',
+			state,
+			results: ranked.slice(input.offset, end),
+			hasMore: ranked.length > end && end <= ARCHIVE_MAX_OFFSET,
+			timings
+		};
 	} catch (error) {
 		if (error instanceof SearchRequestValidationError) return { kind: 'invalid', state };
 		const correlationId = createCorrelationId();

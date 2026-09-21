@@ -11,9 +11,12 @@ export const ARCHIVE_SEARCH_PARAM = {
 	to: 'to'
 } as const;
 
+export const ARCHIVE_PAGE_PARAM = { offset: 'offset' } as const;
+
 export const ARCHIVE_SEARCH_MODES = ['browse', 'lexical', 'semantic', 'hybrid'] as const;
 
 export const ARCHIVE_RESULT_LIMIT = 24;
+export const ARCHIVE_MAX_OFFSET = 2000;
 
 export type ArchiveSearchMode = (typeof ARCHIVE_SEARCH_MODES)[number];
 
@@ -31,6 +34,12 @@ export type SearchResult = {
 	imageWidth: number | null;
 	imageHeight: number | null;
 	sourceTitle: string | null;
+};
+
+export type SearchTimings = {
+	totalMs: number;
+	queryMs: number;
+	rerankMs: number;
 };
 
 export type ChannelManifestEntry = {
@@ -136,26 +145,7 @@ export function hasActiveFilters(state: ArchiveSearchState): boolean {
 	return Boolean(state.channelSlugs.length || state.blockTypes.length || state.from || state.to);
 }
 
-export function withoutChannel(state: ArchiveSearchState, slug: string): ArchiveSearchState {
-	return { ...state, channelSlugs: state.channelSlugs.filter((value) => value !== slug) };
-}
-
 export function withChannel(state: ArchiveSearchState, slug: string): ArchiveSearchState {
 	if (state.channelSlugs.includes(slug)) return state;
 	return { ...state, channelSlugs: [...state.channelSlugs, slug] };
-}
-
-export function withoutBlockType(
-	state: ArchiveSearchState,
-	blockType: ArchiveBlockType
-): ArchiveSearchState {
-	return { ...state, blockTypes: state.blockTypes.filter((value) => value !== blockType) };
-}
-
-export function withoutDateRange(state: ArchiveSearchState): ArchiveSearchState {
-	return { ...state, from: '', to: '' };
-}
-
-export function withoutFilters(state: ArchiveSearchState): ArchiveSearchState {
-	return { ...state, channelSlugs: [], blockTypes: [], from: '', to: '' };
 }

@@ -72,6 +72,7 @@ describe('parseArchiveSearchRequest', () => {
 			query: '',
 			channelSlugs: [],
 			blockTypes: [],
+			offset: 0,
 			limit: 24
 		});
 	});
@@ -116,6 +117,7 @@ describe('parseArchiveSearchRequest', () => {
 			query: '',
 			channelSlugs: [],
 			blockTypes: [],
+			offset: 0,
 			limit: 24
 		});
 	});

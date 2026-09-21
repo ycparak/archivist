@@ -2,10 +2,17 @@ import Turbopuffer, {
 	type Filter,
 	type NamespaceMultiQueryParams,
 	type NamespaceQueryParams,
+	type QueryPerformance,
 	type Row
 } from '@turbopuffer/turbopuffer';
 import { z } from 'zod';
-import type { ArchiveSearchInput, SearchRepository, SearchResult } from './contracts';
+import type { SearchTimings } from '$lib/domain/search';
+import type {
+	ArchiveSearchInput,
+	SearchRepository,
+	SearchResponse,
+	SearchResult
+} from './contracts';
 import type { TurbopufferConfig } from './turbopuffer-client';
 
 const QUERY_TIMEOUT_MS = 10_000;
@@ -72,7 +79,7 @@ function sharedQuery(input: ArchiveSearchInput) {
 	const filters = buildSearchFilters(input);
 	return {
 		include_attributes: presentationAttributes,
-		limit: input.limit,
+		limit: input.offset + input.limit + 1,
 		...(filters ? { filters } : {})
 	};
 }
@@ -81,7 +88,13 @@ function singleQuery(input: ArchiveSearchInput): NamespaceQueryParams {
 	const shared = sharedQuery(input);
 	switch (input.mode) {
 		case 'browse':
-			return { ...shared, rank_by: ['connected_at', 'desc'] };
+			return {
+				...shared,
+				rank_by: [
+					['connection_count', 'desc'],
+					['connected_at', 'desc']
+				]
+			};
 		case 'lexical':
 			return { ...shared, rank_by: ['search_text', 'BM25', input.query] };
 		case 'semantic':
@@ -122,6 +135,20 @@ function toSearchResult(row: Row): SearchResult {
 	};
 }
 
+function toTimings(
+	startedAt: number,
+	provider: Partial<QueryPerformance> | undefined,
+	reranked: boolean
+): SearchTimings {
+	const queryMs = provider?.query_execution_ms ?? 0;
+	const serverMs = provider?.server_total_ms ?? queryMs;
+	return {
+		totalMs: performance.now() - startedAt,
+		queryMs,
+		rerankMs: reranked ? Math.max(0, serverMs - queryMs) : 0
+	};
+}
+
 export class TurbopufferSearchRepository implements SearchRepository {
 	private readonly namespace;
 
@@ -134,21 +161,28 @@ export class TurbopufferSearchRepository implements SearchRepository {
 		this.namespace = client.namespace(config.namespace);
 	}
 
-	async search(input: ArchiveSearchInput): Promise<SearchResult[]> {
+	async search(input: ArchiveSearchInput): Promise<SearchResponse> {
+		const startedAt = performance.now();
 		try {
 			if (input.mode === 'hybrid') {
 				const response = await this.namespace.multiQuery(hybridQuery(input), {
 					timeout: QUERY_TIMEOUT_MS,
 					maxRetries: QUERY_MAX_RETRIES
 				});
-				return response.results.flatMap((result) => result.rows ?? []).map(toSearchResult);
+				return {
+					results: response.results.flatMap((result) => result.rows ?? []).map(toSearchResult),
+					timings: toTimings(startedAt, response.performance, true)
+				};
 			}
 
 			const response = await this.namespace.query(singleQuery(input), {
 				timeout: QUERY_TIMEOUT_MS,
 				maxRetries: QUERY_MAX_RETRIES
 			});
-			return (response.rows ?? []).map(toSearchResult);
+			return {
+				results: (response.rows ?? []).map(toSearchResult),
+				timings: toTimings(startedAt, response.performance, false)
+			};
 		} catch (error) {
 			if (error instanceof SearchUnavailableError) throw error;
 			throw new SearchUnavailableError(error);
