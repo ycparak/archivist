@@ -156,21 +156,20 @@ Work these in order — each one is shippable on its own.
 
 ## Backlog — Vision indexing phase 2 (only after phase 1 has shipped and been measured)
 
-- **GIF handling — video input.** Owns both halves of the GIF problem, and phase 1 leaves real work
-  here:
-  1. **43 blocks are unprocessed.** Phase 1's size guard skips any non-resizable image over 5 MB.
-     Measured across all 134 GIFs: median 2.70 MB, p90 11.23 MB, max 24.15 MB, 615 MB total. Are.na
-     publishes no smaller rendition — `thumb`, `square`, `small`, `medium` and `large` are all the
-     same CloudFront URL — so there is nothing to shrink without decoding locally.
-  2. **The other 91 are described from a single frame**, which is the wrong reading of an animation.
-     `xiaomi/mimo-v2.5` takes video as a native input modality (`text+image+audio+video`), so sending
-     these as a video part rather than an image part fixes both: motion, pacing and loop structure
-     become visible, and the video path may carry a different size ceiling than the 5 MB image one.
-     Confirm the pinned providers accept video, re-check the ceiling against the 24 MB worst case, and
-     decide then whether a local transcode (a native image dependency for a handful of blocks) is
-     still needed. Bump `PROMPT_VERSION` or scope the revision so only these 134 regenerate, not the
-     whole archive. Audio is explicitly out of scope. The 46 Embed blocks stay thumbnail-only
-     regardless: they are YouTube/Vimeo links, not files the pipeline can hand over.
+- [~] **GIF handling — video input.** Code complete and tested; the run is handed off.
+  Animated blocks (134, all `image/gif`, all non-resizable) are now downloaded, transcoded locally
+  to a small MP4 with ffmpeg, and sent as a `video_url` part. This fixes both halves at once: the
+  43 that were skipped for exceeding the 5 MB image ceiling now fit — a 24.2 MB GIF becomes 145 KB
+  in ~0.5s — and the other 91 are read as motion rather than a single frame.
+  Verified end to end on the largest GIF in the archive, which the image path could never describe:
+  `input_mode: video`, provider DeepInfra, 46s including download and transcode.
+  `input_mode` joins the cache entry and the skip key, so only these 134 regenerate rather than all
+  2,526. ffmpeg is required and failure names it; `--no-vision-video` falls back to stills.
+  Cost ~2x an image call, so ~$0.07 for all 134.
+  **Remaining, for the maintainer:** `bun run sync --vision`. A dry run plans 174 blocks — the 134
+  animations plus ~40 already pending from new or changed blocks. Expect ~615 MB of downloads;
+  consider `--vision-concurrency=12` since each in-flight transcode holds its source in memory.
+
 - **Index `vision_tags`.** Tags are generated and cached on every block already but reach neither
   Turbopuffer nor `search_text`, which was an oversight in the spec rather than a decision.
   Measured over the 2,526 cached entries: **44% of tags (7,992 of 18,143) contain wording that

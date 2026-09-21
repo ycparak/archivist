@@ -698,6 +698,7 @@ describe('syncArchive — vision stage', () => {
 			image_src_hash: 'sha256:old',
 			prompt_version: 1,
 			model: 'test-model',
+			input_mode: 'image' as const,
 			provider: 'test',
 			generated_at: '2026-01-01T00:00:00.000Z'
 		};

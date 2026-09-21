@@ -64,6 +64,8 @@ export interface VisionSyncOptions {
 	limit?: number;
 	revise?: boolean | ReadonlySet<string>;
 	concurrency?: number;
+	/** Read animated blocks as motion by transcoding them locally first. Needs ffmpeg on PATH. */
+	video?: boolean;
 	/** Report what would be generated and what it would cost, then write nothing. */
 	dryRun?: boolean;
 	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
@@ -259,6 +261,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 				blocksWithImage: plan.withImage.length,
 				cacheHits: plan.cached,
 				generated: 0,
+				generatedFromVideo: 0,
 				skippedTooLarge: 0,
 				skippedOverLimit: plan.overLimit,
 				failed: []
