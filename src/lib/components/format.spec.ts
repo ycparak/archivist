@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyArchiveSearchState, type ArchiveSearchState } from '$lib/domain/search';
-import { blockDisplayTitle, formatArchiveDate, resultsStatus } from './format';
+import { blockDisplayTitle, formatArchiveDate, formatSearchTimings, resultsStatus } from './format';
 
 describe('formatArchiveDate', () => {
 	it('formats a connected timestamp in UTC', () => {
@@ -29,6 +29,14 @@ describe('blockDisplayTitle', () => {
 		expect(blockDisplayTitle(null, 'Image')).toBe('Untitled image');
 		expect(blockDisplayTitle('', 'Attachment')).toBe('Untitled attachment');
 		expect(blockDisplayTitle(null, 'Something new')).toBe('Untitled block');
+	});
+});
+
+describe('formatSearchTimings', () => {
+	it('shows total, query, and rerank time in seconds', () => {
+		expect(formatSearchTimings({ totalMs: 963, queryMs: 412.6, rerankMs: 0 })).toBe(
+			'time: 0.96s (query: 0.41s, rerank: 0.00s)'
+		);
 	});
 });
 

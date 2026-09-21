@@ -32,6 +32,7 @@ export type SearchDocument = {
 	search_text: string;
 	block_type: string;
 	channel_slugs: string[];
+	connection_count: number;
 	connected_at: string | null;
 	created_at: string | null;
 	title: string | null;
@@ -66,6 +67,7 @@ export function toSearchDocument(block: ArchiveBlock): SearchDocument {
 		search_text: searchText,
 		block_type: block.type,
 		channel_slugs: channels.map((channel) => channel.slug).sort(),
+		connection_count: channels.length,
 		connected_at: block.connectedAt?.toISOString() ?? null,
 		created_at: block.createdAt?.toISOString() ?? null,
 		title: normalizeText(block.title) || null,

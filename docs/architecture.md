@@ -40,20 +40,21 @@ Namespace: `arena-blocks-v1` by default, configurable with `TURBOPUFFER_NAMESPAC
 
 Turbopuffer requires stable types per attribute and does not permit in-place type changes. Therefore version the namespace for a breaking schema change (`arena-blocks-v2`) and document the migration in an ADR in [`docs/decisions/`](./decisions/).
 
-| Attribute       | Type / index                               | Purpose                                    |
-| --------------- | ------------------------------------------ | ------------------------------------------ |
-| `id`            | string, `block:<Are.na id>`                | deterministic document key                 |
-| `search_text`   | string, `full_text_search`, native `embed` | single canonical lexical + semantic corpus |
-| `block_type`    | string, filterable                         | type filter                                |
-| `channel_slugs` | `[]string`, filterable                     | membership filter                          |
-| `connected_at`  | datetime, filterable                       | browsing and date filter                   |
-| `created_at`    | datetime, unindexed                        | result metadata                            |
-| `title`         | string, unindexed                          | card copy                                  |
-| `description`   | string, unindexed                          | card copy                                  |
-| `source_url`    | string, unindexed                          | original source link                       |
-| `arena_url`     | string, unindexed                          | canonical result link                      |
-| `image_url`     | string, unindexed                          | gallery image                              |
-| `source_title`  | string, unindexed                          | attribution                                |
+| Attribute          | Type / index                               | Purpose                                    |
+| ------------------ | ------------------------------------------ | ------------------------------------------ |
+| `id`               | string, `block:<Are.na id>`                | deterministic document key                 |
+| `search_text`      | string, `full_text_search`, native `embed` | single canonical lexical + semantic corpus |
+| `block_type`       | string, filterable                         | type filter                                |
+| `channel_slugs`    | `[]string`, filterable                     | membership filter                          |
+| `connection_count` | uint, filterable                           | browse ordering (most connected first)     |
+| `connected_at`     | datetime, filterable                       | browse tiebreak and date filter            |
+| `created_at`       | datetime, unindexed                        | result metadata                            |
+| `title`            | string, unindexed                          | card copy                                  |
+| `description`      | string, unindexed                          | card copy                                  |
+| `source_url`       | string, unindexed                          | original source link                       |
+| `arena_url`        | string, unindexed                          | canonical result link                      |
+| `image_url`        | string, unindexed                          | gallery image                              |
+| `source_title`     | string, unindexed                          | attribution                                |
 
 `search_text` is deterministic whitespace-normalized concatenation of non-empty `title`, `description`, plain text content (only if supplied by Are.na), `source_title`, and channel titles. Retain display fields separately; never attempt to parse media or scrape a source URL during V1.
 
@@ -73,7 +74,7 @@ The initial native embedding model is `nvidia/nemotron-3-embed-8b` with 1024 dim
 }
 ```
 
-`shared` includes a result limit, presentation attributes, and an `And` filter built from the optional V1 filters. Lexical and semantic modes issue their respective single query. Browse does no text query: it orders matching records by `connected_at` descending. The endpoint selects hybrid when `q` is non-empty and `mode` is omitted; an empty request selects browse. Repeated `channel` or `type` parameters are ORed within their category, and categories compose with AND. Date-only `to` parameters include their full UTC day. Keep candidate/result limits server-owned to prevent an expensive public-query knob.
+`shared` includes a result limit, presentation attributes, and an `And` filter built from the optional V1 filters. Lexical and semantic modes issue their respective single query. Browse does no text query: it orders matching records by `connection_count` descending (the number of distinct synced channels a block is connected to), then `connected_at` descending. Paging is offset-based: the API accepts a bounded `offset` (at most `ARCHIVE_MAX_OFFSET`), each query asks Turbopuffer for `offset + limit + 1` rows, the server drops the first `offset` after de-duplication, and `hasMore` reports whether a row remained past the page. The home page appends the next page as the reader scrolls. The endpoint selects hybrid when `q` is non-empty and `mode` is omitted; an empty request selects browse. Repeated `channel` or `type` parameters are ORed within their category, and categories compose with AND. Date-only `to` parameters include their full UTC day. Keep candidate/result limits server-owned to prevent an expensive public-query knob.
 
 Blank parameters are treated as omitted (`?q=&mode=&from=&to=` is the same request as `/`), because an HTML form submits every field whether or not it was filled in. A blank value still counts toward the "at most once" rule, so `?from=&from=2024-01-02` is a 400. Malformed non-blank values still fail: an unknown `mode`, a `type` outside the five Are.na block types, and a date that is not `YYYY-MM-DD` each return 400 rather than silently returning nothing.
 

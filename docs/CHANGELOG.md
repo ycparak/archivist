@@ -4,6 +4,13 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- Removed the active-filter pills under the search bar (the Channel and Block type menus show a count instead), made checkboxes 16px, and moved component styling to Tailwind utilities. Filter-row text is now cap-height trimmed throughout, so labels, menus, selects and date fields share one baseline.
+- The gallery now loads more blocks as you scroll instead of stopping at 24, and with no search term it lists the most-connected blocks first (ties go to the newest). Ordering needs a re-sync (`bun run sync`) to index the new `connection_count` attribute; until then, browse returns "Search is unavailable". The rule above the sidebar and page headings sits 16px from the top of the page.
+- The result status at the right of the filter row now shows Turbopuffer timings (`time: 0.85s (query: 0.02s, rerank: 0.00s)`); the sentence it replaced is still announced to screen readers. The search bar is 32px, the Ranking label is visually hidden, filters share one centered row, and the sidebar and pane rules line up 12px above their headings.
+- Removed the `/about` page and its sidebar link, opened all links in a new tab, dropped focus
+  styling from form fields, moved the canvas to `gray-100`, rounded and whitened form fields,
+  widened the pane padding to 24px, kept the sidebar fixed while scrolling, and merged
+  `tokens.css` and `primitives.css` into `globals.css`.
 - Restyled the app with the design system from the maintainer's personal site: ABC Areal (with
   Neureal Mono, copied to `static/fonts/`), a 13px interface size, an oklch gray ramp, blue
   accents, and square 1px-bordered controls. Color tokens are now role-based (surfaces, text,

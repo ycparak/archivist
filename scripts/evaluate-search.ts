@@ -41,7 +41,7 @@ const repository = new TurbopufferSearchRepository({
 
 let failures = 0;
 for (const testCase of cases) {
-	const results = await repository.search(parseArchiveSearchRequest(toSearchParams(testCase)));
+	const { results } = await repository.search(parseArchiveSearchRequest(toSearchParams(testCase)));
 	const resultIds = new Set(results.map((result) => result.id));
 	const missing = testCase.expectedBlockIds.filter((id) => !resultIds.has(id));
 	if (!matchesEvaluationCase(testCase, resultIds)) {

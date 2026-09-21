@@ -13,6 +13,7 @@ function input(overrides: Partial<ArchiveSearchInput> = {}): ArchiveSearchInput 
 		channelSlugs: [],
 		blockTypes: [],
 		limit: 24,
+		offset: 0,
 		...overrides
 	};
 }
@@ -122,7 +123,8 @@ describe('TurbopufferSearchRepository', () => {
 	it('maps selected Turbopuffer rows into public search results', async () => {
 		const fetchFn = vi.fn().mockResolvedValue(queryResponse([resultRow()]));
 
-		await expect(repository(fetchFn).search(input())).resolves.toEqual([
+		const { results } = await repository(fetchFn).search(input());
+		expect(results).toEqual([
 			{
 				id: 'block:12',
 				title: 'Felt specimen',
@@ -141,11 +143,41 @@ describe('TurbopufferSearchRepository', () => {
 		]);
 	});
 
-	it('orders browse results by connected_at without a text rank', async () => {
+	it('reports provider timings, with rerank only for hybrid search', async () => {
+		const performanceBody = { query_execution_ms: 40, server_total_ms: 55 };
+		const withPerformance = (body: object) =>
+			new Response(JSON.stringify({ billing: {}, performance: performanceBody, ...body }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			});
+
+		const single = await repository(
+			vi.fn().mockResolvedValue(withPerformance({ rows: [] }))
+		).search(input({ mode: 'lexical', query: 'felt' }));
+		expect(single.timings).toMatchObject({ queryMs: 40, rerankMs: 0 });
+		expect(single.timings.totalMs).toBeGreaterThanOrEqual(0);
+
+		const hybrid = await repository(
+			vi.fn().mockResolvedValue(withPerformance({ results: [{ rows: [] }] }))
+		).search(input({ mode: 'hybrid', query: 'felt' }));
+		expect(hybrid.timings).toMatchObject({ queryMs: 40, rerankMs: 15 });
+	});
+
+	it('over-fetches by one row past the requested page so the server can tell whether more exist', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ offset: 48 }));
+		expect(requestedBody(fetchFn).limit).toBe(73);
+	});
+
+	it('orders browse results by connection count, then recency, without a text rank', async () => {
 		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
 		await repository(fetchFn).search(input());
 		const body = requestedBody(fetchFn);
-		expect(body.rank_by).toEqual(['connected_at', 'desc']);
+		expect(body.rank_by).toEqual([
+			['connection_count', 'desc'],
+			['connected_at', 'desc']
+		]);
+		expect(body.limit).toBe(25);
 		expect(body.rank_by).not.toContain('search_text');
 	});
 
