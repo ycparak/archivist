@@ -4,7 +4,11 @@ import {
 	serializeChannelManifest
 } from '$lib/server/indexing/channel-manifest';
 import { parseSlugList } from '$lib/server/indexing/channel-filter';
-import { syncArchive, type VisionSyncOptions } from '$lib/server/indexing/sync';
+import {
+	syncArchive,
+	type PushArenaOptions,
+	type VisionSyncOptions
+} from '$lib/server/indexing/sync';
 import { createVisionClient } from '$lib/server/indexing/vision/client';
 import {
 	parseVisionCache,
@@ -96,7 +100,14 @@ if (!apiKey || !region) {
 }
 const namespace = process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE;
 
+function resolvePushArena(): PushArenaOptions | undefined {
+	const apply = hasFlag('push-arena-apply');
+	if (!hasFlag('push-arena') && !apply) return undefined;
+	return { apply, limit: positiveIntFlag('push-arena-limit') };
+}
+
 const vision = resolveVisionOptions();
+const pushArena = resolvePushArena();
 const visionCache = await readVisionCache();
 
 /**
@@ -133,6 +144,7 @@ try {
 		allowLargePrune: hasFlag('allow-large-prune'),
 		visionCache,
 		vision: vision && { ...vision, onEntry },
+		pushArena,
 		channelFilter: {
 			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
 			allowPrivate: parseSlugList(process.env.ARENA_ALLOW_PRIVATE_CHANNELS)
@@ -185,6 +197,28 @@ try {
 				console.log(`    - ${failure.blockId}: ${failure.error}`);
 			}
 			if (v.failed.length > 10) console.log(`    ... and ${v.failed.length - 10} more`);
+		}
+	}
+	if (summary.writeBack) {
+		const w = summary.writeBack;
+		const verb = pushArena?.apply ? 'Are.na written' : 'Are.na would write';
+		console.log(
+			`  ${verb}:${' '.repeat(Math.max(1, 20 - verb.length - 1))}${w.blocksUpdated || w.titlesAdded + w.titlesReplaced + w.descriptionsAdded} block(s)`
+		);
+		console.log(`    titles replaced:   ${w.titlesReplaced}`);
+		console.log(`    titles added:      ${w.titlesAdded}`);
+		console.log(`    descriptions:      ${w.descriptionsAdded}`);
+		console.log(
+			`    skipped:           ${w.skipped.notOwned} not yours, ${w.skipped.noVisionResult} no description, ${w.skipped.nothingToChange} already fine`
+		);
+		if (w.failed.length) {
+			console.log(`    failed:            ${w.failed.length}`);
+			for (const failure of w.failed.slice(0, 10)) {
+				console.log(`      - ${failure.blockId}: ${failure.error}`);
+			}
+		}
+		if (!pushArena?.apply) {
+			console.log('    Nothing was written. Re-run with --push-arena-apply to write.');
 		}
 	}
 	if (summary.pruneSkipped) {

@@ -472,3 +472,48 @@ describe('describe — malformed output', () => {
 		).rejects.toThrow(/truncated: finish_reason=length.*20 chars starting "\{\\"title/);
 	});
 });
+
+describe('describe — stalled response body', () => {
+	/** The shape a real backfill failed in: headers arrive, then the body never does. */
+	function stallsOnBody(times: number) {
+		let calls = 0;
+		return vi.fn<typeof fetch>(async (_url, init) => {
+			calls += 1;
+			if (calls > times) return Response.json(completion(RESULT));
+			return {
+				ok: true,
+				status: 200,
+				json: () =>
+					new Promise((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+					})
+			} as unknown as Response;
+		});
+	}
+
+	it('retries a body that never arrives', async () => {
+		const fetchFn = stallsOnBody(1);
+		const outcome = await createVisionClient({
+			apiKey: 'k',
+			fetchFn: fetchFn as unknown as typeof fetch,
+			requestTimeoutMs: 20,
+			sleepFn: async () => {}
+		}).describe({ imageUrl: ARENA_URL, block });
+
+		expect(outcome.kind).toBe('described');
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+	});
+
+	it('reports it as a timeout rather than leaking the raw abort reason', async () => {
+		const fetchFn = stallsOnBody(Number.POSITIVE_INFINITY);
+		await expect(
+			createVisionClient({
+				apiKey: 'k',
+				fetchFn: fetchFn as unknown as typeof fetch,
+				requestTimeoutMs: 20,
+				maxRetries: 1,
+				sleepFn: async () => {}
+			}).describe({ imageUrl: ARENA_URL, block })
+		).rejects.toThrow(/OpenRouter request timed out after 20ms, 2 attempt\(s\)/);
+	});
+});
