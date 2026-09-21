@@ -143,6 +143,13 @@ Are.na written:      0 of 5 planned block(s)     ← wrote nothing; see FAILED b
 To confirm independently, open one of the blocks the diff listed and check its title actually
 changed. `updated_at` on the block is the giveaway.
 
+#### If some blocks come back rate limited
+
+Are.na allows 120 requests per minute on a free account, so writes are paced at 500ms and a block
+that gets rate limited waits out the delay Are.na asks for before being recorded as failed. If any
+still fail, just run the command again — write-back re-plans from your archive's current state, so
+blocks already written are simply "already fine" and skipped, and only the failures are retried.
+
 ## Commands
 
 | Command                               | What it does                                             |
