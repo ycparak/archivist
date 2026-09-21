@@ -143,7 +143,7 @@
 		<h2 class="visually-hidden">Results</h2>
 		<ul
 			class={[
-				'm-0 flex list-none flex-wrap gap-x-5 gap-y-6 p-0 transition-opacity duration-(--duration-standard) ease-(--ease-standard) after:grow-[1000000] motion-reduce:transition-none',
+				'ease-standard) m-0 flex list-none flex-wrap gap-x-5 gap-y-6 p-0 transition-opacity duration-(--duration-standard) after:grow-1000000 motion-reduce:transition-none',
 				searching && 'opacity-50'
 			]}
 			aria-busy={searching}
