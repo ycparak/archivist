@@ -3,8 +3,10 @@ import { searchSuccessResponseSchema, type SearchRepository, type SearchResult }
 import { handleSearchRequest } from './handler';
 import { SearchUnavailableError } from './repository';
 
-function repository(results: Awaited<ReturnType<SearchRepository['search']>>): SearchRepository {
-	return { search: vi.fn().mockResolvedValue(results) };
+function repository(results: SearchResult[]): SearchRepository {
+	return {
+		search: vi.fn().mockResolvedValue({ results, timings: { totalMs: 0, queryMs: 0, rerankMs: 0 } })
+	};
 }
 
 describe('handleSearchRequest', () => {
@@ -16,7 +18,7 @@ describe('handleSearchRequest', () => {
 		);
 
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ results: [] });
+		expect(await response.json()).toEqual({ results: [], hasMore: false });
 		expect(searchRepository.search).toHaveBeenCalledWith(
 			expect.objectContaining({ mode: 'hybrid', query: 'felt', limit: 24 })
 		);
@@ -47,7 +49,7 @@ describe('handleSearchRequest', () => {
 		);
 
 		const body = await response.json();
-		expect(body).toEqual({ results: [row] });
+		expect(body).toEqual({ results: [row], hasMore: false });
 		expect(searchSuccessResponseSchema.parse(body).results[0]).toEqual(row);
 	});
 
@@ -75,7 +77,7 @@ describe('handleSearchRequest', () => {
 			() => {}
 		);
 
-		expect(await response.json()).toEqual({ results: [row] });
+		expect(await response.json()).toEqual({ results: [row], hasMore: false });
 	});
 
 	it('returns 400 before constructing a repository for invalid input', async () => {

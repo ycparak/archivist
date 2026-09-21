@@ -12,6 +12,7 @@ export const archiveNamespaceSchema = {
 	},
 	block_type: { type: 'string', filterable: true },
 	channel_slugs: { type: '[]string', filterable: true },
+	connection_count: { type: 'uint', filterable: true },
 	connected_at: { type: 'datetime', filterable: true },
 	created_at: { type: 'datetime', filterable: false },
 	title: { type: 'string', filterable: false },

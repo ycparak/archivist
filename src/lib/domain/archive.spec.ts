@@ -30,11 +30,29 @@ describe('toSearchDocument', () => {
 			id: 'block:42',
 			search_text: 'Brutalist window\nConcrete studies\nArchitecture',
 			channel_slugs: ['architecture'],
+			connection_count: 1,
 			connected_at: '2026-01-02T03:04:05.000Z',
 			image_alt: 'A brutalist window',
 			image_width: 800,
 			image_height: 600
 		});
+	});
+
+	it('counts each distinct channel a block is connected to', () => {
+		const document = toSearchDocument(
+			archiveBlockSchema.parse({
+				id: 7,
+				type: 'Text',
+				arenaUrl: 'https://www.are.na/block/7',
+				channels: [
+					{ slug: 'materials', title: 'Materials' },
+					{ slug: 'felt', title: 'Felt' },
+					{ slug: 'felt', title: 'Felt' }
+				]
+			})
+		);
+
+		expect(document.connection_count).toBe(2);
 	});
 
 	it('indexes null image metadata as null rather than a fallback value', () => {

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
-import ActiveFilters from './ActiveFilters.svelte';
 import ResultCard from './ResultCard.svelte';
 import SearchForm from './SearchForm.svelte';
 import {
@@ -240,13 +239,13 @@ describe('ResultCard markup', () => {
 
 		expect(body).toContain('width="800"');
 		expect(body).toContain('height="600"');
-		expect(body).not.toContain('card-media--fixed');
+		expect(body).not.toContain('aspect-4/3');
 	});
 
 	it('falls back to the fixed placeholder box when Are.na supplies no dimensions', () => {
 		const { body } = render(ResultCard, { props: { result: result() } });
 
-		expect(body).toContain('card-media--fixed');
+		expect(body).toContain('aspect-4/3');
 	});
 
 	it('lazy-loads by default and eagerly for the first cards', () => {
@@ -288,47 +287,8 @@ describe('ResultCard markup', () => {
 	it('sends the block link to Are.na without letting the router claim it', () => {
 		const { body } = render(ResultCard, { props: { result: result() } });
 
-		expect(body).toMatch(/<a[^>]*href="https:\/\/www\.are\.na\/block\/1"[^>]*rel="external"/);
-	});
-});
-
-describe('ActiveFilters markup', () => {
-	it('renders nothing when no filter is active', () => {
-		const { body } = render(ActiveFilters, { props: { state: state({ query: 'felt' }) } });
-
-		expect(body).not.toContain('<a');
-		expect(body.replace(/<!--.*?-->/g, '').trim()).toBe('');
-	});
-
-	it('offers each active filter as a link that removes only that filter', () => {
-		const { body } = render(ActiveFilters, {
-			props: {
-				state: state({
-					query: 'felt',
-					channelSlugs: ['materials'],
-					blockTypes: ['Image'],
-					from: '2024-01-02'
-				})
-			}
-		});
-
-		const removals = hrefsIn(body);
-		expect(removals).toHaveLength(4);
-		for (const url of removals) {
-			expect(url.searchParams.get('q')).toBe('felt');
-		}
-		expect(removals.some((url) => !url.searchParams.has('channel'))).toBe(true);
-		expect(removals.some((url) => !url.searchParams.has('type'))).toBe(true);
-		expect(removals.some((url) => !url.searchParams.has('from'))).toBe(true);
-	});
-
-	it('labels a date filter as a readable range and keeps the remove affordance in text', () => {
-		const { body } = render(ActiveFilters, {
-			props: { state: state({ from: '2024-01-02', to: '2024-01-31' }) }
-		});
-
-		expect(body).toContain('2 Jan 2024');
-		expect(body).toContain('31 Jan 2024');
-		expect(body).toContain('(remove filter)');
+		expect(body).toMatch(
+			/<a[^>]*href="https:\/\/www\.are\.na\/block\/1"[^>]*rel="external noopener noreferrer"/
+		);
 	});
 });

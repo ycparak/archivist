@@ -19,7 +19,7 @@ export async function handleSearchRequest(
 
 	switch (outcome.kind) {
 		case 'ok':
-			return json({ results: outcome.results });
+			return json({ results: outcome.results, hasMore: outcome.hasMore });
 		case 'invalid':
 			return json({ error: 'Invalid search request' }, { status: 400 });
 		case 'unavailable':

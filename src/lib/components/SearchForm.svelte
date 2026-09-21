@@ -1,4 +1,5 @@
 <script lang="ts">
+	import FilterMenu from './FilterMenu.svelte';
 	import {
 		ARCHIVE_BLOCK_TYPES,
 		ARCHIVE_SEARCH_PARAM,
@@ -13,11 +14,13 @@
 		state,
 		channels,
 		status = '',
+		timings = '',
 		onnavigate
 	}: {
 		state: ArchiveSearchState;
 		channels: ChannelManifestEntry[];
 		status?: string;
+		timings?: string;
 		onnavigate: (href: ArchiveSearchHref) => void;
 	} = $props();
 
@@ -31,18 +34,14 @@
 		state.mode === 'lexical' || state.mode === 'semantic' ? state.mode : ''
 	);
 
-	// Preserve a channel filter the manifest doesn't (yet, or no longer) list — e.g. a shared URL
-	// from before the last sync — instead of silently dropping it on the next submit.
 	const orphanedChannelSlugs = $derived.by(() => {
 		const manifestSlugs = new Set(channels.map((channel) => channel.slug));
 		return state.channelSlugs.filter((slug) => !manifestSlugs.has(slug));
 	});
 
-	// Long enough to skip keystrokes mid-word, short enough to feel live.
 	const QUERY_DEBOUNCE_MS = 150;
 
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-	// The href most recently sent to `onnavigate`, so Enter doesn't repeat a search already in flight.
 	let requestedHref: ArchiveSearchHref | undefined;
 
 	$effect(() => {
@@ -71,8 +70,6 @@
 		search(event.currentTarget);
 	}
 
-	// Typing is debounced; discrete controls (checkboxes, select, dates) fire `change` and search at
-	// once. The query input's own `change` (blur/Enter) is skipped because `input` already covers it.
 	function handleInput(event: Event & { currentTarget: HTMLFormElement }) {
 		if (!(event.target instanceof HTMLInputElement) || event.target.type !== 'search') return;
 		cancelPending();
@@ -80,8 +77,6 @@
 		debounceTimer = setTimeout(() => search(form), QUERY_DEBOUNCE_MS);
 	}
 
-	// The date inputs mean the form has several text-like fields, so browsers won't submit on Enter
-	// without a submit button; handle it explicitly.
 	function handleKeydown(event: KeyboardEvent & { currentTarget: HTMLInputElement }) {
 		if (event.key !== 'Enter' || event.isComposing || !event.currentTarget.form) return;
 		event.preventDefault();
@@ -97,7 +92,7 @@
 </script>
 
 <form
-	class="search-form"
+	class="flex flex-col gap-2"
 	method="GET"
 	action="/"
 	role="search"
@@ -108,7 +103,7 @@
 	<label class="visually-hidden" for="archive-query">Search the archive</label>
 	<input
 		id="archive-query"
-		class="query"
+		class="h-(--control-lg) min-h-0 appearance-none px-3 [&::-webkit-search-cancel-button]:appearance-none"
 		name={ARCHIVE_SEARCH_PARAM.query}
 		type="search"
 		value={state.query}
@@ -117,10 +112,15 @@
 		onkeydown={handleKeydown}
 	/>
 
-	<div class="controls">
-		<div class="field">
-			<label for="archive-mode">Ranking</label>
-			<select id="archive-mode" name={ARCHIVE_SEARCH_PARAM.mode} value={selectedMode}>
+	<div class="flex flex-wrap items-center gap-x-2 gap-y-2">
+		<div class="flex h-(--control-sm) min-w-0 items-center gap-x-3">
+			<label class="visually-hidden" for="archive-mode">Ranking</label>
+			<select
+				class="h-(--control-sm) appearance-none chevron pl-3 text-text-tertiary"
+				id="archive-mode"
+				name={ARCHIVE_SEARCH_PARAM.mode}
+				value={selectedMode}
+			>
 				{#each rankingModes as option (option.value)}
 					<option value={option.value}>{option.label}</option>
 				{/each}
@@ -128,46 +128,39 @@
 		</div>
 
 		{#if channels.length}
-			<details class="field channel-control" open={state.channelSlugs.length > 0 || undefined}>
-				<summary>
-					Channel{#if state.channelSlugs.length}<span class="count"
-							>{state.channelSlugs.length}</span
-						>{/if}
-				</summary>
-				<div class="channels">
-					{#each channels as channel (channel.slug)}
-						<label class="checkbox">
-							<input
-								type="checkbox"
-								name={ARCHIVE_SEARCH_PARAM.channel}
-								value={channel.slug}
-								checked={state.channelSlugs.includes(channel.slug)}
-							/>
-							{channel.title}
-						</label>
-					{/each}
-				</div>
-			</details>
+			<FilterMenu label="Channel" count={state.channelSlugs.length}>
+				{#each channels as channel (channel.slug)}
+					<label class="flex items-center gap-1.5 text-text-secondary">
+						<input
+							type="checkbox"
+							name={ARCHIVE_SEARCH_PARAM.channel}
+							value={channel.slug}
+							checked={state.channelSlugs.includes(channel.slug)}
+						/>
+						<span class="trim-text">{channel.title}</span>
+					</label>
+				{/each}
+			</FilterMenu>
 		{/if}
 
-		<div class="field" role="group" aria-labelledby="archive-type-label">
-			<span id="archive-type-label" class="label">Block type</span>
+		<FilterMenu label="Block type" count={state.blockTypes.length}>
 			{#each ARCHIVE_BLOCK_TYPES as blockType (blockType)}
-				<label class="checkbox">
+				<label class="flex items-center gap-1.5 text-text-secondary">
 					<input
 						type="checkbox"
 						name={ARCHIVE_SEARCH_PARAM.type}
 						value={blockType}
 						checked={state.blockTypes.includes(blockType)}
 					/>
-					{blockType}
+					<span class="trim-text">{blockType}</span>
 				</label>
 			{/each}
-		</div>
+		</FilterMenu>
 
-		<div class="field">
-			<label for="archive-from">Connected from</label>
+		<div class="ml-8 flex h-(--control-sm) min-w-0 items-center gap-x-2">
+			<label class="text-text-secondary trim-text" for="archive-from">From</label>
 			<input
+				class="h-(--control-sm) px-3 text-text-tertiary"
 				id="archive-from"
 				name={ARCHIVE_SEARCH_PARAM.from}
 				type="date"
@@ -176,9 +169,10 @@
 			/>
 		</div>
 
-		<div class="field">
-			<label for="archive-to">Connected to</label>
+		<div class="flex h-(--control-sm) min-w-0 items-center gap-x-2">
+			<label class="text-text-secondary trim-text" for="archive-to">To</label>
 			<input
+				class="h-(--control-sm) px-3 text-text-tertiary"
 				id="archive-to"
 				name={ARCHIVE_SEARCH_PARAM.to}
 				type="date"
@@ -187,139 +181,11 @@
 			/>
 		</div>
 
-		<p class="status meta" role="status" aria-live="polite">{status}</p>
+		<p class="m-0 ml-auto meta" aria-hidden="true">{timings || status}</p>
+		<p class="visually-hidden" role="status" aria-live="polite">{status}</p>
 	</div>
 
 	{#each orphanedChannelSlugs as slug (slug)}
 		<input type="hidden" name={ARCHIVE_SEARCH_PARAM.channel} value={slug} />
 	{/each}
 </form>
-
-<style>
-	.search-form {
-		display: flex;
-		flex-direction: column;
-		gap: var(--spacing);
-	}
-
-	.query {
-		block-size: var(--control-lg);
-		padding-inline: calc(var(--spacing) * 3);
-		appearance: none;
-	}
-
-	.query::-webkit-search-cancel-button {
-		appearance: none;
-	}
-
-	.controls {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--spacing) calc(var(--spacing) * 3);
-		align-items: center;
-	}
-
-	.field {
-		display: flex;
-		flex-wrap: wrap;
-		gap: calc(var(--spacing) * 1) calc(var(--spacing) * 2);
-		align-items: center;
-		min-inline-size: 0;
-	}
-
-	.label {
-		white-space: nowrap;
-	}
-
-	.field > label:not(.checkbox),
-	.label,
-	summary {
-		color: var(--color-text-secondary);
-	}
-
-	.field select,
-	.field input[type='date'] {
-		block-size: var(--control-sm);
-		padding-inline: calc(var(--spacing) * 3);
-	}
-
-	.field select {
-		padding-inline-end: calc(var(--spacing) * 8);
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%236a6a6a' stroke-width='1.25'%3E%3Cpath d='m1 1 4 4 4-4'/%3E%3C/svg%3E");
-		background-position: right calc(var(--spacing) * 3) center;
-		background-repeat: no-repeat;
-		appearance: none;
-	}
-
-	.checkbox {
-		display: flex;
-		gap: calc(var(--spacing) * 1.5);
-		align-items: center;
-		color: var(--color-text-secondary);
-	}
-
-	.checkbox input {
-		flex: none;
-		inline-size: calc(var(--spacing) * 4);
-		block-size: calc(var(--spacing) * 4);
-		min-block-size: 0;
-		background-position: center;
-		background-repeat: no-repeat;
-		appearance: none;
-	}
-
-	.checkbox input:checked {
-		background-color: var(--color-accent);
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='8' fill='none' stroke='%23fff' stroke-width='1.5'%3E%3Cpath d='m1 4 3 3 5-6'/%3E%3C/svg%3E");
-		border-color: var(--color-accent);
-	}
-
-	.checkbox input:checked:hover {
-		background-color: var(--color-accent-strong);
-	}
-
-	.channel-control {
-		position: relative;
-		display: block;
-		align-self: stretch;
-	}
-
-	summary {
-		display: flex;
-		gap: calc(var(--spacing) * 2);
-		align-items: center;
-		block-size: var(--control-sm);
-		cursor: pointer;
-		list-style: none;
-	}
-
-	summary::-webkit-details-marker {
-		display: none;
-	}
-
-	.count {
-		color: var(--color-text);
-	}
-
-	.channels {
-		position: absolute;
-		z-index: 1;
-		inset-block-start: 100%;
-		inset-inline-start: 0;
-		display: flex;
-		flex-direction: column;
-		gap: calc(var(--spacing) * 2);
-		inline-size: max-content;
-		max-inline-size: min(20rem, 80vw);
-		max-block-size: 16rem;
-		padding: calc(var(--spacing) * 3);
-		overflow-y: auto;
-		background: var(--color-surface);
-		border: var(--border-width) solid var(--color-border);
-	}
-
-	.status {
-		margin: 0;
-		margin-inline-start: auto;
-	}
-</style>

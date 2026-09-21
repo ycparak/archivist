@@ -6,8 +6,6 @@ Seeded from [`implementation_plan.md`](./implementation_plan.md) — vertical sl
 
 ## Up Next
 
-### Slice 4 — portfolio polish
-
 _(none)_
 
 ## In Progress

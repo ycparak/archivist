@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import {
 	ARCHIVE_BLOCK_TYPES,
+	ARCHIVE_MAX_OFFSET,
+	ARCHIVE_PAGE_PARAM,
 	ARCHIVE_RESULT_LIMIT,
 	ARCHIVE_SEARCH_PARAM,
 	defaultSearchMode
@@ -17,7 +19,12 @@ const searchRequestSchema = z
 		channelSlugs: z.array(z.string().trim().min(1)).max(20),
 		blockTypes: z.array(z.enum(ARCHIVE_BLOCK_TYPES)).max(20),
 		from: z.iso.date().optional(),
-		to: z.iso.date().optional()
+		to: z.iso.date().optional(),
+		offset: z
+			.string()
+			.regex(/^\d+$/)
+			.refine((value) => Number(value) <= ARCHIVE_MAX_OFFSET)
+			.optional()
 	})
 	.superRefine((input, context) => {
 		if (input.mode !== 'browse' && !input.query) {
@@ -76,7 +83,8 @@ export function parseArchiveSearchRequest(searchParams: URLSearchParams): Archiv
 		channelSlugs: repeatedParams(searchParams, ARCHIVE_SEARCH_PARAM.channel),
 		blockTypes: repeatedParams(searchParams, ARCHIVE_SEARCH_PARAM.type),
 		from: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.from),
-		to: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.to)
+		to: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.to),
+		offset: optionalParam(searchParams, ARCHIVE_PAGE_PARAM.offset)
 	};
 	const parsed = searchRequestSchema.safeParse(raw);
 	if (!parsed.success) throw new SearchRequestValidationError(parsed.error);
@@ -85,6 +93,7 @@ export function parseArchiveSearchRequest(searchParams: URLSearchParams): Archiv
 		...parsed.data,
 		from: parsed.data.from ? new Date(`${parsed.data.from}${DATE_START_TIME}`) : undefined,
 		to: parsed.data.to ? new Date(`${parsed.data.to}${DATE_END_TIME}`) : undefined,
+		offset: parsed.data.offset ? Number(parsed.data.offset) : 0,
 		limit: ARCHIVE_RESULT_LIMIT
 	});
 }
