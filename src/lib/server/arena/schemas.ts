@@ -53,8 +53,12 @@ const embeddedConnectionSchema = z.object({
 	connected_at: z.coerce.date()
 });
 
+const blockUserSchema = z.object({ id: z.number() });
+
 const baseContentItemFieldsSchema = z.object({
 	id: z.number(),
+	/** Only the block's author may update it, so write-back needs this. */
+	user: blockUserSchema.nullable().optional(),
 	title: z.string().nullable().optional(),
 	description: markdownContentSchema.nullable().optional(),
 	source: blockSourceSchema.nullable().optional(),

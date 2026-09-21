@@ -100,6 +100,7 @@ export function toArchiveBlock(item: ArenaBlockItem, channel: ChannelContext): A
 		imageHeight,
 		imageBytes,
 		imageContentType,
+		ownerId: item.user?.id ?? null,
 		description: item.description?.plain ?? null,
 		sourceTitle: item.source?.title ?? null,
 		sourceUrl: item.source?.url ?? null,

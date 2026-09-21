@@ -69,22 +69,34 @@ Work these in order — each one is shippable on its own.
   roughly 1–3.5h), commit `vision-cache.jsonl`, re-run `evaluate:search`, promote the five
   pending cases, and check `exact-phrase-link` / `combined-filter` ranks against the baseline
   for dilution.
-- [ ] **6. Are.na write-back.** `ArenaClient.updateBlock`, ownership filter
-      (`block.user.id === me.id` — only 2,050 of 2,594 blocks qualify), and
-      `vision/titles.ts` implementing `isLowQualityTitle` with its four triggers — filename-shaped
-      (783), opaque token (308), social boilerplate (116), and verbose-and-redundant (70), the last
-      being the `… on X: "…" / X` case where the title is platform chrome wrapped around a copy of
-      the description. 939 processable blocks are flagged, plus 16 untitled. Block type is **not**
-      part of the decision (see the ADR amendment); Link and Attachment blocks are in scope now.
-      Unit-test both directions against the real corpus samples listed in the spec — false
-      negatives are fine, false positives are not. `description` is still only written when empty.
-      `--push-arena` prints a diff; `--push-arena-apply` writes.
-      Also sets `metadata.vision_v` / `vision_at` / `vision_src`. Note this bumps `updated_at` on
-      2,050 blocks and will show up in the maintainer's Are.na activity — stage it with
-      `--vision-limit`.
+- [~] **6. Are.na write-back.** Code complete and tested; the apply run is handed off — see
+  [handoff worksheet](./specs/worksheet-vision-backfill-handoff.md#are-na-write-back).
+  `ArenaClient.updateBlock`, `ownerId` threaded from the Are.na payload through `ArchiveBlock`,
+  [`vision/titles.ts`](../src/lib/server/indexing/vision/titles.ts) implementing
+  `lowQualityTitleReason` with its four triggers, and
+  [`vision/writeback.ts`](../src/lib/server/indexing/vision/writeback.ts) planning and applying
+  per-block updates with `metadata.vision_v` / `vision_at` / `vision_src`. Block type is not
+  part of the decision (ADR amendment); a description is written only when empty. Writes are
+  paced, not parallelised. `--push-arena` prints a diff, `--push-arena-apply` writes,
+  `--push-arena-limit=N` stages it. 370 tests.
+  Validated against the live archive: 892 titles would be replaced (782 filename, 89
+  boilerplate, 13 opaque, 8 restating their description), 15 added, and a dry run plans
+  **609 blocks**. The longest titles it leaves alone are all legitimate.
+  Three classifier rules were wrong on first write and were corrected against real titles: a
+  bare ` / X` suffix was flagging `Home / X` (a false positive, now dropped),
+  `on X (formerly Twitter)` was missed, and a bare URL with no digits was missed.
+  **Remaining, for the maintainer:** `bun run sync --push-arena` to review the diff, then
+  `--push-arena-apply`, ideally staged with `--push-arena-limit=25` first.
 - [ ] **7. Product boundary follow-through.** Confirm [`prd.md`](./prd.md) and
       [`AGENTS.md`](../AGENTS.md) reflect what actually shipped, and move this group to Done with
       its worksheet archived to [`history/worksheets/`](./history/worksheets/).
+
+### Video playback in the gallery
+
+- [ ] **Autoplaying, looping, muted video in result cards.** The UI only renders `<img>`, and the index
+      stores no video URL (only the thumbnail), so this needs a new indexed field and a re-sync — not
+      just a component change. Plan, open questions and the exact touch points are in
+      [`specs/spec-video-playback.md`](./specs/spec-video-playback.md).
 
 ## In Progress
 

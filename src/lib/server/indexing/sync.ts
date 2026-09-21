@@ -18,6 +18,13 @@ import { toArchiveBlock } from './normalize';
 import { describeBlocks, planVisionWork, type VisionStageSummary } from './vision';
 import { mergeVisionCache, type VisionCache, type VisionCacheEntry } from './vision/cache';
 import type { VisionClient } from './vision/client';
+import {
+	applyWriteBack,
+	formatPlanLine,
+	planWriteBack,
+	summarizePlans,
+	type WriteBackSummary
+} from './vision/writeback';
 
 export interface SyncOptions {
 	accessToken: string;
@@ -41,6 +48,15 @@ export interface SyncOptions {
 	visionCache?: VisionCache;
 	/** Omit to index the existing cache without generating anything new. */
 	vision?: VisionSyncOptions;
+	/** Omit to leave the maintainer's Are.na archive untouched. */
+	pushArena?: PushArenaOptions;
+}
+
+export interface PushArenaOptions {
+	/** Without this, the plan is printed and nothing is written. */
+	apply?: boolean;
+	limit?: number;
+	delayMs?: number;
 }
 
 export interface VisionSyncOptions {
@@ -76,6 +92,8 @@ export interface SyncSummary {
 	pruneSkipped: string | null;
 	/** Null when the vision stage did not run. */
 	vision: VisionStageSummary | null;
+	/** Null when write-back was not requested. */
+	writeBack: WriteBackSummary | null;
 }
 
 const noop = () => {};
@@ -140,7 +158,8 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		maxPruneFraction = DEFAULT_MAX_PRUNE_FRACTION,
 		allowLargePrune = false,
 		visionCache: existingVisionCache = new Map<string, VisionCacheEntry>(),
-		vision
+		vision,
+		pushArena
 	} = options;
 	const client = new ArenaClient({ accessToken, fetchFn });
 
@@ -158,7 +177,8 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		upsertBatches: 0,
 		documentsDeleted: 0,
 		pruneSkipped: null,
-		vision: null
+		vision: null,
+		writeBack: null
 	};
 
 	const me = await client.me();
@@ -260,6 +280,28 @@ export async function syncArchive(options: SyncOptions): Promise<{
 				new Set(blocks.map((block) => block.id))
 			);
 			visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
+		}
+	}
+
+	// Before indexing, because a failure here should not cost the upsert.
+	if (pushArena) {
+		const { plans, skipped } = planWriteBack(blocks, visionText, { ownerId: me.id });
+		const selected = pushArena.limit === undefined ? plans : plans.slice(0, pushArena.limit);
+
+		if (!pushArena.apply) {
+			log(`Are.na write-back (dry run): ${selected.length} block(s) would change`);
+			for (const plan of selected.slice(0, 20)) log(formatPlanLine(plan));
+			if (selected.length > 20) log(`  ... and ${selected.length - 20} more`);
+			summary.writeBack = summarizePlans(selected, skipped);
+		} else {
+			log(`Are.na write-back: updating ${selected.length} block(s)`);
+			summary.writeBack = await applyWriteBack(plans, skipped, {
+				updateBlock: (id, body) => client.updateBlock(id, body),
+				limit: pushArena.limit,
+				delayMs: pushArena.delayMs,
+				log,
+				signal
+			});
 		}
 	}
 

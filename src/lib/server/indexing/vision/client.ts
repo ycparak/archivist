@@ -236,64 +236,61 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 			});
 
 			for (let attempt = 0; ; attempt += 1) {
-				let response: Response;
 				const timeout = AbortSignal.timeout(requestTimeoutMs);
+				const lastAttempt = attempt >= maxRetries;
+				let retryDelayMs = RETRY_BASE_MS * 2 ** attempt;
+
 				try {
-					response = await fetchFn(OPENROUTER_URL, {
+					const response = await fetchFn(OPENROUTER_URL, {
 						method: 'POST',
 						signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
 						headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
 						body
 					});
-				} catch (error) {
-					// A caller-driven abort is the run shutting down; a timeout is one stalled socket,
-					// which the next attempt routes elsewhere.
-					if (signal?.aborted || !timeout.aborted) throw error;
-					if (attempt >= maxRetries) {
-						throw new VisionRequestError(
-							`OpenRouter request timed out after ${requestTimeoutMs}ms, ${attempt + 1} attempt(s)`,
-							null,
-							{ cause: error }
-						);
-					}
-					await sleepFn(RETRY_BASE_MS * 2 ** attempt);
-					continue;
-				}
 
-				if (response.ok) {
-					// Malformed output is transient in practice: the same block that fails to parse here
-					// usually succeeds on a second ask, so it re-enters this loop rather than being
-					// written off for the whole run.
-					try {
+					if (response.ok) {
+						// The body read is inside the timeout as well: a stall after the headers arrive
+						// is the shape this actually fails in, and it used to escape unretried.
 						const { content, provider, finishReason } = extractContent(await response.json());
 						return {
 							kind: 'described',
 							result: parseResult(content, block, finishReason),
 							provider
 						};
-					} catch (error) {
-						if (!(error instanceof VisionResponseError) || attempt >= maxRetries) throw error;
-						await sleepFn(RETRY_BASE_MS * 2 ** attempt);
-						continue;
 					}
+
+					if (!isRetryable(response.status) || lastAttempt) {
+						// The body carries the actual cause — an unreachable image, an unroutable
+						// provider — and a bare status code sends you diagnosing the wrong thing.
+						const detail = (await response.text().catch(() => '')).slice(0, 300).trim();
+						throw new VisionRequestError(
+							`OpenRouter request failed with status ${response.status}${detail ? `: ${detail}` : ''}`,
+							response.status
+						);
+					}
+
+					const retryAfter = Number(response.headers.get('retry-after'));
+					if (Number.isFinite(retryAfter) && retryAfter > 0) retryDelayMs = retryAfter * 1000;
+				} catch (error) {
+					// A caller-driven abort is the run shutting down and is never retried.
+					if (signal?.aborted) throw error;
+
+					if (timeout.aborted) {
+						if (lastAttempt) {
+							throw new VisionRequestError(
+								`OpenRouter request timed out after ${requestTimeoutMs}ms, ${attempt + 1} attempt(s)`,
+								null,
+								{ cause: error }
+							);
+						}
+					} else if (!(error instanceof VisionResponseError) || lastAttempt) {
+						throw error;
+					}
+					// Otherwise: a timeout or malformed output with attempts left — both worth retrying,
+					// since the next attempt usually routes to a different provider.
 				}
 
-				if (!isRetryable(response.status) || attempt >= maxRetries || signal?.aborted) {
-					// The body carries the actual cause — an unreachable image, an unroutable provider —
-					// and a bare status code sends you diagnosing the wrong thing.
-					const detail = (await response.text().catch(() => '')).slice(0, 300).trim();
-					throw new VisionRequestError(
-						`OpenRouter request failed with status ${response.status}${detail ? `: ${detail}` : ''}`,
-						response.status
-					);
-				}
-
-				const retryAfter = Number(response.headers.get('retry-after'));
-				await sleepFn(
-					Number.isFinite(retryAfter) && retryAfter > 0
-						? retryAfter * 1000
-						: RETRY_BASE_MS * 2 ** attempt
-				);
+				await sleepFn(retryDelayMs);
 			}
 		}
 	};
