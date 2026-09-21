@@ -65,7 +65,8 @@ in `./docs/decisions/`.
 ## Product Boundary
 
 - V1 is an open-source public gallery and search surface for one maintainer's Are.na archive.
-- Results are original Are.na blocks. Do not introduce generated collections, summaries, tags, OCR, link crawling, auth, accounts, analytics, background queues, or a chat UI in V1.
+- Results are original Are.na blocks. Do not introduce generated collections, summaries, tags, link crawling, auth, accounts, analytics, background queues, or a chat UI in V1.
+- Exception, decided: a vision model describes blocks that are already synced, and that text is indexed for retrieval. Scope and constraints are fixed by [docs/decisions/adr-vision-indexing.md](./docs/decisions/adr-vision-indexing.md) and [docs/specs/spec-vision-indexing.md](./docs/specs/spec-vision-indexing.md) — read both before touching `src/lib/server/indexing/vision/`. Query time stays LLM-free.
 - Sync is manual and maintainer-only. Public requests query Turbopuffer only; they must never proxy to Are.na.
 - V2 may use Mastra for an evidence-first research mode. Keep V1 retrieval framework-agnostic so it can become a Mastra tool later. Do not start V2 work until the human explicitly starts that milestone.
 
