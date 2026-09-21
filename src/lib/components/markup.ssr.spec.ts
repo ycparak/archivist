@@ -218,7 +218,7 @@ describe('SearchForm markup', () => {
 
 describe('ResultCard markup', () => {
 	it('links the block to Are.na and leaves its image alt empty inside that named link', () => {
-		const { body } = render(ResultCard, { props: { result: result(), state: state() } });
+		const { body } = render(ResultCard, { props: { result: result() } });
 
 		expect(body).toContain('href="https://www.are.na/block/1"');
 		expect(body).toContain('Industrial felt');
@@ -227,7 +227,7 @@ describe('ResultCard markup', () => {
 
 	it("uses Are.na's own alt text when the block image has it", () => {
 		const { body } = render(ResultCard, {
-			props: { result: result({ imageAlt: 'A felt swatch' }), state: state() }
+			props: { result: result({ imageAlt: 'A felt swatch' }) }
 		});
 
 		expect(body).toContain('alt="A felt swatch"');
@@ -235,7 +235,7 @@ describe('ResultCard markup', () => {
 
 	it('sets intrinsic width/height attributes and drops the fixed placeholder box when Are.na supplies dimensions', () => {
 		const { body } = render(ResultCard, {
-			props: { result: result({ imageWidth: 800, imageHeight: 600 }), state: state() }
+			props: { result: result({ imageWidth: 800, imageHeight: 600 }) }
 		});
 
 		expect(body).toContain('width="800"');
@@ -244,23 +244,21 @@ describe('ResultCard markup', () => {
 	});
 
 	it('falls back to the fixed placeholder box when Are.na supplies no dimensions', () => {
-		const { body } = render(ResultCard, { props: { result: result(), state: state() } });
+		const { body } = render(ResultCard, { props: { result: result() } });
 
 		expect(body).toContain('card-media--fixed');
 	});
 
 	it('lazy-loads by default and eagerly for the first cards', () => {
-		expect(render(ResultCard, { props: { result: result(), state: state() } }).body).toContain(
-			'loading="lazy"'
+		expect(render(ResultCard, { props: { result: result() } }).body).toContain('loading="lazy"');
+		expect(render(ResultCard, { props: { result: result(), eager: true } }).body).toContain(
+			'loading="eager"'
 		);
-		expect(
-			render(ResultCard, { props: { result: result(), state: state(), eager: true } }).body
-		).toContain('loading="eager"');
 	});
 
 	it('renders a block without an image as text rather than an empty frame', () => {
 		const { body } = render(ResultCard, {
-			props: { result: result({ imageUrl: null, blockType: 'Text' }), state: state() }
+			props: { result: result({ imageUrl: null, blockType: 'Text' }) }
 		});
 
 		expect(body).not.toContain('<img');
@@ -269,25 +267,26 @@ describe('ResultCard markup', () => {
 
 	it('labels an untitled block by its type without inventing archive metadata', () => {
 		const { body } = render(ResultCard, {
-			props: { result: result({ title: null, blockType: 'Image' }), state: state() }
+			props: { result: result({ title: null, blockType: 'Image' }) }
 		});
 
 		expect(body).toContain('Untitled image');
 	});
 
-	it('turns each channel into a link that adds that channel filter', () => {
+	it('shows only the block title and a link to Are.na, without channels or other metadata', () => {
 		const { body } = render(ResultCard, {
-			props: { result: result(), state: state({ query: 'felt', mode: 'lexical' }) }
+			props: {
+				result: result({ description: null, sourceTitle: 'A book', channelSlugs: ['materials'] })
+			}
 		});
 
-		const channelHref = hrefsIn(body).find((url) => url.searchParams.has('channel'));
-		expect(channelHref?.searchParams.getAll('channel')).toEqual(['materials']);
-		expect(channelHref?.searchParams.get('q')).toBe('felt');
-		expect(channelHref?.searchParams.get('mode')).toBe('lexical');
+		expect(body).not.toContain('materials');
+		expect(body).not.toContain('A book');
+		expect(hrefsIn(body)).toHaveLength(1);
 	});
 
 	it('sends the block link to Are.na without letting the router claim it', () => {
-		const { body } = render(ResultCard, { props: { result: result(), state: state() } });
+		const { body } = render(ResultCard, { props: { result: result() } });
 
 		expect(body).toMatch(/<a[^>]*href="https:\/\/www\.are\.na\/block\/1"[^>]*rel="external"/);
 	});

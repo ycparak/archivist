@@ -1,8 +1,21 @@
 import {
 	ARCHIVE_RESULT_LIMIT,
 	type ArchiveBlockType,
-	type ArchiveSearchState
+	type ArchiveSearchState,
+	type SearchResult
 } from '$lib/domain/search';
+
+const FALLBACK_MEDIA_RATIO = 4 / 3;
+// Keeps a panorama or a spine from claiming a whole row, or from collapsing to a sliver.
+const MIN_MEDIA_RATIO = 0.5;
+const MAX_MEDIA_RATIO = 3;
+
+/** Width over height for a result's media box; Are.na's own dimensions when it supplied them. */
+export function mediaRatio(result: Pick<SearchResult, 'imageWidth' | 'imageHeight'>): number {
+	const { imageWidth, imageHeight } = result;
+	if (!imageWidth || !imageHeight) return FALLBACK_MEDIA_RATIO;
+	return Math.min(MAX_MEDIA_RATIO, Math.max(MIN_MEDIA_RATIO, imageWidth / imageHeight));
+}
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

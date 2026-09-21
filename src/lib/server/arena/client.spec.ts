@@ -25,7 +25,7 @@ function textBlock(id: number) {
 }
 
 function ownedChannel(id: number, slug: string, title: string) {
-	return { id, type: 'Channel' as const, slug, title };
+	return { id, type: 'Channel' as const, slug, title, visibility: 'public' as const };
 }
 
 function pageResponse(
@@ -250,7 +250,7 @@ describe('ArenaClient.fetchOwnedChannelsPage', () => {
 		const result = await client.fetchOwnedChannelsPage(558206, { page: 1, per: 50 });
 
 		expect(result.data).toEqual([
-			{ id: 1, type: 'Channel', slug: 'a-channel', title: 'A Channel' }
+			{ id: 1, type: 'Channel', slug: 'a-channel', title: 'A Channel', visibility: 'public' }
 		]);
 		const [request] = fetchFn.mock.calls[0] as [Request];
 		expect(request.url).toBe(

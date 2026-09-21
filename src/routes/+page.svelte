@@ -6,7 +6,7 @@
 	import ArchiveMessage from '$lib/components/ArchiveMessage.svelte';
 	import ResultCard from '$lib/components/ResultCard.svelte';
 	import SearchForm from '$lib/components/SearchForm.svelte';
-	import { resultsStatus } from '$lib/components/format';
+	import { mediaRatio, resultsStatus } from '$lib/components/format';
 	import {
 		hasActiveFilters,
 		readArchiveSearchState,
@@ -43,21 +43,15 @@
 	<meta name="description" content="Search and browse an Are.na archive of original blocks." />
 </svelte:head>
 
-<main class="container">
-	<header class="masthead">
-		<h1>Archivist</h1>
-		<p class="lead reading-width">
-			Search one maintainer’s Are.na archive by exact words or by idea. Every result is an original
-			block and links back to Are.na.
-		</p>
-		<p class="meta"><a href={resolve('/about')}>How this works</a></p>
+<main>
+	<header class="rule">
+		<h1>Search</h1>
 	</header>
 
-	<SearchForm {state} {channels} onnavigate={navigate} />
-
-	<ActiveFilters {state} />
-
-	<p class="results-status meta" role="status" aria-live="polite">{status}</p>
+	<div class="stack" data-gap="sm">
+		<SearchForm {state} {channels} {status} onnavigate={navigate} />
+		<ActiveFilters {state} />
+	</div>
 
 	{#if data.kind === 'unavailable'}
 		<ArchiveMessage heading="Search is unavailable">
@@ -89,61 +83,52 @@
 		<h2 class="visually-hidden">Results</h2>
 		<ul class="results" aria-busy={searching} class:searching>
 			{#each results as result, index (result.id)}
-				<li><ResultCard {result} {state} eager={index < 4} /></li>
+				<li style:--ratio={mediaRatio(result)}><ResultCard {result} eager={index < 4} /></li>
 			{/each}
 		</ul>
 	{/if}
 </main>
 
 <style>
-	.container {
+	main {
+		--row-height: 16rem;
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-12);
-		padding-block: var(--space-24) var(--space-32);
+		gap: calc(var(--spacing) * 12);
+		margin-block-end: calc(var(--spacing) * 16);
 	}
 
-	.masthead {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-6);
-	}
-
-	h1 {
-		margin: 0;
-		font-size: var(--text-2xl);
-	}
-
-	.lead {
-		margin: 0;
-		color: var(--color-text-secondary);
-		font-size: var(--text-lg);
-	}
-
-	.results-status {
-		margin: 0;
-	}
-
-	.results > :global(li) {
-		min-inline-size: 0;
-	}
-
+	/* Justified rows: each item grows in proportion to its aspect ratio, so every image in a row
+	   shares one height and the row fills the pane. The trailing pseudo-element soaks up the last
+	   row's slack so a short final row keeps the target height instead of stretching. */
 	.results {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr));
-		gap: var(--space-16) var(--space-12);
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(var(--spacing) * 6) calc(var(--spacing) * 5);
 		margin: 0;
 		padding: 0;
 		list-style: none;
 		transition: opacity var(--duration-standard) var(--ease-standard);
 	}
 
+	.results > li {
+		flex: calc(var(--ratio) * 100) 1 calc(var(--ratio) * var(--row-height));
+		min-inline-size: 0;
+	}
+
+	.results::after {
+		content: '';
+		flex-grow: 1000000;
+	}
+
 	.results.searching {
 		opacity: 0.5;
 	}
 
-	code {
-		color: var(--color-text);
+	@media (max-width: 44.999rem) {
+		main {
+			--row-height: 10rem;
+		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {

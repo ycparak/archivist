@@ -61,14 +61,14 @@
 	.active-filters {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--space-4) var(--space-8);
+		gap: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
 		align-items: center;
 	}
 
 	ul {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--space-4);
+		gap: calc(var(--spacing) * 1);
 		margin: 0;
 		padding: 0;
 		list-style: none;
@@ -76,20 +76,19 @@
 
 	li a {
 		display: inline-flex;
-		gap: var(--space-3);
+		gap: calc(var(--spacing) * 2);
 		align-items: center;
-		padding: var(--space-2) var(--space-5);
+		padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2.5);
 		color: var(--color-text-secondary);
 		background: var(--color-control);
-		border-radius: var(--radius-pill);
-		font-size: var(--text-meta);
-		line-height: var(--leading-interface);
+		border: var(--border-width) solid var(--color-border);
 		text-decoration: none;
 	}
 
 	li a:hover {
 		color: var(--color-text);
 		background: var(--color-control-hover);
+		border-color: var(--color-border-emphasis);
 	}
 
 	.remove {
@@ -98,6 +97,5 @@
 
 	.clear {
 		color: var(--color-text-tertiary);
-		font-size: var(--text-meta);
 	}
 </style>

@@ -15,19 +15,25 @@
 	.message {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-4);
+		gap: calc(var(--spacing) * 3);
 		max-inline-size: var(--reading-width);
-		padding-block: var(--space-16);
+		padding-block: calc(var(--spacing) * 8);
 		border-top: var(--border-width) solid var(--color-border-subtle);
 	}
 
 	h2 {
 		margin: 0;
-		font-size: var(--text-xl);
 	}
 
 	.detail {
 		color: var(--color-text-secondary);
-		font-size: var(--text-sm);
+	}
+
+	.detail :global(p) {
+		margin: 0;
+	}
+
+	.detail :global(code) {
+		color: var(--color-text);
 	}
 </style>
