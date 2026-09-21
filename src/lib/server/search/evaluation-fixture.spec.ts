@@ -32,8 +32,8 @@ describe('search evaluation fixture', () => {
 			.parse(fixture)
 			.filter((testCase) => testCase.pending);
 
-		for (const testCase of pending) {
-			expect(testCase.expectedBlockIds.length).toBeGreaterThan(0);
-		}
+		// Asserted over the whole set rather than per case, so this still holds — and still runs —
+		// when nothing is pending.
+		expect(pending.filter((testCase) => testCase.expectedBlockIds.length === 0)).toEqual([]);
 	});
 });
