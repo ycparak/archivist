@@ -39,12 +39,23 @@ Work these in order — each one is shippable on its own.
       GIF finding: 43 of the 134 non-resizable images exceed 5 MB (max 24 MB, 615 MB total) and
       Are.na publishes no smaller rendition for them, so phase 1 skips and reports them. Phase 2's
       video input is the fix.
-- [ ] **4. Wire the stage into sync behind `--vision`.** `describeBlocks()` between normalization
-      and `toSearchDocument`, concurrency 8, per-block failures recorded not fatal. Add
-      `--vision-dry-run`, `--vision-limit=N`, `--revision[=<slug>]` and the new summary lines.
-      Verify with `--vision-limit=25` and read all 25 outputs by hand before going further.
+- [x] **4. Wire the stage into sync behind `--vision`.** Done —
+      [`vision/index.ts`](../src/lib/server/indexing/vision/index.ts) (`describeBlocks`,
+      `planVisionWork`, bounded concurrency pool, per-block failures collected not fatal) wired into
+      [`sync.ts`](../src/lib/server/indexing/sync.ts) on the deduplicated block set, with
+      `--vision`, `--vision-dry-run`, `--vision-limit=N`, `--revision[=<slugs>]` and the new summary
+      lines. Without `--vision`, sync behaves exactly as before.
+      **Verified live end to end:** a dry run planned 2,581 blocks at zero cost; `--vision-limit=6`
+      generated and cached 6; a re-run reported those 6 as free cache hits. Twelve outputs read by
+      hand and two checked against the images — titles 29–60 chars, descriptions 429–497 chars,
+      OCR present where there is text.
+      Two findings for task 5: the model overruns the description cap (a first call came back 640
+      chars), so the client now clamps at a sentence boundary; and `medium` is the least reliable
+      field — a grainy photograph was labelled `painting`. Do not promote `vision_medium` to a UI
+      facet without measuring it.
 - [ ] **5. Schema, `search_text`, and the full backfill.** Add `vision_description`, `vision_ocr`,
-      `vision_title`, `vision_medium` to the Turbopuffer schema (additive — no namespace bump);
+      `vision_title`, `vision_medium` to the Turbopuffer schema (additive — no namespace bump;
+      `vision_medium` is stored but unproven — see task 4's note before exposing it);
       extend `toSearchDocument`; run the full backfill (≈ $0.49); commit
       `src/lib/server/indexing/vision-cache.jsonl`. Re-run `evaluate:search` and compare against
       the step-1 baseline. If retrieval regressed for Link blocks, tighten the length cap or move
@@ -124,13 +135,21 @@ _(none)_
 
 ## Backlog — Vision indexing phase 2 (only after phase 1 has shipped and been measured)
 
-- **Video input for animated GIFs.** `xiaomi/mimo-v2.5` accepts video as a native input modality
-  (`text+image+audio+video`), so the 134 animated GIFs currently described from their first frame
-  could be understood as motion instead — pacing, loop structure, what actually changes between
-  frames. Send the GIF as a video part rather than an image part, confirm the pinned providers
-  accept it, and bump `PROMPT_VERSION` so only those 134 blocks regenerate. Audio is explicitly
-  out of scope. The 46 Embed blocks stay thumbnail-only regardless: they are YouTube/Vimeo links,
-  not files the pipeline can hand over.
+- **GIF handling — video input.** Owns both halves of the GIF problem, and phase 1 leaves real work
+  here:
+  1. **43 blocks are unprocessed.** Phase 1's size guard skips any non-resizable image over 5 MB.
+     Measured across all 134 GIFs: median 2.70 MB, p90 11.23 MB, max 24.15 MB, 615 MB total. Are.na
+     publishes no smaller rendition — `thumb`, `square`, `small`, `medium` and `large` are all the
+     same CloudFront URL — so there is nothing to shrink without decoding locally.
+  2. **The other 91 are described from a single frame**, which is the wrong reading of an animation.
+     `xiaomi/mimo-v2.5` takes video as a native input modality (`text+image+audio+video`), so sending
+     these as a video part rather than an image part fixes both: motion, pacing and loop structure
+     become visible, and the video path may carry a different size ceiling than the 5 MB image one.
+     Confirm the pinned providers accept video, re-check the ceiling against the 24 MB worst case, and
+     decide then whether a local transcode (a native image dependency for a handful of blocks) is
+     still needed. Bump `PROMPT_VERSION` or scope the revision so only these 134 regenerate, not the
+     whole archive. Audio is explicitly out of scope. The 46 Embed blocks stay thumbnail-only
+     regardless: they are YouTube/Vimeo links, not files the pipeline can hand over.
 - **Batch/async backfill mode.** A `--vision-batch` path for large regenerations if a prompt
   revision ever makes a full 2,585-block re-run routine.
 - **trigger.dev**, if sync moves off the maintainer's machine. Revisit only when there is an

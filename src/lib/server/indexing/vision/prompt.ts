@@ -37,7 +37,7 @@ export const VISION_JSON_SCHEMA = {
 		required: ['title', 'description', 'ocr', 'palette', 'medium', 'tags'],
 		properties: {
 			title: { type: 'string', maxLength: 200 },
-			description: { type: 'string' },
+			description: { type: 'string', maxLength: MAX_DESCRIPTION_CHARS * 2 },
 			ocr: { type: 'string' },
 			palette: { type: 'array', items: { type: 'string' } },
 			medium: { type: 'string', enum: [...VISION_MEDIUMS] },
