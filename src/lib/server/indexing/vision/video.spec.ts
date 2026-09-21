@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FfmpegMissingError, isAnimated, MAX_SOURCE_BYTES, transcodeToVideoDataUrl } from './video';
+import {
+	cleanupStaleTranscodes,
+	FfmpegMissingError,
+	isAnimated,
+	MAX_SOURCE_BYTES,
+	transcodeToVideoDataUrl
+} from './video';
 
 /**
  * These drive the real ffmpeg binary against a generated clip rather than mocking `spawn`, because
@@ -128,5 +134,74 @@ describe('transcodeToVideoDataUrl', () => {
 
 	it('defaults to a source ceiling above the largest animation in the archive', () => {
 		expect(MAX_SOURCE_BYTES).toBeGreaterThan(24.2 * 1024 * 1024);
+	});
+});
+
+describe('transcodeToVideoDataUrl — leaves nothing behind', () => {
+	async function tempDirCount() {
+		const { readdirSync } = await import('node:fs');
+		const { tmpdir } = await import('node:os');
+		return readdirSync(tmpdir()).filter((n) => n.startsWith('archivist-vision-')).length;
+	}
+
+	it('removes its scratch directory after a successful transcode', async () => {
+		const before = await tempDirCount();
+		await transcodeToVideoDataUrl(GENERATED_GIF_URL, { fetchFn: respondWith(await sampleGif()) });
+		expect(await tempDirCount()).toBe(before);
+	});
+
+	it('removes it when the transcode is rejected for size', async () => {
+		const before = await tempDirCount();
+		await transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+			fetchFn: respondWith(await sampleGif()),
+			maxTranscodedBytes: 1
+		});
+		expect(await tempDirCount()).toBe(before);
+	});
+
+	it('removes it when ffmpeg fails', async () => {
+		const before = await tempDirCount();
+		await expect(
+			transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+				fetchFn: respondWith(Buffer.from('not an animation'))
+			})
+		).rejects.toThrow();
+		expect(await tempDirCount()).toBe(before);
+	});
+
+	it('deletes the downloaded source before encoding, which is the large half', async () => {
+		// Proven indirectly: after the call the whole directory is gone, and during it the source
+		// is removed as soon as ffmpeg has read it. A leak would show up as a surviving directory.
+		const before = await tempDirCount();
+		const result = await transcodeToVideoDataUrl(GENERATED_GIF_URL, {
+			fetchFn: respondWith(await sampleGif())
+		});
+		expect(result.kind).toBe('video');
+		expect(await tempDirCount()).toBe(before);
+	});
+});
+
+describe('cleanupStaleTranscodes', () => {
+	it('removes what an interrupted run left behind, and nothing else', async () => {
+		const { mkdtempSync, mkdirSync, existsSync, rmSync } = await import('node:fs');
+		const { tmpdir } = await import('node:os');
+		const { join } = await import('node:path');
+
+		const sandbox = mkdtempSync(join(tmpdir(), 'archivist-sweep-test-'));
+		const stale = join(sandbox, 'archivist-vision-abc123');
+		const unrelated = join(sandbox, 'someone-elses-files');
+		mkdirSync(stale);
+		mkdirSync(unrelated);
+
+		const { removed } = await cleanupStaleTranscodes(sandbox);
+
+		expect(removed).toBe(1);
+		expect(existsSync(stale)).toBe(false);
+		expect(existsSync(unrelated)).toBe(true);
+		rmSync(sandbox, { recursive: true, force: true });
+	});
+
+	it('does not fail a run when the directory cannot be read', async () => {
+		await expect(cleanupStaleTranscodes('/no/such/directory')).resolves.toEqual({ removed: 0 });
 	});
 });

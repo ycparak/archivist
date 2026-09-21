@@ -104,6 +104,11 @@ lets the model see what actually happens:
 > "A side-view depiction of a male runner… Overlaid on the scene is a semi-transparent, dark-themed
 > user interface simulating a heads-up display."
 
+Downloads are temporary: each animation is fetched to a scratch directory, the source is deleted as
+soon as ffmpeg has read it, and the directory is removed whether the transcode succeeds, is rejected
+for size, or fails. A run that is killed outright cannot clean up after itself, so the next run
+sweeps anything left behind before it starts. Nothing is written to the repository.
+
 This is on by default. Without ffmpeg the run stops with an explanation; pass
 `--no-vision-video` to fall back to single-frame stills instead. Animations cost roughly twice an
 image (~$0.0005 each) and take longer, since the source is downloaded before it is transcoded.
