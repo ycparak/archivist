@@ -4,6 +4,12 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- Search now covers the tags the vision model generates — `cyberpunk`, `dark mode`, `typography`,
+  `user interface` and some 5,300 others. These were already being generated and stored for every
+  block but were never indexed, and over half of them use wording that appears nowhere else in what
+  a block is searchable by. Takes effect after `bun run sync`; nothing is regenerated, so it costs
+  no model calls.
+
 - Video blocks now play in the gallery — autoplaying, looping, muted and inline — instead of
   showing a still frame. Only the visible cards play, reduced-motion settings are honoured, and
   there are no controls: the card is a link, so a click takes you to the block on Are.na. Video
