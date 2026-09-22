@@ -77,12 +77,29 @@ const normalizeText = (value: string | null | undefined) =>
 	value?.replace(/\s+/g, ' ').trim() ?? '';
 
 /**
- * Lowercased and deduplicated so a facet treats `UI` and `ui` as one value — 162 blocks carry the
- * lowercase form and the model capitalizes it intermittently. Sorted so an unchanged block
- * re-upserts identically.
+ * Lowercased, dehyphenated and deduplicated, so one concept is one tag. The model is inconsistent
+ * about both: 162 blocks carry `ui` against an intermittent `UI`, and 153 pairs differ only by a
+ * hyphen — `web-design` (26) against `web design` (549), `dark-mode` (20) against `dark mode`
+ * (237). The split is not cosmetic. It cost `semantic-material` nine rank positions, because that
+ * block's `design-engineer` occurs exactly once in the archive while every block above it was
+ * tagged in the spacing the query used.
+ *
+ * Hyphens go in the attribute as well as in `search_text`, not just the text: a facet that filters
+ * on a value the index never wrote is worse than one whose values read slightly oddly, and this
+ * way the filter and the indexed wording cannot disagree. The cost is that genuine compounds are
+ * respelled — `e-commerce` becomes `e commerce`, `sans-serif` becomes `sans serif` — which affects
+ * 158 instances against the 332 the merge repairs.
+ *
+ * Sorted, so an unchanged block re-upserts identically.
  */
 const normalizeTags = (tags: readonly string[] | null | undefined): string[] =>
-	[...new Set((tags ?? []).map((tag) => normalizeText(tag).toLowerCase()).filter(Boolean))].sort();
+	[
+		...new Set(
+			(tags ?? [])
+				.map((tag) => normalizeText(tag.replace(/-+/g, ' ')).toLowerCase())
+				.filter(Boolean)
+		)
+	].sort();
 
 /**
  * `vision` is the generated description for this block, when one exists. It is appended to
