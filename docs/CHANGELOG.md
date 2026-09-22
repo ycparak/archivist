@@ -4,6 +4,9 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- New favicon, with an `.ico` alongside the SVG so browsers that cannot render an SVG icon still
+  get one.
+
 - Search now covers the tags the vision model generates — `cyberpunk`, `dark mode`, `typography`,
   `user interface` and some 5,300 others. These were already being generated and stored for every
   block but were never indexed, and over half of them use wording that appears nowhere else in what
