@@ -145,3 +145,65 @@ risk is judged low rather than zero.
 **The bar after the re-upsert:** all 15 still pass, and no case's rank gets materially worse. The
 two to watch are the same two as before, `exact-phrase-link` (`@2 of 47`) and `combined-filter`
 (`@2 of 40`) — Link blocks with real human descriptions, the population most exposed to dilution.
+
+## Result after `vision_tags` was indexed
+
+All 15 cases pass, but **the bar was not met**: it asked that no rank get materially worse, and one
+did.
+
+| Case                 | Before      | After       |                      |
+| -------------------- | ----------- | ----------- | -------------------- |
+| `semantic-material`  | `@2 of 25`  | `@11 of 25` | **materially worse** |
+| `vision-widget-grid` | `@12 of 41` | `@16 of 37` | worse                |
+| `vision-planner-ui`  | `@3 of 41`  | `@2 of 39`  | better               |
+| `exact-phrase-link`  | `@2 of 47`  | `@2 of 45`  | held                 |
+| `combined-filter`    | `@2 of 40`  | `@2 of 42`  | held                 |
+| the other ten        | unchanged   | unchanged   | held                 |
+
+The two cases predicted to be at risk — `exact-phrase-link` and `combined-filter`, Link blocks with
+real human descriptions — held their rank exactly. The damage landed somewhere the prediction did
+not look.
+
+### What actually happened
+
+Not dilution in the sense the spec feared. Tags did not bury the targets under unrelated blocks;
+they lifted the targets' near-neighbours more than the targets themselves, because the targets are
+tagged in minority vocabulary.
+
+**`semantic-material`** (`independent product designer and engineer`, target `block:47027380`).
+Every one of the top 14 is a designer-or-engineer portfolio page, so the ordering within that
+cluster was always going to be delicate. The target carries three hyphenated tags, and each is the
+rare spelling of a far more common spaced form:
+
+| Target's tag       | Count | Majority form      | Count |
+| ------------------ | ----: | ------------------ | ----: |
+| `design-engineer`  |     1 | `design engineer`  |     9 |
+| `dark-theme`       |     6 | `dark theme`       |    65 |
+| `personal-website` |     4 | `personal website` |    62 |
+
+`design-engineer` occurs exactly once in the whole archive — on this block. The tag that most
+precisely answers the query is written in a form nothing else shares, while the blocks above it are
+tagged `product design`, `designer`, `portfolio` in the spelling the query uses.
+
+**`vision-widget-grid`** (`dark mode widget grid of small bar charts and complications`, target
+`block:17698965`). The target is tagged `dark theme`; the query says "dark mode", and nine of the
+blocks that outrank it are tagged `dark mode` (237 blocks carry it, against 65 for `dark theme`).
+This is synonymy rather than hyphenation, so it is not fixed by the same change.
+
+### Measured: hyphenation splits the tag vocabulary
+
+Across the 2,561 cached entries: **153 tag pairs differ only by a hyphen, covering 3,587
+instances** — `web-design` (26) against `web design` (549), `dark-mode` (20) against `dark mode`
+(237), `ui-design` (19) against `ui design` (274). Normalization already collapses case so a facet
+treats `UI` and `ui` as one value; it does not collapse hyphens, so the same facet would list
+`web design` and `web-design` separately.
+
+Collapsing hyphens to spaces is one line, costs no model calls, and is independently correct for
+the facet. It would move all three of `semantic-material`'s minority tags onto the majority form.
+Whether that recovers the rank is an empirical question that needs another sync — it is not a
+promise.
+
+It does nothing for `vision-widget-grid`, whose problem is `dark theme` against `dark mode`. A
+synonym map would address that, but tuning one against two evaluation cases is over-fitting, and
+the structural answer if this recurs is the backlog item on giving generated text its own embedded
+field rather than sharing `search_text`.
