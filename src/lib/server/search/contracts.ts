@@ -22,6 +22,8 @@ export const searchResultSchema: z.ZodType<SearchResult> = z.object({
 	imageAlt: z.string().nullable(),
 	imageWidth: z.number().int().positive().nullable(),
 	imageHeight: z.number().int().positive().nullable(),
+	videoUrl: z.url().nullable(),
+	videoContentType: z.string().nullable(),
 	sourceTitle: z.string().nullable()
 });
 

@@ -64,6 +64,8 @@ Turbopuffer requires stable types per attribute and does not permit in-place typ
 
 `search_text` is deterministic whitespace-normalized concatenation of non-empty `title`, `description`, plain text content (only if supplied by Are.na), `source_title`, channel titles, and then — when a generated description exists for the block — `vision_description` and `vision_ocr`. Generated text goes last so a block that already describes itself keeps leading the corpus. Retain display fields separately; never scrape a source URL during V1.
 
+A presentation attribute is not additive the way a written attribute is: Turbopuffer rejects an entire query with a 400 when `include_attributes` names an attribute the namespace has never been written, so shipping a read before the sync that creates it takes search down rather than degrading it. `repository.ts` therefore treats such attributes as optional — it asks for them, drops them for the life of the process once the namespace says it has never heard of them, and picks them up again after a sync has written them. `video_url` and `video_content_type` are handled this way.
+
 The `vision_*` attributes are populated from `src/lib/server/indexing/vision-cache.jsonl`, which is committed. They are written on every sync, not only when the vision stage runs — a sync without `--vision` still indexes what earlier runs generated, rather than stripping it back out. See [`decisions/adr-vision-indexing.md`](./decisions/adr-vision-indexing.md).
 
 The initial native embedding model is `nvidia/nemotron-3-embed-8b` with 1024 dimensions, as shown in Turbopuffer’s current native embedding guide. Keep the model in the schema creator, not the query route. A model/dimension change is a namespace migration.
