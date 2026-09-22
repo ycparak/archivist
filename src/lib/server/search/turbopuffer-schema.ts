@@ -23,6 +23,9 @@ export const archiveNamespaceSchema = {
 	image_alt: { type: 'string', filterable: false },
 	image_width: { type: 'uint', filterable: false },
 	image_height: { type: 'uint', filterable: false },
+	/** Playable file for a video attachment; the thumbnail stays in `image_url` as its poster. */
+	video_url: { type: 'string', filterable: false },
+	video_content_type: { type: 'string', filterable: false },
 	source_title: { type: 'string', filterable: false },
 	vision_title: { type: 'string', filterable: false },
 	vision_description: { type: 'string', filterable: false },

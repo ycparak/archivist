@@ -38,6 +38,8 @@ describe('handleSearchRequest', () => {
 			imageAlt: 'A felt swatch',
 			imageWidth: 800,
 			imageHeight: 600,
+			videoUrl: null,
+			videoContentType: null,
 			sourceTitle: 'Example'
 		};
 
@@ -67,6 +69,8 @@ describe('handleSearchRequest', () => {
 			imageAlt: null,
 			imageWidth: null,
 			imageHeight: null,
+			videoUrl: null,
+			videoContentType: null,
 			sourceTitle: null
 		};
 

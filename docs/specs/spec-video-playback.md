@@ -1,6 +1,6 @@
 # Spec: autoplaying, looping video in the gallery
 
-Status: not started. Tracked in [`TODOS.md`](../TODOS.md).
+Status: built, pending the maintainer's `bun run sync`. Tracked in [`TODOS.md`](../TODOS.md).
 
 ## Goal
 
@@ -52,3 +52,29 @@ So the URL has to be indexed, and that means a re-sync.
   `preload` and viewport gating are enough.
 - Related but separate: the phase-2 backlog item on sending video to the vision model. That is about
   indexing, not playback.
+
+## What the build found
+
+Answers to the open questions above, verified against live data rather than assumed.
+
+- **Population.** 52 `Attachment` blocks in the whole archive, against 918 `Image`, 46 `Embed` and
+  roughly 1,550 `Link`. Seven of the 52 are PDFs; about thirteen are video. The spec's concern about
+  24 concurrent decoders is therefore theoretical. Viewport gating was kept anyway — it is a few
+  lines and it is the correct behaviour — but it is not load-bearing.
+- **Delivery.** Video attachments are served from `attachments.are.na` with no auth, no hotlink
+  protection, `accept-ranges: bytes` and `cache-control: max-age=31536000`. Two sampled files were
+  220KB and 800KB. `<video>` can load and seek them directly, so `preload="metadata"` is enough and
+  nothing cleverer is needed. `referrerpolicy` is not available on `<video>` and turned out not to
+  be needed: the image CDN serves a request carrying a referer identically.
+- **A hazard the spec missed.** Turbopuffer rejects the _entire_ query with a 400 when
+  `include_attributes` names an attribute the namespace has never been written, saying the
+  attribute was not found in the schema. Adding a presentation attribute is therefore not additive
+  in the way a written attribute is: shipping the read before the sync would have taken search down
+  completely. `repository.ts` now asks for these attributes, drops them once the
+  namespace says it has never heard of them, and remembers that for the life of the process, so the
+  next sync heals it. This was caught by running the real gallery against the live namespace, where
+  it failed exactly as described.
+- **Controls.** None, deliberately. The card is a link to Are.na, and a control strip inside it
+  fights every click. Reduced-motion readers get the poster frame rather than controls; the block
+  plays properly on Are.na, one click away.
+- **GIFs.** Confirmed unaffected: the 134 GIFs are `Image` blocks and animate natively in `<img>`.

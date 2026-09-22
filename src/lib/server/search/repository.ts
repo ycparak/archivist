@@ -32,6 +32,24 @@ const presentationAttributes = [
 	'source_title'
 ];
 
+/**
+ * Attributes a namespace only carries once a sync has written them. Turbopuffer rejects the entire
+ * query with a 400 when `include_attributes` names one it does not know — so asking for these
+ * before the maintainer has re-synced would take search down completely rather than degrade it by
+ * one feature. Requested when present, dropped when not, and healed by the next sync.
+ */
+const optionalAttributes = ['video_url', 'video_content_type'];
+
+function isUnknownAttributeError(error: unknown): boolean {
+	if (typeof error !== 'object' || error === null) return false;
+	if (!('status' in error) || error.status !== 400) return false;
+	const message = 'message' in error ? String(error.message) : '';
+	return (
+		message.includes('not found in schema') &&
+		optionalAttributes.some((attribute) => message.includes(attribute))
+	);
+}
+
 const dateTimeSchema = z.string().refine((value) => Number.isFinite(Date.parse(value)));
 
 const turbopufferResultRowSchema = z.object({
@@ -47,6 +65,8 @@ const turbopufferResultRowSchema = z.object({
 	image_alt: z.string().nullable().optional(),
 	image_width: z.number().int().positive().nullable().optional(),
 	image_height: z.number().int().positive().nullable().optional(),
+	video_url: z.url().nullable().optional(),
+	video_content_type: z.string().nullable().optional(),
 	source_title: z.string().nullable().optional()
 });
 
@@ -75,17 +95,19 @@ export function buildSearchFilters(input: ArchiveSearchInput): Filter | undefine
 	return filters.length ? ['And', filters] : undefined;
 }
 
-function sharedQuery(input: ArchiveSearchInput) {
+function sharedQuery(input: ArchiveSearchInput, optional: boolean) {
 	const filters = buildSearchFilters(input);
 	return {
-		include_attributes: presentationAttributes,
+		include_attributes: optional
+			? [...presentationAttributes, ...optionalAttributes]
+			: presentationAttributes,
 		limit: input.offset + input.limit + 1,
 		...(filters ? { filters } : {})
 	};
 }
 
-function singleQuery(input: ArchiveSearchInput): NamespaceQueryParams {
-	const shared = sharedQuery(input);
+function singleQuery(input: ArchiveSearchInput, optional: boolean): NamespaceQueryParams {
+	const shared = sharedQuery(input, optional);
 	switch (input.mode) {
 		case 'browse':
 			return {
@@ -104,8 +126,8 @@ function singleQuery(input: ArchiveSearchInput): NamespaceQueryParams {
 	}
 }
 
-function hybridQuery(input: ArchiveSearchInput): NamespaceMultiQueryParams {
-	const shared = sharedQuery(input);
+function hybridQuery(input: ArchiveSearchInput, optional: boolean): NamespaceMultiQueryParams {
+	const shared = sharedQuery(input, optional);
 	return {
 		queries: [
 			{ ...shared, rank_by: ['search_text', 'BM25', input.query] },
@@ -131,6 +153,8 @@ function toSearchResult(row: Row): SearchResult {
 		imageAlt: parsed.data.image_alt ?? null,
 		imageWidth: parsed.data.image_width ?? null,
 		imageHeight: parsed.data.image_height ?? null,
+		videoUrl: parsed.data.video_url ?? null,
+		videoContentType: parsed.data.video_content_type ?? null,
 		sourceTitle: parsed.data.source_title ?? null
 	};
 }
@@ -149,6 +173,10 @@ function toTimings(
 	};
 }
 
+function asUnavailable(error: unknown): SearchUnavailableError {
+	return error instanceof SearchUnavailableError ? error : new SearchUnavailableError(error);
+}
+
 export class TurbopufferSearchRepository implements SearchRepository {
 	private readonly namespace;
 
@@ -161,31 +189,50 @@ export class TurbopufferSearchRepository implements SearchRepository {
 		this.namespace = client.namespace(config.namespace);
 	}
 
+	/** Cleared only by a restart; a sync that adds the attributes makes the next process ask again. */
+	private optionalAttributesMissing = false;
+
 	async search(input: ArchiveSearchInput): Promise<SearchResponse> {
 		const startedAt = performance.now();
 		try {
-			if (input.mode === 'hybrid') {
-				const response = await this.namespace.multiQuery(hybridQuery(input), {
-					timeout: QUERY_TIMEOUT_MS,
-					maxRetries: QUERY_MAX_RETRIES
-				});
-				return {
-					results: response.results.flatMap((result) => result.rows ?? []).map(toSearchResult),
-					timings: toTimings(startedAt, response.performance, true)
-				};
+			return await this.run(input, startedAt, !this.optionalAttributesMissing);
+		} catch (error) {
+			if (!this.optionalAttributesMissing && isUnknownAttributeError(error)) {
+				// Only the first request pays for finding this out.
+				this.optionalAttributesMissing = true;
+				try {
+					return await this.run(input, startedAt, false);
+				} catch (retryError) {
+					throw asUnavailable(retryError);
+				}
 			}
+			throw asUnavailable(error);
+		}
+	}
 
-			const response = await this.namespace.query(singleQuery(input), {
+	private async run(
+		input: ArchiveSearchInput,
+		startedAt: number,
+		optional: boolean
+	): Promise<SearchResponse> {
+		if (input.mode === 'hybrid') {
+			const response = await this.namespace.multiQuery(hybridQuery(input, optional), {
 				timeout: QUERY_TIMEOUT_MS,
 				maxRetries: QUERY_MAX_RETRIES
 			});
 			return {
-				results: (response.rows ?? []).map(toSearchResult),
-				timings: toTimings(startedAt, response.performance, false)
+				results: response.results.flatMap((result) => result.rows ?? []).map(toSearchResult),
+				timings: toTimings(startedAt, response.performance, true)
 			};
-		} catch (error) {
-			if (error instanceof SearchUnavailableError) throw error;
-			throw new SearchUnavailableError(error);
 		}
+
+		const response = await this.namespace.query(singleQuery(input, optional), {
+			timeout: QUERY_TIMEOUT_MS,
+			maxRetries: QUERY_MAX_RETRIES
+		});
+		return {
+			results: (response.rows ?? []).map(toSearchResult),
+			timings: toTimings(startedAt, response.performance, false)
+		};
 	}
 }
