@@ -112,6 +112,33 @@ describe('toSearchDocument — generated tags', () => {
 		expect(document.vision_tags).toEqual(['macos', 'ui']);
 	});
 
+	/**
+	 * The model hyphenates the same concept intermittently: 153 pairs across the archive differ only
+	 * by a hyphen. Leaving them split cost `semantic-material` nine rank positions — that block's
+	 * `design-engineer` occurs exactly once, while everything above it used the spacing the query did.
+	 */
+	it('collapses hyphens, so one concept is one tag', () => {
+		const document = toSearchDocument(block(), vision(['web-design', 'web design', 'dark-mode']));
+
+		expect(document.vision_tags).toEqual(['dark mode', 'web design']);
+	});
+
+	it('collapses a hyphen in the embedded text too, not just the attribute', () => {
+		expect(toSearchDocument(block(), vision(['design-engineer'])).search_text).toContain(
+			'design engineer'
+		);
+	});
+
+	it('handles a repeated or trailing hyphen without leaving ragged whitespace', () => {
+		const document = toSearchDocument(block(), vision(['reel--to--reel', 'ui-', '-ux']));
+
+		expect(document.vision_tags).toEqual(['reel to reel', 'ui', 'ux']);
+	});
+
+	it('drops a tag that was nothing but punctuation', () => {
+		expect(toSearchDocument(block(), vision(['-', '--', 'felt'])).vision_tags).toEqual(['felt']);
+	});
+
 	it('sorts them, so an unchanged block re-upserts identically', () => {
 		const first = toSearchDocument(block(), vision(['web design', 'a11y', 'typography']));
 		const second = toSearchDocument(block(), vision(['typography', 'a11y', 'web design']));

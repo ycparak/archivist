@@ -15,9 +15,10 @@ do · `[x]` finished.
 
 ### Generated tags in the index
 
-> **Shipped and measured.** All 15 evaluation cases pass, but the bar asked that no rank get
-> materially worse and one did: `semantic-material` fell from `@2 of 25` to `@11 of 25`.
-> Diagnosis and the proposed fix are in
+> **Waiting on:** one more `bun run sync`, then `bun run evaluate:search`.
+> Tags shipped and were measured: all 15 cases passed, but `semantic-material` fell from `@2 of 25`
+> to `@11 of 25`, which failed the bar. The cause was tag vocabulary split by hyphenation; the fix
+> is in and needs a re-upsert to take effect. Full diagnosis in
 > [`worksheet-vision-eval-baseline.md`](./history/worksheets/worksheet-vision-eval-baseline.md).
 
 Tags were generated and cached for every block from the start but reached neither Turbopuffer nor
@@ -34,12 +35,13 @@ filterable `[]string` attribute for a future tag facet, and the tail of `search_
 - [x] Synced and re-evaluated. The two cases predicted to be at risk — `exact-phrase-link` and
       `combined-filter`, Link blocks with real human descriptions — held their rank exactly. The
       regression landed somewhere the prediction did not look.
-- [ ] **Decide:** collapse hyphens in tag normalization and re-sync, or accept the ranking as it
-      stands. 153 tag pairs differ only by a hyphen across 3,587 instances, and all three of
-      `semantic-material`'s hyphenated tags are the rare spelling of a much commoner spaced form —
-      `design-engineer` occurs exactly once in the archive, on that block. The change is one line
-      and no model calls, but it needs another full re-upsert to take effect, and it would not help
-      `vision-widget-grid`, whose problem is `dark theme` against `dark mode`.
+- [x] Collapse hyphens in tag normalization, in the attribute as well as the embedded text, so a
+      facet cannot filter on a value the index never wrote. 153 distinct tags merge away; the
+      `semantic-material` target's three orphans join groups 10x, 12x and 16x larger.
+- [ ] **For the maintainer:** re-sync and re-evaluate. The bar is `semantic-material` recovering
+      materially from `@11 of 25`, and nothing else regressing. This does nothing for
+      `vision-widget-grid` (`dark theme` against `dark mode` is synonymy, not spelling), so `@16` is
+      expected to stay roughly where it is.
 
 **Why it is worth the re-embed.** Measured over a 596-block sample of the live index: 2,273 of
 4,298 tag instances (53%) use wording found nowhere else in that block's indexed text, and 99% of
@@ -56,8 +58,6 @@ _Nothing queued. Pick from the backlog below._
 ## Backlog
 
 ### Vision indexing — phase 2
-
-_Colour search moved to V3 — see below._
 
 - **Batch/async backfill mode.** A `--vision-batch` path for large regenerations, if a prompt
   revision ever makes a full 2,585-block re-run routine.
