@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { clampOcr } from '$lib/domain/archive';
 import { visionResultSchema, type VisionResult } from './cache';
 import {
 	buildContextText,
@@ -48,6 +49,18 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 240_000;
  */
 const DEFAULT_MAX_TIMEOUT_ATTEMPTS = 2;
 
+/**
+ * A hard ceiling on generation, which is the only thing that reliably stops a runaway decode. Two
+ * blocks in the archive make this model loop forever on the OCR field — a dense magazine spread of
+ * French body copy, and a poster that repeats the word "round" dozens of times in a spiral — and
+ * without a cap the request simply never returns, on any provider. Sized against the real
+ * distribution: the 99th-percentile response is 973 tokens, so this is over twice the largest
+ * legitimate output and clips nothing that works today. When it bites, the reply comes back
+ * truncated with `finish_reason: length`, which fails in seconds and says why, instead of holding a
+ * worker for the full timeout.
+ */
+const DEFAULT_MAX_TOKENS = 2_048;
+
 function isRetryable(status: number): boolean {
 	return status === 408 || status === 429 || status >= 500;
 }
@@ -93,6 +106,8 @@ export interface VisionClientOptions {
 	requestTimeoutMs?: number;
 	/** Total attempts spent on timeouts, budgeted separately from `maxRetries`. */
 	maxTimeoutAttempts?: number;
+	/** Ceiling on generated tokens; the only reliable stop for a runaway decode. */
+	maxTokens?: number;
 	/** Injectable so tests exercise the retry path without waiting on it. */
 	sleepFn?: (ms: number) => Promise<void>;
 }
@@ -188,7 +203,11 @@ function parseResult(
 		throw new VisionResponseError(`model output failed validation: ${parsed.error.message}`);
 	}
 
-	const result = { ...parsed.data, description: clampDescription(parsed.data.description) };
+	const result = {
+		...parsed.data,
+		description: clampDescription(parsed.data.description),
+		ocr: clampOcr(parsed.data.ocr)
+	};
 	const supplied = block.title?.replace(/\s+/g, ' ').trim().toLowerCase();
 	if (supplied && result.title.toLowerCase() === supplied) {
 		throw new VisionResponseError('model echoed the supplied title instead of writing one');
@@ -213,6 +232,7 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 		maxRetries = DEFAULT_MAX_RETRIES,
 		requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 		maxTimeoutAttempts = DEFAULT_MAX_TIMEOUT_ATTEMPTS,
+		maxTokens = DEFAULT_MAX_TOKENS,
 		sleepFn = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 	} = options;
 
@@ -244,6 +264,7 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 				model,
 				provider: { require_parameters: true, order: [...providerOrder] },
 				reasoning: { enabled: false },
+				max_tokens: maxTokens,
 				response_format: { type: 'json_schema', json_schema: VISION_JSON_SCHEMA },
 				messages: [
 					{ role: 'system', content: SYSTEM_PROMPT },
