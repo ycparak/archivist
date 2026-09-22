@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { MAX_OCR_CHARS } from '$lib/domain/archive';
 import {
 	createVisionClient,
 	DEFAULT_MODEL,
@@ -67,7 +68,10 @@ describe('createVisionClient', () => {
 describe('describe — request shape', () => {
 	it('pins provider routing so a provider without structured outputs is never used', async () => {
 		const fetchFn = respond(completion(RESULT));
-		await client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block });
+		await client(fetchFn as unknown as typeof fetch).describe({
+			media: { kind: 'image', url: ARENA_URL },
+			block
+		});
 
 		const body = sentBody(fetchFn);
 		expect(body.provider).toEqual({
@@ -78,7 +82,10 @@ describe('describe — request shape', () => {
 
 	it('disables reasoning, which would bill as completion tokens for a perception task', async () => {
 		const fetchFn = respond(completion(RESULT));
-		await client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block });
+		await client(fetchFn as unknown as typeof fetch).describe({
+			media: { kind: 'image', url: ARENA_URL },
+			block
+		});
 
 		const body = sentBody(fetchFn);
 		expect(body.reasoning).toEqual({ enabled: false });
@@ -87,7 +94,10 @@ describe('describe — request shape', () => {
 
 	it('sends the resized rendition, not the original', async () => {
 		const fetchFn = respond(completion(RESULT));
-		await client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block });
+		await client(fetchFn as unknown as typeof fetch).describe({
+			media: { kind: 'image', url: ARENA_URL },
+			block
+		});
 
 		const body = sentBody(fetchFn);
 		const sent = body.messages[1].content[0].image_url.url;
@@ -99,7 +109,7 @@ describe('describe — request shape', () => {
 	it('fences the block context and tells the model not to follow it', async () => {
 		const fetchFn = respond(completion(RESULT));
 		await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: ARENA_URL,
+			media: { kind: 'image', url: ARENA_URL },
 			block: { type: 'Link', title: 'Seth Thompson on X', description: 'Live search…' }
 		});
 
@@ -112,7 +122,10 @@ describe('describe — request shape', () => {
 
 	it('never puts the API key anywhere but the Authorization header', async () => {
 		const fetchFn = respond(completion(RESULT));
-		await client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block });
+		await client(fetchFn as unknown as typeof fetch).describe({
+			media: { kind: 'image', url: ARENA_URL },
+			block
+		});
 
 		const [url, init] = fetchFn.mock.calls[0];
 		expect(String(url)).not.toContain('test-key');
@@ -125,8 +138,7 @@ describe('describe — size guard', () => {
 	it('skips an oversized image that cannot be resized, without calling the model', async () => {
 		const fetchFn = respond(completion(RESULT));
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: CLOUDFRONT_GIF,
-			imageBytes: 24 * 1024 * 1024,
+			media: { kind: 'image', url: CLOUDFRONT_GIF, bytes: 24 * 1024 * 1024 },
 			block
 		});
 
@@ -140,8 +152,7 @@ describe('describe — size guard', () => {
 	it('sends an oversized image that can be resized, since the rendition shrinks it', async () => {
 		const fetchFn = respond(completion(RESULT));
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: ARENA_URL,
-			imageBytes: 20 * 1024 * 1024,
+			media: { kind: 'image', url: ARENA_URL, bytes: 20 * 1024 * 1024 },
 			block
 		});
 
@@ -152,8 +163,7 @@ describe('describe — size guard', () => {
 	it('sends a small non-resizable image', async () => {
 		const fetchFn = respond(completion(RESULT));
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: CLOUDFRONT_GIF,
-			imageBytes: MAX_IMAGE_BYTES - 1,
+			media: { kind: 'image', url: CLOUDFRONT_GIF, bytes: MAX_IMAGE_BYTES - 1 },
 			block
 		});
 
@@ -163,8 +173,7 @@ describe('describe — size guard', () => {
 	it('sends when the size is unknown rather than skipping on a missing field', async () => {
 		const fetchFn = respond(completion(RESULT));
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: CLOUDFRONT_GIF,
-			imageBytes: null,
+			media: { kind: 'image', url: CLOUDFRONT_GIF, bytes: null },
 			block
 		});
 
@@ -176,7 +185,7 @@ describe('describe — response handling', () => {
 	it('returns the validated result and the provider that served it', async () => {
 		const fetchFn = respond(completion(RESULT, 'venice'));
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: ARENA_URL,
+			media: { kind: 'image', url: ARENA_URL },
 			block
 		});
 
@@ -186,7 +195,7 @@ describe('describe — response handling', () => {
 	it('raises with the status once retries are exhausted', async () => {
 		const fetchFn = respond({ error: 'nope' }, { status: 429 });
 		const failure = client(fetchFn as unknown as typeof fetch, { maxRetries: 1 }).describe({
-			imageUrl: ARENA_URL,
+			media: { kind: 'image', url: ARENA_URL },
 			block
 		});
 
@@ -197,14 +206,20 @@ describe('describe — response handling', () => {
 	it('rejects prose from a provider that ignored the schema', async () => {
 		const fetchFn = respond({ choices: [{ message: { content: 'Here is a nice image!' } }] });
 		await expect(
-			client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block })
+			client(fetchFn as unknown as typeof fetch).describe({
+				media: { kind: 'image', url: ARENA_URL },
+				block
+			})
 		).rejects.toBeInstanceOf(VisionResponseError);
 	});
 
 	it('rejects an unknown medium instead of caching it', async () => {
 		const fetchFn = respond(completion({ ...RESULT, medium: 'sculpture' }));
 		await expect(
-			client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block })
+			client(fetchFn as unknown as typeof fetch).describe({
+				media: { kind: 'image', url: ARENA_URL },
+				block
+			})
 		).rejects.toThrow(/failed validation/);
 	});
 
@@ -212,7 +227,7 @@ describe('describe — response handling', () => {
 		const fetchFn = respond(completion({ ...RESULT, title: 'CleanShot-2025.PNG' }));
 		await expect(
 			client(fetchFn as unknown as typeof fetch).describe({
-				imageUrl: ARENA_URL,
+				media: { kind: 'image', url: ARENA_URL },
 				block: { type: 'Image', title: 'cleanshot-2025.png' }
 			})
 		).rejects.toThrow(/echoed the supplied title/);
@@ -221,7 +236,10 @@ describe('describe — response handling', () => {
 	it('rejects a runaway title', async () => {
 		const fetchFn = respond(completion({ ...RESULT, title: 'x'.repeat(180) }));
 		await expect(
-			client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block })
+			client(fetchFn as unknown as typeof fetch).describe({
+				media: { kind: 'image', url: ARENA_URL },
+				block
+			})
 		).rejects.toThrow(/far over the 70/);
 	});
 
@@ -229,7 +247,7 @@ describe('describe — response handling', () => {
 		const long = `${'A grid of widget tiles on black. '.repeat(30)}Trailing clause`;
 		const fetchFn = respond(completion({ ...RESULT, description: long }));
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: ARENA_URL,
+			media: { kind: 'image', url: ARENA_URL },
 			block
 		});
 
@@ -243,7 +261,7 @@ describe('describe — response handling', () => {
 	it('leaves a description inside the cap untouched', async () => {
 		const fetchFn = respond(completion(RESULT));
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: ARENA_URL,
+			media: { kind: 'image', url: ARENA_URL },
 			block
 		});
 
@@ -259,21 +277,30 @@ describe('describe — response handling', () => {
 		);
 
 		await expect(
-			client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block })
+			client(fetchFn as unknown as typeof fetch).describe({
+				media: { kind: 'image', url: ARENA_URL },
+				block
+			})
 		).rejects.toThrow(/404 status code when fetching image/);
 	});
 
 	it('rejects an empty completion', async () => {
 		const fetchFn = respond({ choices: [{ message: { content: '  ' } }] });
 		await expect(
-			client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block })
+			client(fetchFn as unknown as typeof fetch).describe({
+				media: { kind: 'image', url: ARENA_URL },
+				block
+			})
 		).rejects.toThrow(/empty completion/);
 	});
 
 	it('surfaces an unexpected envelope rather than guessing at it', async () => {
 		const fetchFn = respond({ unexpected: true });
 		await expect(
-			client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block })
+			client(fetchFn as unknown as typeof fetch).describe({
+				media: { kind: 'image', url: ARENA_URL },
+				block
+			})
 		).rejects.toThrow(/did not match the expected shape/);
 	});
 });
@@ -291,7 +318,7 @@ describe('describe — retries', () => {
 	it.each([429, 500, 503, 408])('retries a %i and succeeds', async (status) => {
 		const fetchFn = failThenSucceed(status, 2);
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: ARENA_URL,
+			media: { kind: 'image', url: ARENA_URL },
 			block
 		});
 
@@ -302,7 +329,10 @@ describe('describe — retries', () => {
 	it('does not retry a request that will never succeed', async () => {
 		const fetchFn = respond({ error: 'bad model' }, { status: 400 });
 		await expect(
-			client(fetchFn as unknown as typeof fetch).describe({ imageUrl: ARENA_URL, block })
+			client(fetchFn as unknown as typeof fetch).describe({
+				media: { kind: 'image', url: ARENA_URL },
+				block
+			})
 		).rejects.toMatchObject({ status: 400 });
 		expect(fetchFn).toHaveBeenCalledOnce();
 	});
@@ -311,7 +341,7 @@ describe('describe — retries', () => {
 		const fetchFn = respond({ error: 'nope' }, { status: 503 });
 		await expect(
 			client(fetchFn as unknown as typeof fetch, { maxRetries: 2 }).describe({
-				imageUrl: ARENA_URL,
+				media: { kind: 'image', url: ARENA_URL },
 				block
 			})
 		).rejects.toBeInstanceOf(VisionRequestError);
@@ -335,7 +365,7 @@ describe('describe — retries', () => {
 			sleepFn: async (ms) => {
 				slept.push(ms);
 			}
-		}).describe({ imageUrl: ARENA_URL, block });
+		}).describe({ media: { kind: 'image', url: ARENA_URL }, block });
 
 		expect(slept).toEqual([7000]);
 	});
@@ -352,10 +382,81 @@ describe('describe — retries', () => {
 				sleepFn: async (ms) => {
 					slept.push(ms);
 				}
-			}).describe({ imageUrl: ARENA_URL, block })
+			}).describe({ media: { kind: 'image', url: ARENA_URL }, block })
 		).rejects.toBeInstanceOf(VisionRequestError);
 
 		expect(slept).toEqual([1000, 2000, 4000]);
+	});
+});
+
+describe('describe — bounding a runaway decode', () => {
+	/**
+	 * Two blocks make this model loop forever on the OCR field, on every provider. A token ceiling
+	 * is the only thing that reliably stops it; without one the request simply never returns.
+	 */
+	it('sends a token ceiling with every request', async () => {
+		const fetchFn = vi.fn<typeof fetch>(async () => Response.json(completion(RESULT)));
+		await client(fetchFn as unknown as typeof fetch).describe({
+			media: { kind: 'image', url: ARENA_URL },
+			block
+		});
+
+		const [, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+		expect(JSON.parse(init.body as string).max_tokens).toBeGreaterThan(0);
+	});
+
+	it('drops OCR that came back as repetition rather than text', async () => {
+		const fetchFn = vi.fn<typeof fetch>(async () =>
+			Response.json(completion({ ...RESULT, ocr: 'and critical practice that '.repeat(400) }))
+		);
+
+		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
+			media: { kind: 'image', url: ARENA_URL },
+			block
+		});
+
+		expect(outcome.kind).toBe('described');
+		if (outcome.kind !== 'described') return;
+		expect(outcome.result.ocr).toBe('');
+		// The rest of the response is untouched: the block still gets described.
+		expect(outcome.result.description).toBe(RESULT.description);
+	});
+
+	it('bounds OCR that is merely long', async () => {
+		const dense = Array.from({ length: 3000 }, (_, index) => `term${index}`).join(' ');
+		const fetchFn = vi.fn<typeof fetch>(async () =>
+			Response.json(completion({ ...RESULT, ocr: dense }))
+		);
+
+		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
+			media: { kind: 'image', url: ARENA_URL },
+			block
+		});
+
+		if (outcome.kind !== 'described') throw new Error('expected a description');
+		expect(outcome.result.ocr.length).toBeLessThanOrEqual(MAX_OCR_CHARS);
+		expect(outcome.result.ocr.startsWith('term0 term1')).toBe(true);
+	});
+
+	/** With a ceiling in place this is what a runaway now looks like: fast, and legible. */
+	it('says the reply was truncated rather than reporting bare invalid JSON', async () => {
+		const fetchFn = vi.fn<typeof fetch>(async () =>
+			Response.json({
+				choices: [
+					{
+						message: { content: '{"title":"A poster","ocr":"round round' },
+						finish_reason: 'length'
+					}
+				]
+			})
+		);
+
+		await expect(
+			client(fetchFn as unknown as typeof fetch, { maxRetries: 0 }).describe({
+				media: { kind: 'image', url: ARENA_URL },
+				block
+			})
+		).rejects.toThrow(/finish_reason=length/);
 	});
 });
 
@@ -380,7 +481,7 @@ describe('describe — request timeout', () => {
 			fetchFn: fetchFn as unknown as typeof fetch,
 			requestTimeoutMs: 20,
 			sleepFn: async () => {}
-		}).describe({ imageUrl: ARENA_URL, block });
+		}).describe({ media: { kind: 'image', url: ARENA_URL }, block });
 
 		expect(outcome.kind).toBe('described');
 		expect(fetchFn).toHaveBeenCalledTimes(2);
@@ -393,10 +494,47 @@ describe('describe — request timeout', () => {
 				apiKey: 'k',
 				fetchFn: fetchFn as unknown as typeof fetch,
 				requestTimeoutMs: 20,
-				maxRetries: 2,
 				sleepFn: async () => {}
-			}).describe({ imageUrl: ARENA_URL, block })
-		).rejects.toThrow(/timed out after 20ms, 3 attempt\(s\)/);
+			}).describe({ media: { kind: 'image', url: ARENA_URL }, block })
+		).rejects.toThrow(/timed out after 20ms, 2 attempt\(s\)/);
+	});
+
+	/**
+	 * A stall is not a transient blip: the three blocks that failed the reference backfill timed out
+	 * on every attempt they were given. The full retry budget would spend twenty minutes proving it.
+	 */
+	it('spends only the timeout budget, not the full retry budget', async () => {
+		const fetchFn = stalls(Number.POSITIVE_INFINITY);
+		await expect(
+			createVisionClient({
+				apiKey: 'k',
+				fetchFn: fetchFn as unknown as typeof fetch,
+				requestTimeoutMs: 20,
+				maxRetries: 8,
+				sleepFn: async () => {}
+			}).describe({ media: { kind: 'image', url: ARENA_URL }, block })
+		).rejects.toThrow(/timed out/);
+
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+	});
+
+	it('leaves the retry budget for failures that are worth retrying', async () => {
+		// Five 503s exhaust a budget a two-attempt timeout cap would have cut short.
+		let calls = 0;
+		const fetchFn = vi.fn<typeof fetch>(async () => {
+			calls += 1;
+			return calls <= 3 ? new Response('busy', { status: 503 }) : Response.json(completion(RESULT));
+		});
+
+		const outcome = await createVisionClient({
+			apiKey: 'k',
+			fetchFn: fetchFn as unknown as typeof fetch,
+			requestTimeoutMs: 20,
+			sleepFn: async () => {}
+		}).describe({ media: { kind: 'image', url: ARENA_URL }, block });
+
+		expect(outcome.kind).toBe('described');
+		expect(fetchFn).toHaveBeenCalledTimes(4);
 	});
 
 	it('does not retry when the caller aborts the run', async () => {
@@ -407,7 +545,7 @@ describe('describe — request timeout', () => {
 			fetchFn: fetchFn as unknown as typeof fetch,
 			requestTimeoutMs: 10_000,
 			sleepFn: async () => {}
-		}).describe({ imageUrl: ARENA_URL, block, signal: controller.signal });
+		}).describe({ media: { kind: 'image', url: ARENA_URL }, block, signal: controller.signal });
 
 		controller.abort(new Error('shutting down'));
 		await expect(pending).rejects.toThrow(/shutting down/);
@@ -429,7 +567,7 @@ describe('describe — malformed output', () => {
 			choices: [{ message: { content: 'sorry, here is a picture' } }]
 		});
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: ARENA_URL,
+			media: { kind: 'image', url: ARENA_URL },
 			block
 		});
 
@@ -440,7 +578,7 @@ describe('describe — malformed output', () => {
 	it('retries output that parses but fails the schema', async () => {
 		const fetchFn = badThenGood(completion({ ...RESULT, medium: 'sculpture' }));
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: ARENA_URL,
+			media: { kind: 'image', url: ARENA_URL },
 			block
 		});
 
@@ -451,7 +589,7 @@ describe('describe — malformed output', () => {
 		const fenced = '```json\n' + JSON.stringify(RESULT) + '\n```';
 		const fetchFn = respond({ choices: [{ message: { content: fenced } }] });
 		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
-			imageUrl: ARENA_URL,
+			media: { kind: 'image', url: ARENA_URL },
 			block
 		});
 
@@ -466,7 +604,7 @@ describe('describe — malformed output', () => {
 
 		await expect(
 			client(fetchFn as unknown as typeof fetch, { maxRetries: 1 }).describe({
-				imageUrl: ARENA_URL,
+				media: { kind: 'image', url: ARENA_URL },
 				block
 			})
 		).rejects.toThrow(/truncated: finish_reason=length.*20 chars starting "\{\\"title/);
@@ -498,7 +636,7 @@ describe('describe — stalled response body', () => {
 			fetchFn: fetchFn as unknown as typeof fetch,
 			requestTimeoutMs: 20,
 			sleepFn: async () => {}
-		}).describe({ imageUrl: ARENA_URL, block });
+		}).describe({ media: { kind: 'image', url: ARENA_URL }, block });
 
 		expect(outcome.kind).toBe('described');
 		expect(fetchFn).toHaveBeenCalledTimes(2);
@@ -513,7 +651,7 @@ describe('describe — stalled response body', () => {
 				requestTimeoutMs: 20,
 				maxRetries: 1,
 				sleepFn: async () => {}
-			}).describe({ imageUrl: ARENA_URL, block })
+			}).describe({ media: { kind: 'image', url: ARENA_URL }, block })
 		).rejects.toThrow(/OpenRouter request timed out after 20ms, 2 attempt\(s\)/);
 	});
 });

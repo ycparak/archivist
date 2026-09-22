@@ -13,6 +13,7 @@ import {
 	type TurbopufferConfig
 } from '$lib/server/search/turbopuffer-client';
 import { EMPTY_CHANNEL_FILTER, exclusionReason, type ChannelFilter } from './channel-filter';
+import type { SyncEventSink } from './progress/events';
 import type { ChannelManifestEntry } from './channel-manifest';
 import { toArchiveBlock } from './normalize';
 import { describeBlocks, planVisionWork, type VisionStageSummary } from './vision';
@@ -32,6 +33,8 @@ export interface SyncOptions {
 	fetchFn?: typeof fetch;
 	signal?: AbortSignal;
 	log?: (message: string) => void;
+	/** Structured progress for a status display, independent of the human-readable log. */
+	onEvent?: SyncEventSink;
 	channelDelayMs?: number;
 	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
 	maxLeadingChannelFailures?: number;
@@ -64,6 +67,8 @@ export interface VisionSyncOptions {
 	limit?: number;
 	revise?: boolean | ReadonlySet<string>;
 	concurrency?: number;
+	/** Read animated blocks as motion by transcoding them locally first. Needs ffmpeg on PATH. */
+	video?: boolean;
 	/** Report what would be generated and what it would cost, then write nothing. */
 	dryRun?: boolean;
 	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
@@ -151,6 +156,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		fetchFn,
 		signal,
 		log = noop,
+		onEvent = noop,
 		channelDelayMs = DEFAULT_CHANNEL_DELAY_MS,
 		delayFn = delay,
 		maxLeadingChannelFailures = DEFAULT_MAX_LEADING_CHANNEL_FAILURES,
@@ -184,6 +190,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	const me = await client.me();
 	log(`Resolved account: ${me.slug}`);
 
+	onEvent({ kind: 'phase', phase: 'discovering' });
 	const channels: ChannelManifestEntry[] = [];
 	for await (const page of paginateOwnedChannels(client, me.id, { signal })) {
 		for (const channel of page.data) {
@@ -198,6 +205,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		`Discovered ${summary.channelsDiscovered} owned channel(s); syncing ${channels.length} (${summary.channelsIgnored} ignored, ${summary.channelsPrivateSkipped} private skipped)`
 	);
 
+	onEvent({ kind: 'phase', phase: 'fetching' });
 	const blocksById = new Map<string, ArchiveBlock>();
 	let leadingFailureCount = 0;
 
@@ -240,6 +248,13 @@ export async function syncArchive(options: SyncOptions): Promise<{
 			}
 		}
 
+		onEvent({
+			kind: 'position',
+			done: index + 1,
+			total: channels.length,
+			label: channel.slug
+		});
+
 		const isLastChannel = index === channels.length - 1;
 		if (signal?.aborted) break;
 		if (!isLastChannel) await delayFn(channelDelayMs, signal);
@@ -259,7 +274,9 @@ export async function syncArchive(options: SyncOptions): Promise<{
 				blocksWithImage: plan.withImage.length,
 				cacheHits: plan.cached,
 				generated: 0,
+				generatedFromVideo: 0,
 				skippedTooLarge: 0,
+				skippedUnsupported: 0,
 				skippedOverLimit: plan.overLimit,
 				failed: []
 			};
@@ -267,10 +284,12 @@ export async function syncArchive(options: SyncOptions): Promise<{
 				`Vision (dry run): ${plan.withImage.length} block(s) with an image, ${plan.cached} cached, ${plan.pending.length} would be described`
 			);
 		} else {
+			onEvent({ kind: 'phase', phase: 'describing' });
 			const { entries, summary: visionSummary } = await describeBlocks(blocks, {
 				...vision,
 				cache: existingVisionCache,
 				log,
+				onEvent,
 				signal
 			});
 			summary.vision = visionSummary;
@@ -285,6 +304,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 
 	// Before indexing, because a failure here should not cost the upsert.
 	if (pushArena) {
+		onEvent({ kind: 'phase', phase: 'writing-back' });
 		const { plans, skipped } = planWriteBack(blocks, visionText, { ownerId: me.id });
 		const selected = pushArena.limit === undefined ? plans : plans.slice(0, pushArena.limit);
 
@@ -305,12 +325,17 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		}
 	}
 
+	onEvent({ kind: 'phase', phase: 'upserting' });
 	const documents = blocks.map((block) => toSearchDocument(block, visionText.get(block.id)));
-	const { batches, rowsUpserted } = await upsertSearchDocuments(documents, turbopuffer, { log });
+	const { batches, rowsUpserted } = await upsertSearchDocuments(documents, turbopuffer, {
+		log,
+		onProgress: (done, total) => onEvent({ kind: 'position', done, total })
+	});
 	summary.documentsUpserted = rowsUpserted;
 	summary.upsertBatches = batches;
 	log(`Upserted ${rowsUpserted} document(s) into Turbopuffer across ${batches} batch(es) total`);
 
+	onEvent({ kind: 'phase', phase: 'pruning' });
 	const pruneBlocker = pruneBlockReason(summary, documents.length, signal);
 	if (pruneBlocker) {
 		summary.pruneSkipped = pruneBlocker;
@@ -324,12 +349,16 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		} else if (!allowLargePrune && stale.length > existingCount * maxPruneFraction) {
 			summary.pruneSkipped = `would delete ${stale.length} of ${existingCount} document(s), over the ${maxPruneFraction * 100}% safety limit`;
 		} else {
-			const { rowsDeleted } = await deleteSearchDocuments(stale, turbopuffer, { log });
+			const { rowsDeleted } = await deleteSearchDocuments(stale, turbopuffer, {
+				log,
+				onProgress: (done, total) => onEvent({ kind: 'position', done, total })
+			});
 			summary.documentsDeleted = rowsDeleted;
 			log(`Pruned ${rowsDeleted} stale document(s) from Turbopuffer`);
 		}
 	}
 	if (summary.pruneSkipped) log(`Skipped pruning: ${summary.pruneSkipped}`);
 
+	onEvent({ kind: 'phase', phase: 'done' });
 	return { blocks, channels, visionCache, summary };
 }

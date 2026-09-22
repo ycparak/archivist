@@ -83,10 +83,15 @@ mean decoding and re-encoding locally, which means a native image dependency —
 [`AGENTS.md`](../../AGENTS.md) asks that a dependency remove meaningful production code, and this
 one would add it for 43 blocks.
 
-So phase 1 **skips** any non-resizable image over `MAX_IMAGE_BYTES` (5 MB, the common provider
-ceiling) and reports it, leaving 2,542 of 2,585 blocks processed. The right fix is phase 2's video
-input: these are animated GIFs, and sending them as video is both more accurate and the path that
-already has a task.
+So phase 1 **skipped** any non-resizable image over `MAX_IMAGE_BYTES` (5 MB) and reported it.
+
+**Superseded in phase 2.** Animated blocks are now transcoded locally with ffmpeg and sent as a
+`video_url` part — see [`video.ts`](../../src/lib/server/indexing/vision/video.ts). Transcoding at
+512px/6fps/CRF 32 turns a 24.2 MB GIF into 145 KB in about half a second, so the size ceiling stops
+binding, and the model reads motion rather than one frame. The transcoded clip is inlined as a
+`data:` URL because the provider cannot fetch a file that only exists on the sync machine.
+`input_mode` (`image` | `video`) joins the cache entry and the skip key so a change of reading
+regenerates only the affected blocks.
 
 The guard needs no network round-trip — `image.file_size` comes back on the block payload, and is
 now carried through `ArchiveBlock.imageBytes`.
@@ -192,21 +197,31 @@ is replaced, or `--revision` is passed.
 Four additive attributes in
 [`turbopuffer-schema.ts`](../../src/lib/server/search/turbopuffer-schema.ts):
 
-| Attribute            | Type / index       | Purpose                               |
-| -------------------- | ------------------ | ------------------------------------- |
-| `vision_description` | string, unindexed  | generated visual description          |
-| `vision_ocr`         | string, unindexed  | text read out of the image            |
-| `vision_title`       | string, unindexed  | generated title (card copy fallback)  |
-| `vision_medium`      | string, filterable | future facet (photo / screenshot / …) |
+| Attribute            | Type / index         | Purpose                               |
+| -------------------- | -------------------- | ------------------------------------- |
+| `vision_description` | string, unindexed    | generated visual description          |
+| `vision_ocr`         | string, unindexed    | text read out of the image            |
+| `vision_title`       | string, unindexed    | generated title (card copy fallback)  |
+| `vision_medium`      | string, filterable   | future facet (photo / screenshot / …) |
+| `vision_tags`        | []string, filterable | future tag facet (added in phase 2)   |
 
 Adding attributes does not change an existing attribute's type, so **no namespace version bump**.
+Note the limit found later: an attribute is only additive while nothing _reads_ it. Turbopuffer
+fails the whole query with a 400 when `include_attributes` names an attribute the namespace has
+never been written, so a new attribute must not be read back until a sync has created it.
 
-`search_text` becomes the existing five sources plus `vision_description` and `vision_ocr`, same
-whitespace normalization, same deterministic order. Every document therefore re-embeds on the next
+`search_text` becomes the existing five sources plus `vision_description`, `vision_ocr` and
+`vision_tags`, same whitespace normalization, same deterministic order. Every document therefore re-embeds on the next
 upsert — sync already upserts all rows each run.
 
 `vision_title` is indexed for display fallback only; it is not added to `search_text` separately
 because the description already contains its content.
+
+`vision_tags` was generated from the start but left out of both the attribute list and
+`search_text` in phase 1 — an oversight rather than a decision, corrected in phase 2. Measured over
+a 596-block sample before the change: 53% of tag instances used wording found nowhere else in that
+block's indexed text, for 10% more text. Tags are lowercased, deduplicated and sorted so a facet
+treats `UI` and `ui` as one value and an unchanged block re-upserts identically.
 
 ### Are.na write-back
 

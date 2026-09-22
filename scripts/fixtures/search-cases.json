@@ -67,35 +67,30 @@
 		"id": "vision-widget-grid",
 		"mode": "hybrid",
 		"q": "dark mode widget grid of small bar charts and complications",
-		"expectedBlockIds": ["block:17698965"],
-		"pending": "indexed text is the upload filename; needs the generated visual description"
+		"expectedBlockIds": ["block:17698965"]
 	},
 	{
 		"id": "vision-ocr-refugee-document",
 		"mode": "hybrid",
 		"q": "refugee travel documents contracting states convention",
-		"expectedBlockIds": ["block:13214360"],
-		"pending": "the words are set in the image itself; needs OCR"
+		"expectedBlockIds": ["block:13214360"]
 	},
 	{
 		"id": "vision-poster-sans-theme",
 		"mode": "hybrid",
 		"q": "Sans Theme fashion exhibition poster Philadelphia",
-		"expectedBlockIds": ["block:21165584"],
-		"pending": "poster copy is only in the image; needs OCR"
+		"expectedBlockIds": ["block:21165584"]
 	},
 	{
 		"id": "vision-planner-ui",
 		"mode": "hybrid",
 		"q": "task planner app day columns over orange gradient wallpaper",
-		"expectedBlockIds": ["block:23363409"],
-		"pending": "indexed text is \"image.png\" plus channel titles; needs the generated visual description"
+		"expectedBlockIds": ["block:23363409"]
 	},
 	{
 		"id": "vision-time-machine",
 		"mode": "hybrid",
 		"q": "macOS Time Machine restore receding stack of Finder windows",
-		"expectedBlockIds": ["block:32633860"],
-		"pending": "indexed text is the upload filename; needs the generated visual description"
+		"expectedBlockIds": ["block:32633860"]
 	}
 ]

@@ -18,6 +18,8 @@ function result(overrides: Partial<SearchResult> = {}): SearchResult {
 		imageAlt: null,
 		imageWidth: null,
 		imageHeight: null,
+		videoUrl: null,
+		videoContentType: null,
 		sourceTitle: null,
 		...overrides
 	};

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { clampOcr } from '$lib/domain/archive';
 import { visionResultSchema, type VisionResult } from './cache';
 import {
 	buildContextText,
@@ -38,6 +39,27 @@ const RETRY_BASE_MS = 1_000;
  * multi-hour backfill forever, with nothing in the log to say so.
  */
 const DEFAULT_REQUEST_TIMEOUT_MS = 240_000;
+
+/**
+ * Timeouts get their own, much smaller budget. A request that stalls tends to stall every time —
+ * the three blocks that failed the reference backfill did so on five attempts out of five — so
+ * spending the full retry budget buys nothing and costs twenty minutes of a worker at the tail of
+ * a run, where every other block has finished and the whole thing looks hung. Two attempts is the
+ * cheapest way to tell a one-off stall apart from a block that will not complete at all.
+ */
+const DEFAULT_MAX_TIMEOUT_ATTEMPTS = 2;
+
+/**
+ * A hard ceiling on generation, which is the only thing that reliably stops a runaway decode. Two
+ * blocks in the archive make this model loop forever on the OCR field — a dense magazine spread of
+ * French body copy, and a poster that repeats the word "round" dozens of times in a spiral — and
+ * without a cap the request simply never returns, on any provider. Sized against the real
+ * distribution: the 99th-percentile response is 973 tokens, so this is over twice the largest
+ * legitimate output and clips nothing that works today. When it bites, the reply comes back
+ * truncated with `finish_reason: length`, which fails in seconds and says why, instead of holding a
+ * worker for the full timeout.
+ */
+const DEFAULT_MAX_TOKENS = 2_048;
 
 function isRetryable(status: number): boolean {
 	return status === 408 || status === 429 || status >= 500;
@@ -82,13 +104,20 @@ export interface VisionClientOptions {
 	maxImageBytes?: number;
 	maxRetries?: number;
 	requestTimeoutMs?: number;
+	/** Total attempts spent on timeouts, budgeted separately from `maxRetries`. */
+	maxTimeoutAttempts?: number;
+	/** Ceiling on generated tokens; the only reliable stop for a runaway decode. */
+	maxTokens?: number;
 	/** Injectable so tests exercise the retry path without waiting on it. */
 	sleepFn?: (ms: number) => Promise<void>;
 }
 
+/** A still is handed over as a URL the provider fetches; a transcoded animation rides along inline. */
+export type VisionMedia =
+	{ kind: 'image'; url: string; bytes?: number | null } | { kind: 'video'; dataUrl: string };
+
 export interface DescribeInput {
-	imageUrl: string;
-	imageBytes?: number | null;
+	media: VisionMedia;
 	block: BlockContext;
 	signal?: AbortSignal;
 }
@@ -174,7 +203,11 @@ function parseResult(
 		throw new VisionResponseError(`model output failed validation: ${parsed.error.message}`);
 	}
 
-	const result = { ...parsed.data, description: clampDescription(parsed.data.description) };
+	const result = {
+		...parsed.data,
+		description: clampDescription(parsed.data.description),
+		ocr: clampOcr(parsed.data.ocr)
+	};
 	const supplied = block.title?.replace(/\s+/g, ' ').trim().toLowerCase();
 	if (supplied && result.title.toLowerCase() === supplied) {
 		throw new VisionResponseError('model echoed the supplied title instead of writing one');
@@ -198,6 +231,8 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 		maxImageBytes = MAX_IMAGE_BYTES,
 		maxRetries = DEFAULT_MAX_RETRIES,
 		requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+		maxTimeoutAttempts = DEFAULT_MAX_TIMEOUT_ATTEMPTS,
+		maxTokens = DEFAULT_MAX_TOKENS,
 		sleepFn = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 	} = options;
 
@@ -207,33 +242,40 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 		model,
 		promptVersion: PROMPT_VERSION,
 
-		async describe({ imageUrl, imageBytes, block, signal }): Promise<DescribeOutcome> {
-			const url = renditionUrl(imageUrl, renditionWidth);
+		async describe({ media, block, signal }): Promise<DescribeOutcome> {
+			let mediaPart: Record<string, unknown>;
 
-			// Only meaningful when the rendition is the original: a resized URL is always small.
-			if (url === imageUrl && imageBytes != null && imageBytes > maxImageBytes) {
-				return {
-					kind: 'skipped',
-					reason: `image is ${(imageBytes / 1024 / 1024).toFixed(1)}MB and cannot be resized (limit ${(maxImageBytes / 1024 / 1024).toFixed(0)}MB)`
-				};
+			if (media.kind === 'video') {
+				mediaPart = { type: 'video_url', video_url: { url: media.dataUrl } };
+			} else {
+				const url = renditionUrl(media.url, renditionWidth);
+
+				// Only meaningful when the rendition is the original: a resized URL is always small.
+				if (url === media.url && media.bytes != null && media.bytes > maxImageBytes) {
+					return {
+						kind: 'skipped',
+						reason: `image is ${(media.bytes / 1024 / 1024).toFixed(1)}MB and cannot be resized (limit ${(maxImageBytes / 1024 / 1024).toFixed(0)}MB)`
+					};
+				}
+				mediaPart = { type: 'image_url', image_url: { url } };
 			}
 
 			const body = JSON.stringify({
 				model,
 				provider: { require_parameters: true, order: [...providerOrder] },
 				reasoning: { enabled: false },
+				max_tokens: maxTokens,
 				response_format: { type: 'json_schema', json_schema: VISION_JSON_SCHEMA },
 				messages: [
 					{ role: 'system', content: SYSTEM_PROMPT },
 					{
 						role: 'user',
-						content: [
-							{ type: 'image_url', image_url: { url } },
-							{ type: 'text', text: buildContextText(block) }
-						]
+						content: [mediaPart, { type: 'text', text: buildContextText(block) }]
 					}
 				]
 			});
+
+			let timeoutAttempts = 0;
 
 			for (let attempt = 0; ; attempt += 1) {
 				const timeout = AbortSignal.timeout(requestTimeoutMs);
@@ -276,9 +318,10 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 					if (signal?.aborted) throw error;
 
 					if (timeout.aborted) {
-						if (lastAttempt) {
+						timeoutAttempts += 1;
+						if (lastAttempt || timeoutAttempts >= maxTimeoutAttempts) {
 							throw new VisionRequestError(
-								`OpenRouter request timed out after ${requestTimeoutMs}ms, ${attempt + 1} attempt(s)`,
+								`OpenRouter request timed out after ${requestTimeoutMs}ms, ${timeoutAttempts} attempt(s)`,
 								null,
 								{ cause: error }
 							);

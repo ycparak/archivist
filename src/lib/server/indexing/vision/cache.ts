@@ -28,11 +28,17 @@ export const visionResultSchema = z.object({
 
 export type VisionResult = z.infer<typeof visionResultSchema>;
 
+/** How the block was shown to the model. An animation read as a still is a different description. */
+export const VISION_INPUT_MODES = ['image', 'video'] as const;
+export type VisionInputMode = (typeof VISION_INPUT_MODES)[number];
+
 export const visionCacheEntrySchema = visionResultSchema.extend({
 	block_id: z.string().min(1),
 	image_src_hash: z.string().min(1),
 	prompt_version: z.number().int().nonnegative(),
 	model: z.string().min(1),
+	/** Absent on entries written before video input existed; those were all stills. */
+	input_mode: z.enum(VISION_INPUT_MODES).default('image'),
 	provider: z.string().min(1).nullable(),
 	generated_at: z.iso.datetime()
 });
@@ -45,6 +51,7 @@ export interface VisionCacheKey {
 	imageSourceHash: string;
 	promptVersion: number;
 	model: string;
+	inputMode: VisionInputMode;
 }
 
 export type VisionCache = ReadonlyMap<string, VisionCacheEntry>;
@@ -58,6 +65,7 @@ const SERIALIZED_KEY_ORDER = [
 	'image_src_hash',
 	'prompt_version',
 	'model',
+	'input_mode',
 	'provider',
 	'generated_at',
 	'title',
@@ -112,7 +120,8 @@ export function isCacheHit(entry: VisionCacheEntry | undefined, key: VisionCache
 		entry.block_id === key.blockId &&
 		entry.image_src_hash === key.imageSourceHash &&
 		entry.prompt_version === key.promptVersion &&
-		entry.model === key.model
+		entry.model === key.model &&
+		entry.input_mode === key.inputMode
 	);
 }
 

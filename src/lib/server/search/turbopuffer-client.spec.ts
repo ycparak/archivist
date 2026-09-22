@@ -23,11 +23,14 @@ function document(id: string): SearchDocument {
 		image_alt: null,
 		image_width: null,
 		image_height: null,
+		video_url: null,
+		video_content_type: null,
 		source_title: null,
 		vision_title: null,
 		vision_description: null,
 		vision_ocr: null,
-		vision_medium: null
+		vision_medium: null,
+		vision_tags: []
 	};
 }
 

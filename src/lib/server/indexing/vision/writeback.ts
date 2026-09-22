@@ -1,5 +1,5 @@
 import type { ArchiveBlock } from '$lib/domain/archive';
-import type { ArenaBlockUpdate } from '$lib/server/arena/client';
+import { ArenaRateLimitError, type ArenaBlockUpdate } from '$lib/server/arena/client';
 import type { VisionCache, VisionCacheEntry } from './cache';
 import { PROMPT_VERSION } from './prompt';
 import { lowQualityTitleReason, type LowQualityTitleReason } from './titles';
@@ -104,6 +104,9 @@ export interface WriteBackFailure {
 }
 
 export interface WriteBackSummary {
+	/** Blocks this run intended to write. Not the sum of the field counts below — one block can
+	 * change both its title and its description. */
+	blocksPlanned: number;
 	titlesAdded: number;
 	titlesReplaced: number;
 	descriptionsAdded: number;
@@ -112,8 +115,10 @@ export interface WriteBackSummary {
 	skipped: WriteBackSkips;
 }
 
+/** The shape of a run that has not happened yet: every count describes the plan. */
 export function summarizePlans(plans: WriteBackPlan[], skipped: WriteBackSkips): WriteBackSummary {
 	return {
+		blocksPlanned: plans.length,
 		titlesAdded: plans.filter((plan) => plan.title?.action.kind === 'add').length,
 		titlesReplaced: plans.filter((plan) => plan.title?.action.kind === 'replace').length,
 		descriptionsAdded: plans.filter((plan) => plan.description).length,
@@ -131,10 +136,18 @@ export interface ApplyWriteBackOptions {
 	log?: (message: string) => void;
 	signal?: AbortSignal;
 	limit?: number;
+	/** How many times one block waits out a rate limit before it is recorded as failed. */
+	rateLimitRetries?: number;
 }
 
 const noop = () => {};
-const DEFAULT_WRITE_DELAY_MS = 300;
+
+/**
+ * Are.na documents 120 requests per minute for an authenticated free account — one per 500ms. An
+ * earlier 300ms ran at 200/min and rate-limited 171 of 584 writes.
+ */
+const DEFAULT_WRITE_DELAY_MS = 500;
+const DEFAULT_RATE_LIMIT_RETRIES = 3;
 
 /**
  * If the first writes all fail the same way, the cause is the credential or the endpoint, not the
@@ -153,26 +166,55 @@ export async function applyWriteBack(
 		delayFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 		log = noop,
 		signal,
-		limit
+		limit,
+		rateLimitRetries = DEFAULT_RATE_LIMIT_RETRIES
 	} = options;
 
 	const selected = limit === undefined ? plans : plans.slice(0, limit);
-	const summary = summarizePlans(selected, skipped);
+
+	// Every count here describes what was actually written, not what was planned — a summary that
+	// reports the plan makes a partly failed run look complete.
+	const summary: WriteBackSummary = {
+		blocksPlanned: selected.length,
+		titlesAdded: 0,
+		titlesReplaced: 0,
+		descriptionsAdded: 0,
+		blocksUpdated: 0,
+		failed: [],
+		skipped
+	};
 
 	for (const [index, plan] of selected.entries()) {
 		if (signal?.aborted) break;
 
-		try {
-			await updateBlock(Number(plan.blockId), plan.update);
+		let lastError: unknown;
+		for (let attempt = 0; attempt <= rateLimitRetries; attempt += 1) {
+			try {
+				await updateBlock(Number(plan.blockId), plan.update);
+				lastError = undefined;
+				break;
+			} catch (error) {
+				lastError = error;
+				// Are.na tells us how long to wait; anything else is not worth retrying per block.
+				if (!(error instanceof ArenaRateLimitError) || attempt === rateLimitRetries) break;
+				await delayFn(error.retryAfterMs, signal);
+				if (signal?.aborted) break;
+			}
+		}
+
+		if (lastError === undefined) {
 			summary.blocksUpdated += 1;
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			if (plan.title?.action.kind === 'add') summary.titlesAdded += 1;
+			if (plan.title?.action.kind === 'replace') summary.titlesReplaced += 1;
+			if (plan.description) summary.descriptionsAdded += 1;
+		} else {
+			const message = lastError instanceof Error ? lastError.message : String(lastError);
 			summary.failed.push({ blockId: plan.blockId, error: message });
 
 			if (summary.blocksUpdated === 0 && summary.failed.length >= MAX_LEADING_FAILURES) {
 				throw new Error(
 					`Aborting Are.na write-back: the first ${summary.failed.length} writes all failed (most recently block ${plan.blockId}: ${message}). This usually means ARENA_ACCESS_TOKEN is read-only — writing titles and descriptions needs write scope — not that these blocks are individually broken.`,
-					{ cause: error }
+					{ cause: lastError }
 				);
 			}
 		}

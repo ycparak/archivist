@@ -18,6 +18,9 @@ export const archiveBlockSchema = z.object({
 	/** Sync-time only: lets the vision stage apply its size guard without a HEAD request. */
 	imageBytes: z.number().int().nonnegative().nullable().optional(),
 	imageContentType: z.string().nullable().optional(),
+	/** Playable file for a video attachment. Null for every other block, including Embeds. */
+	videoUrl: z.url().nullable().optional(),
+	videoContentType: z.string().nullable().optional(),
 	/** Are.na user id of the block's author; write-back is owner-only. */
 	ownerId: z.number().int().nullable().optional(),
 	createdAt: z.coerce.date().optional(),
@@ -41,6 +44,7 @@ export type BlockVisionText = {
 	description: string;
 	ocr: string;
 	medium: string;
+	tags: string[];
 };
 
 export type SearchDocument = {
@@ -59,15 +63,78 @@ export type SearchDocument = {
 	image_alt: string | null;
 	image_width: number | null;
 	image_height: number | null;
+	video_url: string | null;
+	video_content_type: string | null;
 	source_title: string | null;
 	vision_title: string | null;
 	vision_description: string | null;
 	vision_ocr: string | null;
 	vision_medium: string | null;
+	vision_tags: string[];
 };
+
+/**
+ * OCR had no bound while `description` has had one since the first live call, and the asymmetry
+ * cost: one cached entry holds 270,500 characters of OCR, all of it a single phrase repeated some
+ * 4,300 times, and it has been going into `search_text` — BM25 and the embedding both — ever since.
+ * Only two of 2,561 entries exceed this, and both are that failure.
+ */
+export const MAX_OCR_CHARS = 6_000;
+
+/**
+ * A decode that has collapsed into repetition. The separation is unusually clean: the two known
+ * runaways sit at 0.22% and 0.97% unique words, while the lowest legitimate entry of the 728 with
+ * substantial OCR is 16.3% and the median is 74%. Anything under this threshold is not text.
+ */
+const MIN_UNIQUE_WORD_RATIO = 0.1;
+const MIN_WORDS_TO_JUDGE = 100;
+
+export function isDegenerateText(text: string): boolean {
+	const words = text.split(/\s+/).filter(Boolean);
+	if (words.length < MIN_WORDS_TO_JUDGE) return false;
+	return new Set(words).size / words.length < MIN_UNIQUE_WORD_RATIO;
+}
+
+/**
+ * Bounded first, then judged. When the judgement fires the whole field goes, including any genuine
+ * text the run opened with: the signal is a property of the sample, so a phrase repeated 4,300
+ * times only reads as degenerate across the whole of it, and a window small enough to isolate the
+ * good opening is too small to tell repetition from dense prose. That costs about a thousand
+ * characters of real OCR on the one block where it bites, which still keeps its description and
+ * its tags — a cheaper price than leaving repeated phrases to skew BM25 term frequency.
+ */
+export function clampOcr(ocr: string): string {
+	const clamped = ocr.length > MAX_OCR_CHARS ? ocr.slice(0, MAX_OCR_CHARS).trimEnd() : ocr;
+	return isDegenerateText(clamped) ? '' : clamped;
+}
 
 const normalizeText = (value: string | null | undefined) =>
 	value?.replace(/\s+/g, ' ').trim() ?? '';
+
+/**
+ * Lowercased, dehyphenated and deduplicated, so one concept is one tag. The model is inconsistent
+ * about both: 162 blocks carry `ui` against an intermittent `UI`, and 153 pairs differ only by a
+ * hyphen — `web-design` (26) against `web design` (549), `dark-mode` (20) against `dark mode`
+ * (237). The split is not cosmetic. It cost `semantic-material` nine rank positions, because that
+ * block's `design-engineer` occurs exactly once in the archive while every block above it was
+ * tagged in the spacing the query used.
+ *
+ * Hyphens go in the attribute as well as in `search_text`, not just the text: a facet that filters
+ * on a value the index never wrote is worse than one whose values read slightly oddly, and this
+ * way the filter and the indexed wording cannot disagree. The cost is that genuine compounds are
+ * respelled — `e-commerce` becomes `e commerce`, `sans-serif` becomes `sans serif` — which affects
+ * 158 instances against the 332 the merge repairs.
+ *
+ * Sorted, so an unchanged block re-upserts identically.
+ */
+const normalizeTags = (tags: readonly string[] | null | undefined): string[] =>
+	[
+		...new Set(
+			(tags ?? [])
+				.map((tag) => normalizeText(tag.replace(/-+/g, ' ')).toLowerCase())
+				.filter(Boolean)
+		)
+	].sort();
 
 /**
  * `vision` is the generated description for this block, when one exists. It is appended to
@@ -86,7 +153,11 @@ export function toSearchDocument(
 		block.sourceTitle,
 		...channels.map((channel) => channel.title),
 		vision?.description,
-		vision?.ocr
+		clampOcr(vision?.ocr ?? ''),
+		// Last, and short. Measured over a 596-block sample: 53% of tag wording appears nowhere else
+		// in the block's indexed text and 99% of blocks gain some, for 10% more text — but eight
+		// words should still not outweigh a block that describes itself.
+		normalizeTags(vision?.tags).join(', ')
 	]
 		.map(normalizeText)
 		.filter(Boolean)
@@ -108,10 +179,13 @@ export function toSearchDocument(
 		image_alt: normalizeText(block.imageAlt) || null,
 		image_width: block.imageWidth ?? null,
 		image_height: block.imageHeight ?? null,
+		video_url: block.videoUrl ?? null,
+		video_content_type: block.videoContentType ?? null,
 		source_title: normalizeText(block.sourceTitle) || null,
 		vision_title: normalizeText(vision?.title) || null,
 		vision_description: normalizeText(vision?.description) || null,
-		vision_ocr: normalizeText(vision?.ocr) || null,
-		vision_medium: normalizeText(vision?.medium) || null
+		vision_ocr: normalizeText(clampOcr(vision?.ocr ?? '')) || null,
+		vision_medium: normalizeText(vision?.medium) || null,
+		vision_tags: normalizeTags(vision?.tags)
 	};
 }

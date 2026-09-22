@@ -1,8 +1,9 @@
+import type { SyncEvent } from '../progress/events';
 import { describe, expect, it, vi } from 'vitest';
 import type { ArchiveBlock } from '$lib/domain/archive';
 import type { VisionCacheEntry } from './cache';
 import type { DescribeInput, DescribeOutcome, VisionClient } from './client';
-import { describeBlocks, planVisionWork } from './index';
+import { describeBlocks, planVisionWork, unsupportedFormatReason } from './index';
 import { imageSourceHash } from './rendition';
 
 const IMAGE = 'https://d2w9rnfcy7mm78.cloudfront.net/1/original.gif';
@@ -44,6 +45,7 @@ function entryFor(id: string, imageUrl = IMAGE): VisionCacheEntry {
 		image_src_hash: imageSourceHash(imageUrl),
 		prompt_version: 1,
 		model: 'test-model',
+		input_mode: 'image',
 		provider: 'test',
 		generated_at: '2026-09-21T00:00:00.000Z'
 	};
@@ -259,14 +261,164 @@ describe('describeBlocks', () => {
 		expect(peak).toBe(2);
 	});
 
-	it('reports the final block, so the tail does not look like a hang', async () => {
-		const lines: string[] = [];
+	/**
+	 * Progress presentation moved out to the reporter; what this stage owes it is an event per
+	 * block, early enough that a status display can name what is in flight rather than what is done.
+	 */
+	it('emits a started and a settled event for every block', async () => {
+		const events: SyncEvent[] = [];
 		await describeBlocks(
-			Array.from({ length: 27 }, (_, index) => block({ id: String(index) })),
-			{ client: stubClient(), cache: new Map(), concurrency: 4, now, log: (m) => lines.push(m) }
+			Array.from({ length: 12 }, (_, index) => block({ id: String(index) })),
+			{
+				client: stubClient(),
+				cache: new Map(),
+				concurrency: 4,
+				now,
+				onEvent: (event) => events.push(event)
+			}
 		);
 
-		expect(lines).toContain('  25/27 described');
-		expect(lines).toContain('  27/27 described');
+		expect(events.filter((event) => event.kind === 'vision-started')).toHaveLength(12);
+		expect(events.filter((event) => event.kind === 'vision-settled')).toHaveLength(12);
+		expect(events[0]).toEqual({ kind: 'vision-planned', pending: 12, cached: 0 });
+	});
+
+	it('announces a block before the model is asked, not after it answers', async () => {
+		const events: SyncEvent[] = [];
+		await describeBlocks([block({ id: '1' })], {
+			client: stubClient(),
+			cache: new Map(),
+			now,
+			onEvent: (event) => events.push(event)
+		});
+
+		expect(events.map((event) => event.kind)).toEqual([
+			'vision-planned',
+			'vision-started',
+			'vision-stage',
+			'vision-settled'
+		]);
+		expect(events[2]).toMatchObject({ stage: 'awaiting-model' });
+		expect(events[3]).toMatchObject({ outcome: 'generated' });
+	});
+
+	it('settles a failed block as failed, so the totals can be trusted', async () => {
+		const events: SyncEvent[] = [];
+		await describeBlocks([block({ id: '1' })], {
+			client: {
+				model: 'test-model',
+				promptVersion: 1,
+				describe: async () => {
+					throw new Error('provider exploded');
+				}
+			},
+			cache: new Map(),
+			now,
+			onEvent: (event) => events.push(event)
+		});
+
+		expect(events.at(-1)).toMatchObject({ kind: 'vision-settled', outcome: 'failed' });
+	});
+});
+
+describe('describeBlocks — animated blocks', () => {
+	function gif(overrides: Partial<ArchiveBlock> = {}): ArchiveBlock {
+		return block({ imageContentType: 'image/gif', ...overrides });
+	}
+
+	it('leaves animations on the image path unless video is asked for', async () => {
+		const client = stubClient();
+		await describeBlocks([gif()], { client, cache: new Map(), now });
+
+		expect(client.describe.mock.calls[0][0].media.kind).toBe('image');
+	});
+
+	it('regenerates an animation previously described as a still', async () => {
+		const client = stubClient();
+		const asStill = entryFor('1'); // input_mode: 'image'
+		const { summary } = await describeBlocks([gif()], {
+			client,
+			cache: new Map([['1', asStill]]),
+			video: true,
+			now,
+			transcodeOptions: { fetchFn: async () => new Response('x') }
+		});
+
+		expect(summary.cacheHits).toBe(0);
+	});
+
+	it('leaves a still alone when video is enabled — only animations change mode', async () => {
+		const client = stubClient();
+		const { summary } = await describeBlocks([block({ imageContentType: 'image/png' })], {
+			client,
+			cache: new Map([['1', entryFor('1')]]),
+			video: true,
+			now
+		});
+
+		expect(summary.cacheHits).toBe(1);
+		expect(client.describe).not.toHaveBeenCalled();
+	});
+
+	it('records the input mode on the entry, so the next run can tell them apart', async () => {
+		const { entries } = await describeBlocks([block()], {
+			client: stubClient(),
+			cache: new Map(),
+			now
+		});
+
+		expect(entries[0].input_mode).toBe('image');
+	});
+
+	it('counts an animation that could not be transcoded as skipped, not failed', async () => {
+		const client = stubClient();
+		const { summary } = await describeBlocks([gif()], {
+			client,
+			cache: new Map(),
+			video: true,
+			now,
+			// A 404 makes the transcode return a skip rather than throwing.
+			transcodeOptions: { fetchFn: async () => new Response('', { status: 404 }) }
+		});
+
+		expect(summary.skippedTooLarge).toBe(1);
+		expect(summary.failed).toEqual([]);
+		expect(client.describe).not.toHaveBeenCalled();
+	});
+});
+
+describe('unsupportedFormatReason', () => {
+	it.each(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'IMAGE/PNG '])(
+		'accepts %s',
+		(type) => {
+			expect(unsupportedFormatReason(type)).toBeNull();
+		}
+	);
+
+	/** Are.na's resizer 500s on SVG, so the provider fetches a JSON error and rejects the image. */
+	it('rejects svg, which no provider can be shown', () => {
+		expect(unsupportedFormatReason('image/svg+xml')).toBe(
+			'image/svg+xml is not a describable image'
+		);
+	});
+
+	it('lets an unknown type through rather than pre-judging it', () => {
+		expect(unsupportedFormatReason(null)).toBeNull();
+		expect(unsupportedFormatReason('')).toBeNull();
+	});
+});
+
+describe('describeBlocks — undescribable formats', () => {
+	it('skips an svg block without calling the model, and does not count it as failed', async () => {
+		const client = stubClient();
+		const { entries, summary } = await describeBlocks(
+			[block({ imageContentType: 'image/svg+xml' })],
+			{ client, cache: new Map(), now }
+		);
+
+		expect(client.describe).not.toHaveBeenCalled();
+		expect(entries).toEqual([]);
+		expect(summary.skippedUnsupported).toBe(1);
+		expect(summary.failed).toEqual([]);
 	});
 });

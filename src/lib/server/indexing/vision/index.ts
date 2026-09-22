@@ -1,7 +1,20 @@
 import type { ArchiveBlock } from '$lib/domain/archive';
-import { isCacheHit, type VisionCache, type VisionCacheEntry, type VisionCacheKey } from './cache';
-import type { VisionClient } from './client';
+import {
+	isCacheHit,
+	type VisionCache,
+	type VisionCacheEntry,
+	type VisionCacheKey,
+	type VisionInputMode
+} from './cache';
+import type { SyncEventSink, VisionOutcome } from '../progress/events';
+import type { VisionClient, VisionMedia } from './client';
 import { imageSourceHash } from './rendition';
+import {
+	cleanupStaleTranscodes,
+	isAnimated,
+	transcodeToVideoDataUrl,
+	type TranscodeOptions
+} from './video';
 
 export interface VisionStageOptions {
 	client: VisionClient;
@@ -14,8 +27,13 @@ export interface VisionStageOptions {
 	log?: (message: string) => void;
 	signal?: AbortSignal;
 	now?: () => Date;
+	/** Read animations as motion by transcoding them locally first. Needs ffmpeg on PATH. */
+	video?: boolean;
+	transcodeOptions?: TranscodeOptions;
 	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
 	onEntry?: (entry: VisionCacheEntry) => void;
+	/** Structured progress for a status display. Presentation lives entirely on the other side. */
+	onEvent?: SyncEventSink;
 }
 
 export interface VisionFailure {
@@ -27,7 +45,9 @@ export interface VisionStageSummary {
 	blocksWithImage: number;
 	cacheHits: number;
 	generated: number;
+	generatedFromVideo: number;
 	skippedTooLarge: number;
+	skippedUnsupported: number;
 	skippedOverLimit: number;
 	failed: VisionFailure[];
 }
@@ -48,12 +68,32 @@ const noop = () => {};
  */
 const DEFAULT_CONCURRENCY = 32;
 
-function cacheKey(block: ArchiveBlock, client: VisionClient): VisionCacheKey {
+/**
+ * Formats a vision provider will accept. SVG is excluded deliberately: Are.na's resizer returns a
+ * 500 for it, so the provider fetches a JSON error and reports an invalid image. One block in the
+ * reference archive is affected, and without this it fails on every run forever.
+ */
+const DESCRIBABLE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+/** Why this block cannot be shown to the model at all, or null when it can. */
+export function unsupportedFormatReason(contentType: string | null | undefined): string | null {
+	const normalized = contentType?.toLowerCase().trim();
+	if (!normalized) return null; // Unknown type: let the provider decide rather than pre-judging.
+	return DESCRIBABLE_TYPES.has(normalized) ? null : `${normalized} is not a describable image`;
+}
+
+/** An animation is only read as video when the caller asked for it and ffmpeg can be used. */
+function inputModeFor(block: ArchiveBlock, video: boolean): VisionInputMode {
+	return video && isAnimated(block.imageContentType) ? 'video' : 'image';
+}
+
+function cacheKey(block: ArchiveBlock, client: VisionClient, video: boolean): VisionCacheKey {
 	return {
 		blockId: block.id,
 		imageSourceHash: imageSourceHash(block.imageUrl ?? ''),
 		promptVersion: client.promptVersion,
-		model: client.model
+		model: client.model,
+		inputMode: inputModeFor(block, video)
 	};
 }
 
@@ -66,16 +106,16 @@ function isRevised(block: ArchiveBlock, revise: VisionStageOptions['revise']): b
 /** What the run would cost before it costs it. */
 export function planVisionWork(
 	blocks: ArchiveBlock[],
-	options: Pick<VisionStageOptions, 'client' | 'cache' | 'revise' | 'limit'>
+	options: Pick<VisionStageOptions, 'client' | 'cache' | 'revise' | 'limit' | 'video'>
 ): { withImage: ArchiveBlock[]; cached: number; pending: ArchiveBlock[]; overLimit: number } {
-	const { client, cache, revise, limit } = options;
+	const { client, cache, revise, limit, video = false } = options;
 	const withImage = blocks.filter((block) => block.imageUrl);
 
 	const pending: ArchiveBlock[] = [];
 	let cached = 0;
 	for (const block of withImage) {
 		const hit =
-			!isRevised(block, revise) && isCacheHit(cache.get(block.id), cacheKey(block, client));
+			!isRevised(block, revise) && isCacheHit(cache.get(block.id), cacheKey(block, client, video));
 		if (hit) cached += 1;
 		else pending.push(block);
 	}
@@ -115,21 +155,27 @@ export async function describeBlocks(
 		log = noop,
 		signal,
 		now = () => new Date(),
-		onEntry
+		onEntry,
+		onEvent = noop,
+		video = false,
+		transcodeOptions
 	} = options;
 
 	const { withImage, cached, pending, overLimit } = planVisionWork(blocks, {
 		client,
 		cache,
 		revise,
-		limit
+		limit,
+		video
 	});
 
 	const summary: VisionStageSummary = {
 		blocksWithImage: withImage.length,
 		cacheHits: cached,
 		generated: 0,
+		generatedFromVideo: 0,
 		skippedTooLarge: 0,
+		skippedUnsupported: 0,
 		skippedOverLimit: overLimit,
 		failed: []
 	};
@@ -140,17 +186,53 @@ export async function describeBlocks(
 	}
 
 	log(`Vision: ${cached} cached, describing ${pending.length} block(s)`);
+	onEvent({ kind: 'vision-planned', pending: pending.length, cached });
+
+	if (video) {
+		const { removed } = await cleanupStaleTranscodes();
+		if (removed) log(`  cleared ${removed} scratch director(ies) from an interrupted run`);
+	}
 
 	const entries: VisionCacheEntry[] = [];
-	let completed = 0;
 
 	await pool(pending, concurrency, async (block) => {
 		if (signal?.aborted) return;
 
+		let outcome: VisionOutcome = 'failed';
+		onEvent({ kind: 'vision-started', blockId: block.id });
+
 		try {
-			const outcome = await client.describe({
-				imageUrl: block.imageUrl!,
-				imageBytes: block.imageBytes,
+			const unsupported = unsupportedFormatReason(block.imageContentType);
+			if (unsupported) {
+				summary.skippedUnsupported += 1;
+				outcome = 'skipped';
+				log(`  skipped ${block.id}: ${unsupported}`);
+				return;
+			}
+
+			const mode = inputModeFor(block, video);
+			let media: VisionMedia;
+
+			if (mode === 'video') {
+				const transcoded = await transcodeToVideoDataUrl(block.imageUrl!, {
+					signal,
+					onStage: (stage) => onEvent({ kind: 'vision-stage', blockId: block.id, stage }),
+					...transcodeOptions
+				});
+				if (transcoded.kind === 'skipped') {
+					summary.skippedTooLarge += 1;
+					outcome = 'skipped';
+					log(`  skipped ${block.id}: ${transcoded.reason}`);
+					return;
+				}
+				media = { kind: 'video', dataUrl: transcoded.dataUrl };
+			} else {
+				media = { kind: 'image', url: block.imageUrl!, bytes: block.imageBytes };
+			}
+
+			onEvent({ kind: 'vision-stage', blockId: block.id, stage: 'awaiting-model' });
+			const described = await client.describe({
+				media,
 				block: {
 					type: block.type,
 					title: block.title,
@@ -160,35 +242,34 @@ export async function describeBlocks(
 				signal
 			});
 
-			if (outcome.kind === 'skipped') {
+			if (described.kind === 'skipped') {
 				summary.skippedTooLarge += 1;
-				log(`  skipped ${block.id}: ${outcome.reason}`);
+				outcome = 'skipped';
+				log(`  skipped ${block.id}: ${described.reason}`);
 				return;
 			}
 
 			const entry = {
-				...outcome.result,
+				...described.result,
 				block_id: block.id,
 				image_src_hash: imageSourceHash(block.imageUrl!),
 				prompt_version: client.promptVersion,
 				model: client.model,
-				provider: outcome.provider,
+				input_mode: mode,
+				provider: described.provider,
 				generated_at: now().toISOString()
 			};
 			entries.push(entry);
 			onEntry?.(entry);
 			summary.generated += 1;
+			outcome = 'generated';
+			if (mode === 'video') summary.generatedFromVideo += 1;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			summary.failed.push({ blockId: block.id, error: message });
 			log(`  failed ${block.id}: ${message}`);
 		} finally {
-			completed += 1;
-			// Also log the final block: without it the tail after the last multiple of 25 runs
-			// silently, which reads as a hang when each call can take minutes.
-			if (completed % 25 === 0 || completed === pending.length) {
-				log(`  ${completed}/${pending.length} described`);
-			}
+			onEvent({ kind: 'vision-settled', blockId: block.id, outcome });
 		}
 	});
 

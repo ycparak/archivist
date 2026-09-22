@@ -1,189 +1,365 @@
 # TODOs
 
-Task backlog and work-in-progress tracking. See [`workflows/agent-loop.md`](./workflows/agent-loop.md) for how to work this list.
+Task backlog and work-in-progress tracking. See
+[`workflows/agent-loop.md`](./workflows/agent-loop.md) for how to work this list.
 
-Seeded from [`implementation_plan.md`](./implementation_plan.md) — vertical slices, smallest first. Keep this list current: move items between sections as you work, don't let it drift from reality.
+Seeded from [`implementation_plan.md`](./implementation_plan.md) — vertical slices, smallest first.
+Keep this list current: move items between sections as you work, don't let it drift from reality.
 
-## Up Next
+**Status marks:** `[ ]` not started · `[~]` code complete, waiting on a run only the maintainer can
+do · `[x]` finished.
 
-### Vision indexing — phase 1
-
-Generate visual descriptions for the 2,585 blocks with an image and fold them into retrieval.
-Spec: [`specs/spec-vision-indexing.md`](./specs/spec-vision-indexing.md).
-Decision: [`decisions/adr-vision-indexing.md`](./decisions/adr-vision-indexing.md).
-Work these in order — each one is shippable on its own.
-
-- [x] **1. Baseline the search evaluation.** Done — the evaluation was red before this work started
-      (3 cases stranded past the 24-result limit by the browse-ordering change, 1 expecting a block
-      that pruning had removed). Repaired those 4 to be ordering-independent, added rank reporting
-      so dilution is visible, added a `pending` field so target cases can be recorded without
-      holding the gate red, and added 5 pending vision cases grounded in the actual images. Baseline
-      and the promotion bar for task 5 are in
-      [worksheet](./specs/worksheet-vision-eval-baseline.md).
-- [x] **2. Rendition and cache primitives.** Done —
-      [`vision/rendition.ts`](../src/lib/server/indexing/vision/rendition.ts) (payload
-      decode/rewrite/re-encode, source-key extraction, SHA-256; passes non-resizer URLs through
-      untouched) and [`vision/cache.ts`](../src/lib/server/indexing/vision/cache.ts) (JSONL
-      parse/serialize with fixed key order, the skip rule, and a merge that keeps entries for
-      blocks skipped this run while dropping ones that left the archive). 31 unit tests; the
-      rendition rewrite also verified against live Are.na, 10 of 10 at HTTP 200 and ~70% smaller.
-- [x] **3. OpenRouter client.** Done — [`vision/prompt.ts`](../src/lib/server/indexing/vision/prompt.ts)
-      (`PROMPT_VERSION`, system prompt, strict JSON schema, fenced untrusted-context builder) and
-      [`vision/client.ts`](../src/lib/server/indexing/vision/client.ts) (`xiaomi/mimo-v2.5`,
-      `require_parameters: true` with an explicit provider order, reasoning disabled, Zod validation
-      at the boundary, and rejection of a title that echoes the supplied one). `fetch` + Zod, no new
-      dependency. `image.file_size` and `content_type` are now carried through `ArchiveBlock` so the
-      size guard costs no network call. 39 new tests.
-      **Not yet verified against the live API** — `OPENROUTER_API_KEY` is an empty placeholder in
-      `.env`. Fill it in, then task 4's `--vision-limit=25` is the first real call.
-      GIF finding: 43 of the 134 non-resizable images exceed 5 MB (max 24 MB, 615 MB total) and
-      Are.na publishes no smaller rendition for them, so phase 1 skips and reports them. Phase 2's
-      video input is the fix.
-- [x] **4. Wire the stage into sync behind `--vision`.** Done —
-      [`vision/index.ts`](../src/lib/server/indexing/vision/index.ts) (`describeBlocks`,
-      `planVisionWork`, bounded concurrency pool, per-block failures collected not fatal) wired into
-      [`sync.ts`](../src/lib/server/indexing/sync.ts) on the deduplicated block set, with
-      `--vision`, `--vision-dry-run`, `--vision-limit=N`, `--revision[=<slugs>]` and the new summary
-      lines. Without `--vision`, sync behaves exactly as before.
-      **Verified live end to end:** a dry run planned 2,581 blocks at zero cost; `--vision-limit=6`
-      generated and cached 6; a re-run reported those 6 as free cache hits. Twelve outputs read by
-      hand and two checked against the images — titles 29–60 chars, descriptions 429–497 chars,
-      OCR present where there is text.
-      Two findings for task 5: the model overruns the description cap (a first call came back 640
-      chars), so the client now clamps at a sentence boundary; and `medium` is the least reliable
-      field — a grainy photograph was labelled `painting`. Do not promote `vision_medium` to a UI
-      facet without measuring it.
-- [~] **5. Schema, `search_text`, and the full backfill.** Code complete and committed; the
-  backfill run is handed off — see
-  [handoff worksheet](./specs/worksheet-vision-backfill-handoff.md).
-  Done: four additive `vision_*` attributes in the Turbopuffer schema (no namespace bump);
-  `toSearchDocument(block, vision?)` folding `vision_description` and `vision_ocr` into
-  `search_text` after the block's own metadata; retry with exponential backoff on 429/5xx
-  honouring `Retry-After`; cache checkpointing every 25 entries so a multi-hour run survives
-  interruption; `--vision-concurrency=N`; architecture.md schema table and sync lifecycle
-  updated. 305 tests pass.
-  Fixed along the way: sync now indexes the vision cache on **every** run, not only with
-  `--vision`. Previously a plain `bun run sync` after the backfill would have silently stripped
-  every generated description back out of the namespace. Verified against the live namespace.
-  **Remaining, for the maintainer:** run `bun run sync --vision` (~2,570 blocks, ~$0.50,
-  roughly 1–3.5h), commit `vision-cache.jsonl`, re-run `evaluate:search`, promote the five
-  pending cases, and check `exact-phrase-link` / `combined-filter` ranks against the baseline
-  for dilution.
-- [~] **6. Are.na write-back.** Code complete and tested; the apply run is handed off — see
-  [handoff worksheet](./specs/worksheet-vision-backfill-handoff.md#are-na-write-back).
-  `ArenaClient.updateBlock`, `ownerId` threaded from the Are.na payload through `ArchiveBlock`,
-  [`vision/titles.ts`](../src/lib/server/indexing/vision/titles.ts) implementing
-  `lowQualityTitleReason` with its four triggers, and
-  [`vision/writeback.ts`](../src/lib/server/indexing/vision/writeback.ts) planning and applying
-  per-block updates with `metadata.vision_v` / `vision_at` / `vision_src`. Block type is not
-  part of the decision (ADR amendment); a description is written only when empty. Writes are
-  paced, not parallelised. `--push-arena` prints a diff, `--push-arena-apply` writes,
-  `--push-arena-limit=N` stages it. 370 tests.
-  Validated against the live archive: 892 titles would be replaced (782 filename, 89
-  boilerplate, 13 opaque, 8 restating their description), 15 added, and a dry run plans
-  **609 blocks**. The longest titles it leaves alone are all legitimate.
-  Three classifier rules were wrong on first write and were corrected against real titles: a
-  bare ` / X` suffix was flagging `Home / X` (a false positive, now dropped),
-  `on X (formerly Twitter)` was missed, and a bare URL with no digits was missed.
-  **Remaining, for the maintainer:** `bun run sync --push-arena` to review the diff, then
-  `--push-arena-apply`, ideally staged with `--push-arena-limit=25` first.
-- [ ] **7. Product boundary follow-through.** Confirm [`prd.md`](./prd.md) and
-      [`AGENTS.md`](../AGENTS.md) reflect what actually shipped, and move this group to Done with
-      its worksheet archived to [`history/worksheets/`](./history/worksheets/).
-
-### Video playback in the gallery
-
-- [ ] **Autoplaying, looping, muted video in result cards.** The UI only renders `<img>`, and the index
-      stores no video URL (only the thumbnail), so this needs a new indexed field and a re-sync — not
-      just a component change. Plan, open questions and the exact touch points are in
-      [`specs/spec-video-playback.md`](./specs/spec-video-playback.md).
+---
 
 ## In Progress
 
 _(none)_
 
-## Done
+---
 
-- [x] Repository documentation and fixture reorganization: moved `TODOS.md` and `CHANGELOG.md`
-      to `docs/`, archived completed worksheets under `docs/history/worksheets/`, placed ADRs in
-      `docs/decisions/`, and added `docs/specs/` for active work. The search-evaluation fixture
-      now lives with its CLI consumer in `scripts/fixtures/`; its validation test is colocated in
-      `src/lib/server/search/`. See
-      [worksheet](./history/worksheets/worksheet-repository-organization.md).
-- [x] Testing approach decision: keep one node-based Vitest project. Server-rendered markup
-      assertions cover static component contracts; focus, live-region announcement, and reflow
-      remain manual browser checks. See [svelte-guidelines.md](./svelte-guidelines.md).
-- [x] Slice 4 quality pass: the full check/lint/test/build suite and all ten live evaluation cases
-      pass, with a manual browser pass over every fixture URL. Hybrid results are capped after
-      deduplication so the UI's result limit and status stay aligned. See
-      [worksheet](./history/worksheets/worksheet-quality-suite.md).
-- [x] Edge rate limiting and basic error telemetry before public deployment: the shared limiter
-      protects both the gallery and API before Turbopuffer, and Cloudflare observability redacts
-      query strings while retaining safe structured failure events. See
-      [worksheet](./history/worksheets/worksheet-edge-rate-limiting-telemetry.md).
-      `f5fefdc`.
-- [x] Slice 4 channel manifest: `bun run sync` now writes every owned channel it discovers to
-      `src/lib/server/indexing/channel-manifest.json`, bundled at build time (no request-time
-      Are.na call). The gallery's "Channel" filter lists every channel in the archive instead of
-      only ones present in current results. See
-      [worksheet](./history/worksheets/worksheet-channel-manifest.md).
-- [x] Slice 4 image metadata: index `image.alt_text`/`width`/`height` (from `image.large`, matching
-      the version `imageUrl` already uses), thread them through to `ResultCard` (real `alt` text
-      when Are.na has it, real intrinsic dimensions replacing the fixed 4:3 crop when it doesn't),
-      and re-sync. See [worksheet](./history/worksheets/worksheet-image-metadata-indexing.md).
-- [x] Slice 4 about surface: `/about` page with concise notes on where the archive comes from, how
-      the four search modes work, and how the app is built, linked from the home page. See
-      [worksheet](./history/worksheets/worksheet-about-surface.md).
-- [x] Slice 3 gallery surface: URL-backed search-first home page, result cards, loading/no-result/invalid/unavailable states, and the shared `executeArchiveSearch` seam behind both the page and `/api/search`. See [worksheet](./history/worksheets/worksheet-gallery-surface.md).
-- [x] Slice 2 search API and evaluation: `SearchRepository`, `/api/search`, four retrieval modes, V1 filters, public evaluation fixture, and focused tests. See [worksheet](./history/worksheets/worksheet-search-api.md).
-- [x] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`). `e60ec40`. See [worksheet](./history/worksheets/worksheet-arena-page-client.md).
-- [x] `toSearchDocument` normalizer covering all supported block shapes, with tests. `39cce35`. See [worksheet](./history/worksheets/worksheet-arena-block-normalizer.md).
-- [x] Prune stale documents on every `bun run sync`: after the upsert, delete namespace ids not in the synced set (skipped when a channel failed, and above a 50% safety limit unless `--allow-large-prune`).
-- [x] Channel ignore list (`ARENA_IGNORE_CHANNELS`) and private-channel allow list (`ARENA_ALLOW_PRIVATE_CHANNELS`); private channels are skipped by default.
-- [x] Manual `bun run sync` command that discovers and syncs every channel the maintainer's Are.na account owns. `ec7a0b9`. See [worksheet](./history/worksheets/worksheet-sync-command.md).
-- [x] Turbopuffer schema creation (`search_text` full-text + native embed, per `docs/architecture.md`) and batch upsert. `97601ad`. See [worksheet](./history/worksheets/worksheet-turbopuffer-upsert.md).
-- [x] Verify a known block round-trips via a direct SDK query (Embed + filename-only Attachment spot-checked against Are.na's own UI — no bug found). See [worksheet](./history/worksheets/worksheet-roundtrip-verification.md).
+## Up Next
 
-## Needs Input
+_Nothing queued. Pick from the backlog below._
 
-- [ ] `channel-manifest.json` ships empty (`[]`) — the channel filter won't appear until the
-      maintainer runs a real `bun run sync`. That writes to the live Turbopuffer namespace and
-      authenticates against the maintainer's own Are.na account, so it wasn't run as part of the
-      channel-manifest task without their go-ahead (see
-      [worksheet](./history/worksheets/worksheet-channel-manifest.md#deliberately-not-done-running-the-real-sync)).
-      [AGENT NOTE: run `bun run sync` (or approve running it) to populate the manifest for real.]
+---
 
-## Backlog — Vision indexing phase 2 (only after phase 1 has shipped and been measured)
+## Backlog
 
-- **GIF handling — video input.** Owns both halves of the GIF problem, and phase 1 leaves real work
-  here:
-  1. **43 blocks are unprocessed.** Phase 1's size guard skips any non-resizable image over 5 MB.
-     Measured across all 134 GIFs: median 2.70 MB, p90 11.23 MB, max 24.15 MB, 615 MB total. Are.na
-     publishes no smaller rendition — `thumb`, `square`, `small`, `medium` and `large` are all the
-     same CloudFront URL — so there is nothing to shrink without decoding locally.
-  2. **The other 91 are described from a single frame**, which is the wrong reading of an animation.
-     `xiaomi/mimo-v2.5` takes video as a native input modality (`text+image+audio+video`), so sending
-     these as a video part rather than an image part fixes both: motion, pacing and loop structure
-     become visible, and the video path may carry a different size ceiling than the 5 MB image one.
-     Confirm the pinned providers accept video, re-check the ceiling against the 24 MB worst case, and
-     decide then whether a local transcode (a native image dependency for a handful of blocks) is
-     still needed. Bump `PROMPT_VERSION` or scope the revision so only these 134 regenerate, not the
-     whole archive. Audio is explicitly out of scope. The 46 Embed blocks stay thumbnail-only
-     regardless: they are YouTube/Vimeo links, not files the pipeline can hand over.
-- **Batch/async backfill mode.** A `--vision-batch` path for large regenerations if a prompt
-  revision ever makes a full 2,585-block re-run routine.
-- **trigger.dev**, if sync moves off the maintainer's machine. Revisit only when there is an
-  unattended or scheduled run to make durable — see the ADR for why it is not phase 1.
-- **`vision_medium` as a UI facet**, if the generated values cluster usefully.
-- **A separate embedded field** for generated text, if phase-1 measurement shows it dilutes
-  retrieval for the 1,494 Link blocks that already have good human descriptions.
-- **Native PDF input** for the 50 Attachment blocks, instead of describing Are.na's preview image.
+### V2 — agents
 
-## Backlog — V2 (only after V1 is stable)
+> Do not start these until the human explicitly starts the V2 milestone — see the Product boundary
+> in [`AGENTS.md`](../AGENTS.md).
 
 - Add Mastra and one `archive-research` agent.
 - Wrap V1 retrieval in the read-only `search_archive` tool.
 - Stream responses with block citations; cap retrieval calls at three.
 - Add an agent evaluation set for groundedness and citation coverage.
 
-Do not start V2 items until the human explicitly starts the V2 milestone — see the Product boundary in [`AGENTS.md`](./AGENTS.md).
+### V3 - Trigger.dev
+
+- **trigger.dev**, if sync moves off the maintainer's machine. Revisit only when there is an
+  unattended or scheduled run to make durable — see the ADR for why it is not phase 1.
+
+### V4 — Search improvements
+
+- **Surface `vision_tags` in the interface.** Tags reach search — they are folded into `search_text`
+  and so feed lexical, semantic and hybrid alike — but nothing in the UI lets you filter or browse
+  by them. The attribute is already indexed and filterable, so this needs no sync; filtering would
+  use `ContainsAny`, exactly as `channel_slugs` does. Showing tags on a card would additionally need
+  `vision_tags` in `presentationAttributes`, which is safe now that the namespace has been written.
+
+  _The design problem, measured before deferring:_ the vocabulary does not suit a plain checkbox
+  list. 5,132 distinct tags across 2,561 blocks; **67% of them are used exactly once**, and the top
+  20 cover only 26% of instances.
+
+  _Worse, the head is synonym-fragmented._ One concept routinely spans several tags:
+
+  | Concept   | Tags                                                                      | Instances |
+  | --------- | ------------------------------------------------------------------------- | --------: |
+  | minimal   | `minimalist` 424, `minimalism` 174, `minimal` 106, `minimalist design` 71 |       775 |
+  | interface | `ui design` 293, `user interface` 249, `ui` 213, `interface` 142          |       897 |
+  | dark      | `dark mode` 257, `dark theme` 71                                          |       328 |
+
+  A facet listing the top N would show those as separate entries. Collapsing them needs either a
+  hand-maintained synonym map — the same tuning that was rejected for `dark theme` against
+  `dark mode`, and it ages badly — or a control that matches by prefix or substring so the user
+  never sees the split. That points at a type-to-filter menu rather than a checkbox list.
+
+  _Shapes worth weighing:_ a `Tag` menu in the filter row reusing `FilterMenu` with a
+  type-to-filter field; clickable tags on result cards, which is more discoverable but cannot start
+  a search; or both.
+
+- **Colour search via `vision_palette`.** The model already returns 3–5 dominant colours per block
+  as hex, cached and otherwise unused. A colour picker resolves the chosen colour to a bucket and
+  queries that bucket plus its neighbours, which is what "or closely related colours" means in
+  practice.
+
+  _The design constraint to solve first:_ Turbopuffer string filters are exact-match, so `#b494e4`
+  cannot match "a slightly different purple". Storing raw hex alone gives you nothing. The workable
+  shape is to **quantize at index time** — map each palette entry to a coarse bucket (a dozen or so
+  hue names plus black/white/grey, with saturation and lightness bands where it matters) and store
+  those as a filterable `[]string` alongside the raw hex. Keep the raw hex too: it is what lets you
+  re-bucket later without regenerating anything, and what a swatch strip on a result card would
+  render.
+
+  _Unresolved before building:_ how many buckets before neighbouring ones stop feeling distinct;
+  whether a block should match on any palette entry or only a dominant one; and whether the picker
+  belongs in the existing filter row or somewhere of its own. This is as much a design question as
+  an indexing one.
+
+  Nothing here needs the model again: an additive attribute, a bucketing function with tests, a
+  re-upsert, and UI.
+
+---
+
+## Done
+
+_Newest first._
+
+### Runaway generated text
+
+Two blocks that never describe turned out to be the visible end of a larger defect.
+
+- [x] `27520373` is a dense two-page magazine spread of French body copy; `28605431` is a poster
+      repeating the word "round" dozens of times in a spiral. Both make the model loop forever on
+      the OCR field, on **every** provider — `deepinfra`, `streamlake` and `venice` all time out
+      identically, so it is the model and the input rather than routing.
+- [x] **The real find:** OCR had no length bound while `description` has had one since the first
+      live call, and three cached entries were the same runaway caught mid-loop. One held
+      **270,500 characters — 34,633 words with 76 distinct between them**, a single phrase repeated
+      some 4,300 times — and it had been going into `search_text`, BM25 and the embedding both,
+      ever since. The others were 13,859 and 565 characters.
+- [x] Three guards, none of which touch the prompt, so `PROMPT_VERSION` stands and nothing
+      regenerates: a `max_tokens` ceiling of 2,048, the only thing that reliably stops a runaway
+      decode and twice the 99th-percentile response; a 6,000-character OCR clamp, above the largest
+      legitimate OCR in the archive at 5,624; and a repetition check. The separation in real data is
+      unusually clean — the runaways sit at 0.22%, 0.97% and 5.2% unique words while the lowest
+      legitimate entry of the 728 with substantial OCR is 16.3% and the median is 74%. The check
+      caught the 565-character one, which was far too small to find by size.
+- [x] The clamp runs at index time as well as on generation, because a cache hit never regenerates
+      and those entries would otherwise poison search forever. The cached entries were repaired in
+      place with no model calls, taking 282KB out of the committed file; their text survives in
+      their descriptions.
+- [x] **Verified live after the sync.** All three now carry no `vision_ocr` at all, and the worst
+      block's `search_text` went from roughly 271,000 characters to 656. Their descriptions are
+      untouched. All 15 evaluation cases pass; `semantic-material` moved one place to `@9 of 25`,
+      which is within the noise for a case whose target is one of 25 near-identical documents.
+- [x] **Accepted limitation:** `27520373` and `28605431` still have no description. They now fail in
+      seconds with `finish_reason=length` rather than holding a worker for eight minutes. Describing
+      them means bounding the OCR field in the prompt or the schema, which bumps `PROMPT_VERSION`
+      and regenerates all 2,561 entries — roughly $0.50 and some hours, for two blocks. Worth
+      folding into the next prompt revision that happens for another reason; not worth a run of its
+      own.
+
+### Considered and dropped
+
+Kept as a record so these are not rediscovered and re-proposed.
+
+- [x] ~~**Native PDF input.**~~ Nine of the twelve non-video attachments are PDFs and every one is
+      described from its cover alone — the Formula 1 master brand guidelines are indexed as "a
+      brand guidelines cover featuring the modern Formula 1 logo". Verified as feasible (OpenRouter
+      takes a `file` content part and parses server-side for any model, `mistral-ocr` at $2 per
+      1,000 pages) and contained (`input_mode: 'pdf'` would regenerate only those nine). Dropped
+      because the maintainer is happy with the covers as indexed.
+- [x] ~~**A separate embedded field** for generated text.~~ Conditional on measurement showing that
+      generated prose dilutes retrieval for Link blocks with real human descriptions. It was
+      measured across two upserts and it does not: `exact-phrase-link` held at `@2` and
+      `combined-filter` held at `@2`, which is exactly that population. The one case that did move
+      moved because its neighbours became better described, not because it was diluted.
+- [x] ~~**Batch/async backfill mode** (`--vision-batch`).~~ Conditional on a full re-run becoming
+      routine. It has not, and the only candidate on the horizon — the prompt revision for the two
+      undescribed blocks — is bounded by hours rather than dollars, so batch pricing would not help.
+- [x] ~~**`vision_medium` as a UI facet.**~~ The values do not cluster usefully: `screenshot` is
+      67.1% of the archive and `photograph` 20.3%, so two of the nine cover 87% and the commonest
+      option would return two-thirds of everything. That is not a filter. The known unreliability
+      stands too — a grainy photograph came back labelled `painting`.
+
+### Generated tags in the index
+
+The tags the vision model generates are indexed: a filterable `vision_tags` attribute for a future
+facet, and the tail of `search_text`. They were generated and cached from the start but reached
+neither — an oversight in the spec rather than a decision.
+
+- [x] Measured over a 596-block sample before the change: 2,273 of 4,298 tag instances (53%) use
+      wording found nowhere else in that block's indexed text, and 99% of blocks gain some, for 10%
+      more text. Cost nothing to generate — the values were already in `vision-cache.jsonl`.
+- [x] Lowercased, dehyphenated, deduplicated and sorted, so one concept is one tag and an unchanged
+      block re-upserts byte-identically. Hyphens are collapsed in the attribute as well as the
+      embedded text, so a facet cannot filter on a value the index never wrote.
+- [x] **The first upsert failed the bar it was given.** All 15 evaluation cases passed, but
+      `semantic-material` fell from `@2 of 25` to `@11 of 25`. The cause was tag vocabulary split by
+      hyphenation — that block's `design-engineer` occurred exactly once in the whole archive, while
+      every block above it was tagged in the spacing the query used. 153 pairs differed only by a
+      hyphen.
+- [x] Collapsing hyphens merged 153 distinct tags away and recovered three of the nine positions,
+      to `@8 of 25`. The remaining gap is not a bug: all 25 results are designer-or-engineer
+      portfolio pages and the seven above the target match the query's wording better. Accepted as
+      the new reference — see
+      [`worksheet-vision-eval-baseline.md`](./history/worksheets/worksheet-vision-eval-baseline.md).
+- [x] The two cases predicted to be at risk, `exact-phrase-link` and `combined-filter`, held their
+      rank exactly through both upserts.
+
+### Video playback in the gallery
+
+Video attachments play in the gallery instead of showing a still — muted, looping, inline, with the
+block's own thumbnail as the poster so a card looks identical before the first frame paints.
+
+- [x] **Verified live after the sync: 40 of the 52 attachments carry a playable video**, and 20
+      render on one filtered page. That is three times the pre-build estimate of ~13, which came
+      from matching filenames — low because the Are.na write-back had already retitled most of them.
+- [x] Playback is driven by an `IntersectionObserver` attachment rather than the `autoplay`
+      attribute: with `autoplay`, every card below the fold starts decoding on mount and is only
+      paused afterwards, and the `prefers-reduced-motion` check has to win a race it does not
+      reliably win. Reduced motion keeps the poster frame.
+- [x] No controls at all — the whole card is a link to Are.na, and a control strip inside it would
+      fight every click.
+- [x] `muted` is asserted in the SSR markup, not just set on the client: an unmuted video is not
+      allowed to autoplay, and a missing attribute would make the first paint wrong before any
+      script runs. That is the one failure here that would only ever appear in production.
+- [x] **The new attributes are requested optionally.** Turbopuffer rejects an entire query with a
+      400 when `include_attributes` names an attribute the namespace has never been written, so
+      asking for `video_url` before the re-sync would have taken search down completely rather than
+      costing one feature. Caught by running the real gallery against the live namespace, where it
+      did exactly that.
+
+### Sync progress you can actually read
+
+`bun run sync` keeps a redrawn status region pinned below the log instead of only appending to it.
+
+- [x] Three separate times during the vision work a healthy run was reasonably mistaken for a hung
+      one: progress fired only every 25 completions, so a 2,090-block run sat on `2075/2090` in
+      silence while its tail finished; the same fixed interval meant a 12-block run printed nothing
+      at all until it was done; and a genuinely stalled socket looked identical to slow work,
+      because nothing reported what was in flight.
+- [x] The region answers "what is happening, and is it healthy?" at any instant: phase and position
+      (`fetching 42/74`, `describing 180/2569`, `upserting 3/13`), what is in flight this second
+      (`1 transcoding · 31 awaiting model · oldest 1m 24s`, the oldest wait turning amber past two
+      minutes), a rate and projection measured over the run rather than extrapolated from one
+      sample, and running totals coloured by outcome — generated green, skipped amber, failed red.
+      It says `measuring rate` rather than quoting a number from fewer than five completions.
+- [x] Presentation moved out of the pipeline. `describeBlocks` and `syncArchive` emit structured
+      events (`progress/events.ts`); `SyncProgress` folds them into a snapshot and `formatSnapshot`
+      turns that into lines, both pure and directly tested. The renderer degrades to line-based
+      progress when stdout is not a TTY or `NO_COLOR` is set, writes escape codes directly rather
+      than taking a dependency, clamps every line to the terminal width so a wrap cannot break the
+      redraw, restores the cursor on `SIGINT`, and tears the region down before the final summary so
+      it stays copyable.
+- [x] Timeouts capped at two attempts rather than sharing the retry budget of four. Three blocks
+      timed out on five attempts out of five at four minutes each, holding a worker for twenty
+      minutes after everything else had finished. Failures worth retrying keep the full budget.
+
+### GIF handling — video input
+
+Animated blocks (134, all `image/gif`, all non-resizable) are downloaded, transcoded locally to a
+small MP4 with ffmpeg, and sent as a `video_url` part.
+
+- [x] Fixes both halves at once: the 43 skipped for exceeding the 5 MB image ceiling now fit — a
+      24.2 MB GIF becomes 145 KB in ~0.5s — and the other 91 are read as motion rather than a single
+      frame. A description like "a man running in a park while various data metrics dynamically
+      appear and update" is not something one frame can say.
+- [x] `input_mode` joins the cache entry and the skip key, so only these 134 regenerated rather than
+      all 2,526. ffmpeg is required and failure names it; `--no-vision-video` falls back to stills.
+- [x] Cost ~2x an image call, so ~$0.07 for all 134. **Backfill complete: 135 cached entries now
+      carry `input_mode: video`.**
+- [x] Fixed along the way: odd source widths broke libx264 at yuv420p (`-2` only forces the height
+      even), and the stale-scratch sweep needed an age threshold so two concurrent runs could not
+      delete each other's in-flight files.
+
+### Vision indexing — phase 1
+
+Generate visual descriptions for the blocks with an image and fold them into retrieval.
+Spec: [`specs/spec-vision-indexing.md`](./specs/spec-vision-indexing.md) ·
+Decision: [`decisions/adr-vision-indexing.md`](./decisions/adr-vision-indexing.md).
+
+- [x] **1. Baseline the search evaluation.** The evaluation was red before this work started (3
+      cases stranded past the 24-result limit by the browse-ordering change, 1 expecting a block
+      that pruning had removed). Repaired those 4 to be ordering-independent, added rank reporting
+      so dilution is visible, added a `pending` field so target cases can be recorded without
+      holding the gate red, and added 5 pending vision cases grounded in the actual images.
+      [Worksheet](./history/worksheets/worksheet-vision-eval-baseline.md).
+- [x] **2. Rendition and cache primitives.**
+      [`vision/rendition.ts`](../src/lib/server/indexing/vision/rendition.ts) (payload
+      decode/rewrite/re-encode, source-key extraction, SHA-256; passes non-resizer URLs through
+      untouched) and [`vision/cache.ts`](../src/lib/server/indexing/vision/cache.ts) (JSONL
+      parse/serialize with fixed key order, the skip rule, and a merge that keeps entries for blocks
+      skipped this run while dropping ones that left the archive). The rendition rewrite verified
+      against live Are.na, 10 of 10 at HTTP 200 and ~70% smaller.
+- [x] **3. OpenRouter client.**
+      [`vision/prompt.ts`](../src/lib/server/indexing/vision/prompt.ts) (`PROMPT_VERSION`, system
+      prompt, strict JSON schema, fenced untrusted-context builder) and
+      [`vision/client.ts`](../src/lib/server/indexing/vision/client.ts) (`xiaomi/mimo-v2.5`,
+      `require_parameters: true` with an explicit provider order, reasoning disabled, Zod validation
+      at the boundary, and rejection of a title that echoes the supplied one). `fetch` + Zod, no new
+      dependency. `image.file_size` and `content_type` carried through `ArchiveBlock` so the size
+      guard costs no network call.
+- [x] **4. Wire the stage into sync behind `--vision`.**
+      [`vision/index.ts`](../src/lib/server/indexing/vision/index.ts) (`describeBlocks`,
+      `planVisionWork`, bounded concurrency pool, per-block failures collected not fatal) wired into
+      [`sync.ts`](../src/lib/server/indexing/sync.ts) on the deduplicated block set. Without
+      `--vision`, sync behaves exactly as before.
+      Two findings carried forward: the model overruns the description cap (a first call came back
+      640 chars), so the client clamps at a sentence boundary; and `medium` is the least reliable
+      field — a grainy photograph was labelled `painting`.
+- [x] **5. Schema, `search_text`, and the full backfill.** Four additive `vision_*` attributes (no
+      namespace bump); `toSearchDocument(block, vision?)` folding `vision_description` and
+      `vision_ocr` into `search_text` after the block's own metadata; retry with exponential backoff
+      on 429/5xx honouring `Retry-After`; cache checkpointing every 25 entries so a multi-hour run
+      survives interruption.
+      Fixed along the way: sync now indexes the vision cache on **every** run, not only with
+      `--vision`. Previously a plain `bun run sync` after the backfill would have silently stripped
+      every generated description back out of the namespace.
+      **Backfill complete:** 2,526 of 2,576 blocks with an image carry a generated description; all
+      five pending evaluation cases pass, four at rank 1.
+- [x] **6. Are.na write-back.** `ArenaClient.updateBlock`, `ownerId` threaded from the Are.na
+      payload through `ArchiveBlock`,
+      [`vision/titles.ts`](../src/lib/server/indexing/vision/titles.ts) implementing
+      `lowQualityTitleReason` with its four triggers, and
+      [`vision/writeback.ts`](../src/lib/server/indexing/vision/writeback.ts) planning and applying
+      per-block updates with `metadata.vision_v` / `vision_at` / `vision_src`. Block type is not
+      part of the decision (ADR amendment); a description is written only when empty. Writes are
+      paced, not parallelised.
+      Three classifier rules were wrong on first write and were corrected against real titles: a
+      bare ` / X` suffix was flagging `Home / X`, a false positive that was dropped; the suffix
+      `on X (formerly Twitter)` was missed; and a bare URL with no digits was missed.
+      **Apply complete:** 609 blocks written across three runs. A rate-limit bug cost 171 writes on
+      the second run — pacing was 300ms against a documented 120/min — and they were recovered on
+      the third.
+- [x] **7. Product boundary follow-through.** [`prd.md`](./prd.md) and [`AGENTS.md`](../AGENTS.md)
+      record the reversed non-goal and point at the ADR; the README documents the whole thing for
+      someone running it themselves. The five vision evaluation cases lost their `pending` field and
+      now gate the run alongside the original ten.
+
+### Earlier slices
+
+- [x] Repository documentation and fixture reorganization: `TODOS.md` and `CHANGELOG.md` moved to
+      `docs/`, completed worksheets archived under `docs/history/worksheets/`, ADRs in
+      `docs/decisions/`, `docs/specs/` added for active work. The search-evaluation fixture now
+      lives with its CLI consumer in `scripts/fixtures/`.
+      [Worksheet](./history/worksheets/worksheet-repository-organization.md).
+- [x] Testing approach decision: keep one node-based Vitest project. Server-rendered markup
+      assertions cover static component contracts; focus, live-region announcement and reflow remain
+      manual browser checks. See [`svelte-guidelines.md`](./svelte-guidelines.md).
+- [x] Slice 4 quality pass: the full check/lint/test/build suite and all ten live evaluation cases
+      pass, with a manual browser pass over every fixture URL. Hybrid results are capped after
+      deduplication so the UI's result limit and status stay aligned.
+      [Worksheet](./history/worksheets/worksheet-quality-suite.md).
+- [x] Edge rate limiting and basic error telemetry before public deployment: the shared limiter
+      protects both the gallery and API before Turbopuffer, and Cloudflare observability redacts
+      query strings while retaining safe structured failure events. `f5fefdc`.
+      [Worksheet](./history/worksheets/worksheet-edge-rate-limiting-telemetry.md).
+- [x] Slice 4 channel manifest: `bun run sync` writes every owned channel it discovers to
+      `src/lib/server/indexing/channel-manifest.json`, bundled at build time (no request-time Are.na
+      call). The gallery's Channel filter lists every channel in the archive instead of only the
+      ones present in current results.
+      [Worksheet](./history/worksheets/worksheet-channel-manifest.md).
+- [x] Slice 4 image metadata: index `image.alt_text`/`width`/`height` (from `image.large`, matching
+      the version `imageUrl` already uses) and thread them through to `ResultCard` — real `alt` text
+      when Are.na has it, real intrinsic dimensions replacing the fixed 4:3 crop when it doesn't.
+      [Worksheet](./history/worksheets/worksheet-image-metadata-indexing.md).
+- [x] Slice 4 about surface: `/about` page with notes on where the archive comes from, how the four
+      search modes work, and how the app is built. _(Since removed.)_
+      [Worksheet](./history/worksheets/worksheet-about-surface.md).
+- [x] Slice 3 gallery surface: URL-backed search-first home page, result cards,
+      loading/no-result/invalid/unavailable states, and the shared `executeArchiveSearch` seam behind
+      both the page and `/api/search`.
+      [Worksheet](./history/worksheets/worksheet-gallery-surface.md).
+- [x] Slice 2 search API and evaluation: `SearchRepository`, `/api/search`, four retrieval modes, V1
+      filters, public evaluation fixture, and focused tests.
+      [Worksheet](./history/worksheets/worksheet-search-api.md).
+- [x] Typed Are.na V3 page client with rate-limit-aware pagination (`src/lib/server/arena/`).
+      `e60ec40`. [Worksheet](./history/worksheets/worksheet-arena-page-client.md).
+- [x] `toSearchDocument` normalizer covering all supported block shapes, with tests. `39cce35`.
+      [Worksheet](./history/worksheets/worksheet-arena-block-normalizer.md).
+- [x] Prune stale documents on every `bun run sync`: after the upsert, delete namespace ids not in
+      the synced set (skipped when a channel failed, and above a 50% safety limit unless
+      `--allow-large-prune`).
+- [x] Channel ignore list (`ARENA_IGNORE_CHANNELS`) and private-channel allow list
+      (`ARENA_ALLOW_PRIVATE_CHANNELS`); private channels are skipped by default.
+- [x] Manual `bun run sync` command that discovers and syncs every channel the maintainer's Are.na
+      account owns. `ec7a0b9`. [Worksheet](./history/worksheets/worksheet-sync-command.md).
+- [x] Turbopuffer schema creation (`search_text` full-text + native embed, per
+      [`architecture.md`](./architecture.md)) and batch upsert. `97601ad`.
+      [Worksheet](./history/worksheets/worksheet-turbopuffer-upsert.md).
+- [x] Verify a known block round-trips via a direct SDK query (Embed and filename-only Attachment
+      spot-checked against Are.na's own UI — no bug found).
+      [Worksheet](./history/worksheets/worksheet-roundtrip-verification.md).

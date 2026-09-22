@@ -72,6 +72,88 @@ function requestedBody(fetchFn: ReturnType<typeof vi.fn>) {
 	return JSON.parse(init.body as string);
 }
 
+function unknownAttributeResponse() {
+	return new Response(
+		JSON.stringify({
+			error:
+				'attribute "video_content_type" not found in schema, cannot be part of `include_attributes`',
+			status: 'error'
+		}),
+		{ status: 400, headers: { 'Content-Type': 'application/json' } }
+	);
+}
+
+/**
+ * Turbopuffer rejects the whole query when `include_attributes` names an attribute the namespace
+ * has never been written. Shipping a new presentation attribute before the maintainer re-syncs
+ * would therefore take search down entirely, rather than cost one feature until the sync runs.
+ */
+describe('TurbopufferSearchRepository — attributes a namespace may not have yet', () => {
+	it('asks for the video attributes when it has no reason not to', async () => {
+		const fetchFn = vi.fn<typeof fetch>(async () => queryResponse([resultRow()]));
+		await repository(fetchFn as unknown as typeof fetch).search(input());
+
+		expect(requestedBody(fetchFn).include_attributes).toContain('video_url');
+		expect(requestedBody(fetchFn).include_attributes).toContain('video_content_type');
+	});
+
+	it('retries without them rather than reporting search as unavailable', async () => {
+		let calls = 0;
+		const fetchFn = vi.fn<typeof fetch>(async () => {
+			calls += 1;
+			return calls === 1 ? unknownAttributeResponse() : queryResponse([resultRow()]);
+		});
+
+		const response = await repository(fetchFn as unknown as typeof fetch).search(input());
+
+		expect(response.results).toHaveLength(1);
+		expect(response.results[0].videoUrl).toBeNull();
+		const [, retry] = fetchFn.mock.calls[1] as [string, RequestInit];
+		expect(JSON.parse(retry.body as string).include_attributes).not.toContain('video_url');
+	});
+
+	it('remembers, so only the first request pays for finding out', async () => {
+		let calls = 0;
+		const fetchFn = vi.fn<typeof fetch>(async () => {
+			calls += 1;
+			return calls === 1 ? unknownAttributeResponse() : queryResponse([resultRow()]);
+		});
+		const subject = repository(fetchFn as unknown as typeof fetch);
+
+		await subject.search(input());
+		await subject.search(input());
+
+		expect(fetchFn).toHaveBeenCalledTimes(3);
+		const [, third] = fetchFn.mock.calls[2] as [string, RequestInit];
+		expect(JSON.parse(third.body as string).include_attributes).not.toContain('video_url');
+	});
+
+	it('still reports a real failure as unavailable', async () => {
+		const fetchFn = vi.fn<typeof fetch>(
+			async () => new Response('nope', { status: 500, headers: { 'Content-Type': 'text/plain' } })
+		);
+
+		await expect(repository(fetchFn as unknown as typeof fetch).search(input())).rejects.toThrow(
+			SearchUnavailableError
+		);
+	});
+
+	it('does not mistake an unrelated 400 for a missing attribute', async () => {
+		const fetchFn = vi.fn<typeof fetch>(
+			async () =>
+				new Response(JSON.stringify({ error: 'malformed rank_by', status: 'error' }), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				})
+		);
+
+		await expect(repository(fetchFn as unknown as typeof fetch).search(input())).rejects.toThrow(
+			SearchUnavailableError
+		);
+		expect(fetchFn).toHaveBeenCalledOnce();
+	});
+});
+
 describe('buildSearchFilters', () => {
 	it('omits filters when none are selected', () => {
 		expect(buildSearchFilters(input())).toBeUndefined();
@@ -138,6 +220,8 @@ describe('TurbopufferSearchRepository', () => {
 				imageAlt: 'A felt swatch',
 				imageWidth: 800,
 				imageHeight: 600,
+				videoUrl: null,
+				videoContentType: null,
 				sourceTitle: 'Example'
 			}
 		]);
