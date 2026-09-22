@@ -6,34 +6,6 @@ Seeded from [`implementation_plan.md`](./implementation_plan.md) — vertical sl
 
 ## Up Next
 
-### Sync progress you can actually read
-
-- [ ] **A live TUI for `bun run sync`.** The script's output is a flat log that goes quiet for
-      minutes at a time. Three separate times during the vision work a healthy run was reasonably
-      mistaken for a hung one: progress fired only every 25 completions, so a 2,090-block run sat on
-      `2075/2090` in silence while its tail finished; the same fixed interval meant a 12-block run
-      printed nothing at all until it was done; and a genuinely stalled socket looked identical to
-      slow work, because nothing reported what was in flight. The interval now adapts to the run
-      size and the final block always reports, which patches the symptom — the underlying problem is
-      that the script never says what it is doing _right now_.
-- [ ] Goal: at any instant the screen should answer "what is happening, and is it healthy?" That
-      means a persistent, redrawn status region rather than an append-only log, showing the phase
-      and position (fetching channel 42/74, describing 180/2569, upserting batch 3/13); what is in
-      flight this second, since concurrency is 32 — how many are downloading, transcoding or
-      awaiting the model, and how long the oldest has been waiting, because a block stuck at 200s
-      is exactly the signal that was missing when a stalled socket hung a multi-hour run; a rate and
-      projection from measured throughput rather than a guess, since the original 3.5-hour estimate
-      extrapolated a single 39s sample and was out by 5x; running totals for cached, generated,
-      skipped with reasons and failed; and colour used to mean something — failure, skip, success —
-      never as decoration.
-- [ ] Notes for whoever builds it: `syncArchive` already takes a `log` callback, so a renderer can
-      sit behind that seam without the pipeline knowing. It must degrade to plain line-based output
-      when stdout is not a TTY and when `NO_COLOR` is set. Prefer writing escape codes directly over
-      adding a TUI dependency — [`AGENTS.md`](../AGENTS.md) asks that a dependency remove meaningful
-      production code, and a redraw loop plus a spinner is not much code. Keep the final summary as
-      it is: it is the part people paste into a message, and it has to survive being copied out of a
-      redrawn region.
-
 ### Video playback in the gallery
 
 - [ ] **Autoplaying, looping, muted video in result cards.** The UI only renders `<img>`, and the index
@@ -46,6 +18,28 @@ Seeded from [`implementation_plan.md`](./implementation_plan.md) — vertical sl
 _(none)_
 
 ## Done
+
+### Sync progress you can actually read
+
+- [x] **A live TUI for `bun run sync`.** Done — the script keeps a redrawn status region pinned
+      below the log instead of only appending to it. Three separate times during the vision work a
+      healthy run was reasonably mistaken for a hung one: progress fired only every 25 completions,
+      so a 2,090-block run sat on `2075/2090` in silence while its tail finished; the same fixed
+      interval meant a 12-block run printed nothing at all until it was done; and a genuinely
+      stalled socket looked identical to slow work, because nothing reported what was in flight.
+- [x] The region answers "what is happening, and is it healthy?" at any instant: phase and position
+      (`fetching 42/74`, `describing 180/2569`, `upserting 3/13`), what is in flight this second
+      (`1 transcoding · 31 awaiting model · oldest 1m 24s`, the oldest wait turning amber past two
+      minutes), a rate and projection measured over the run rather than extrapolated from one
+      sample, and running totals coloured by outcome — generated green, skipped amber, failed red.
+      It says `measuring rate` rather than quoting a number from fewer than five completions.
+- [x] Presentation moved out of the pipeline. `describeBlocks` and `syncArchive` emit structured
+      events (`progress/events.ts`); `SyncProgress` folds them into a snapshot and `formatSnapshot`
+      turns that into lines, both pure and directly tested. The renderer degrades to the previous
+      line-based progress when stdout is not a TTY or `NO_COLOR` is set, writes escape codes
+      directly rather than taking a dependency, clamps every line to the terminal width so a wrap
+      cannot break the redraw, restores the cursor on `SIGINT`, and tears the region down before the
+      final summary so it stays copyable.
 
 ### Vision indexing — phase 1
 

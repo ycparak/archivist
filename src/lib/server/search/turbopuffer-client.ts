@@ -45,9 +45,13 @@ function openNamespace(config: TurbopufferConfig) {
 export async function upsertSearchDocuments(
 	documents: SearchDocument[],
 	config: TurbopufferConfig,
-	options: { batchSize?: number; log?: (message: string) => void } = {}
+	options: {
+		batchSize?: number;
+		log?: (message: string) => void;
+		onProgress?: (done: number, total: number) => void;
+	} = {}
 ): Promise<UpsertResult> {
-	const { batchSize = DEFAULT_BATCH_SIZE, log = noop } = options;
+	const { batchSize = DEFAULT_BATCH_SIZE, log = noop, onProgress = noop } = options;
 	const namespace = openNamespace(config);
 	const batchesToWrite = chunk(documents, batchSize);
 
@@ -62,6 +66,7 @@ export async function upsertSearchDocuments(
 		});
 		rowsUpserted += result.rows_affected;
 		batches += 1;
+		onProgress(batches, batchesToWrite.length);
 		log(`Upserted batch ${batches}/${batchesToWrite.length} (${result.rows_affected} document(s))`);
 	}
 
@@ -94,9 +99,13 @@ export async function listDocumentIds(
 export async function deleteSearchDocuments(
 	ids: string[],
 	config: TurbopufferConfig,
-	options: { batchSize?: number; log?: (message: string) => void } = {}
+	options: {
+		batchSize?: number;
+		log?: (message: string) => void;
+		onProgress?: (done: number, total: number) => void;
+	} = {}
 ): Promise<DeleteResult> {
-	const { batchSize = DEFAULT_DELETE_BATCH_SIZE, log = noop } = options;
+	const { batchSize = DEFAULT_DELETE_BATCH_SIZE, log = noop, onProgress = noop } = options;
 	const namespace = openNamespace(config);
 	const batchesToWrite = chunk(ids, batchSize);
 
@@ -107,6 +116,7 @@ export async function deleteSearchDocuments(
 		const result = await namespace.write({ deletes: batch });
 		rowsDeleted += result.rows_affected;
 		batches += 1;
+		onProgress(batches, batchesToWrite.length);
 		log(`Deleted batch ${batches}/${batchesToWrite.length} (${result.rows_affected} document(s))`);
 	}
 

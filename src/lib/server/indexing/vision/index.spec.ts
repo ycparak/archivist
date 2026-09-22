@@ -1,3 +1,4 @@
+import type { SyncEvent } from '../progress/events';
 import { describe, expect, it, vi } from 'vitest';
 import type { ArchiveBlock } from '$lib/domain/archive';
 import type { VisionCacheEntry } from './cache';
@@ -260,39 +261,63 @@ describe('describeBlocks', () => {
 		expect(peak).toBe(2);
 	});
 
-	it('reports progress on a short run, which a fixed interval of 25 never did', async () => {
-		const lines: string[] = [];
+	/**
+	 * Progress presentation moved out to the reporter; what this stage owes it is an event per
+	 * block, early enough that a status display can name what is in flight rather than what is done.
+	 */
+	it('emits a started and a settled event for every block', async () => {
+		const events: SyncEvent[] = [];
 		await describeBlocks(
 			Array.from({ length: 12 }, (_, index) => block({ id: String(index) })),
-			{ client: stubClient(), cache: new Map(), concurrency: 4, now, log: (m) => lines.push(m) }
+			{
+				client: stubClient(),
+				cache: new Map(),
+				concurrency: 4,
+				now,
+				onEvent: (event) => events.push(event)
+			}
 		);
 
-		const progress = lines.filter((line) => line.includes('described'));
-		expect(progress.length).toBeGreaterThan(1);
-		expect(progress.at(-1)).toBe('  12/12 described');
+		expect(events.filter((event) => event.kind === 'vision-started')).toHaveLength(12);
+		expect(events.filter((event) => event.kind === 'vision-settled')).toHaveLength(12);
+		expect(events[0]).toEqual({ kind: 'vision-planned', pending: 12, cached: 0 });
 	});
 
-	it('keeps a long run to roughly ten updates rather than hundreds', async () => {
-		const lines: string[] = [];
-		await describeBlocks(
-			Array.from({ length: 400 }, (_, index) => block({ id: String(index) })),
-			{ client: stubClient(), cache: new Map(), concurrency: 8, now, log: (m) => lines.push(m) }
-		);
+	it('announces a block before the model is asked, not after it answers', async () => {
+		const events: SyncEvent[] = [];
+		await describeBlocks([block({ id: '1' })], {
+			client: stubClient(),
+			cache: new Map(),
+			now,
+			onEvent: (event) => events.push(event)
+		});
 
-		const progress = lines.filter((line) => line.includes('described'));
-		expect(progress.length).toBeLessThanOrEqual(17);
-		expect(progress.at(-1)).toBe('  400/400 described');
+		expect(events.map((event) => event.kind)).toEqual([
+			'vision-planned',
+			'vision-started',
+			'vision-stage',
+			'vision-settled'
+		]);
+		expect(events[2]).toMatchObject({ stage: 'awaiting-model' });
+		expect(events[3]).toMatchObject({ outcome: 'generated' });
 	});
 
-	it('reports the final block, so the tail does not look like a hang', async () => {
-		const lines: string[] = [];
-		await describeBlocks(
-			Array.from({ length: 27 }, (_, index) => block({ id: String(index) })),
-			{ client: stubClient(), cache: new Map(), concurrency: 4, now, log: (m) => lines.push(m) }
-		);
+	it('settles a failed block as failed, so the totals can be trusted', async () => {
+		const events: SyncEvent[] = [];
+		await describeBlocks([block({ id: '1' })], {
+			client: {
+				model: 'test-model',
+				promptVersion: 1,
+				describe: async () => {
+					throw new Error('provider exploded');
+				}
+			},
+			cache: new Map(),
+			now,
+			onEvent: (event) => events.push(event)
+		});
 
-		// The interval adapts to the run size; what must always hold is that the last block reports.
-		expect(lines).toContain('  27/27 described');
+		expect(events.at(-1)).toMatchObject({ kind: 'vision-settled', outcome: 'failed' });
 	});
 });
 
