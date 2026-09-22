@@ -71,6 +71,79 @@ describe('toSearchDocument', () => {
 	});
 });
 
+describe('toSearchDocument — generated tags', () => {
+	const block = () =>
+		archiveBlockSchema.parse({
+			id: 9,
+			type: 'Image',
+			title: 'Brutalist window',
+			arenaUrl: 'https://www.are.na/block/9',
+			channels: [{ slug: 'architecture', title: 'Architecture' }]
+		});
+
+	const vision = (tags: string[]) => ({
+		title: 'A concrete facade',
+		description: 'A concrete facade in raking light.',
+		ocr: '',
+		medium: 'photograph',
+		tags
+	});
+
+	/** 53% of tag wording appears nowhere else in a block's indexed text. */
+	it('indexes tags so their wording is searchable', () => {
+		const document = toSearchDocument(block(), vision(['brutalism', 'dark mode']));
+
+		expect(document.search_text).toContain('brutalism, dark mode');
+		expect(document.vision_tags).toEqual(['brutalism', 'dark mode']);
+	});
+
+	it('keeps tags last, so eight words cannot outweigh a block that describes itself', () => {
+		const document = toSearchDocument(block(), vision(['brutalism']));
+		const lines = document.search_text.split('\n');
+
+		expect(lines.at(-1)).toBe('brutalism');
+		expect(lines[0]).toBe('Brutalist window');
+	});
+
+	/** The model capitalizes intermittently; a facet should treat `UI` and `ui` as one value. */
+	it('lowercases and deduplicates, so a facet does not split on capitalization', () => {
+		const document = toSearchDocument(block(), vision(['UI', 'ui', 'macOS', ' UI ']));
+
+		expect(document.vision_tags).toEqual(['macos', 'ui']);
+	});
+
+	it('sorts them, so an unchanged block re-upserts identically', () => {
+		const first = toSearchDocument(block(), vision(['web design', 'a11y', 'typography']));
+		const second = toSearchDocument(block(), vision(['typography', 'a11y', 'web design']));
+
+		expect(first.vision_tags).toEqual(['a11y', 'typography', 'web design']);
+		expect(first.search_text).toBe(second.search_text);
+	});
+
+	it('drops blanks rather than indexing an empty tag', () => {
+		expect(toSearchDocument(block(), vision(['', '   ', 'felt'])).vision_tags).toEqual(['felt']);
+	});
+
+	it('indexes an empty list for a block the model never saw', () => {
+		const document = toSearchDocument(block());
+
+		expect(document.vision_tags).toEqual([]);
+		expect(document.search_text).toBe('Brutalist window\nArchitecture');
+	});
+
+	it('leaves no trailing separator when a block has tags but no description', () => {
+		const document = toSearchDocument(block(), {
+			title: '',
+			description: '',
+			ocr: '',
+			medium: '',
+			tags: ['felt']
+		});
+
+		expect(document.search_text).toBe('Brutalist window\nArchitecture\nfelt');
+	});
+});
+
 describe('block type indexing', () => {
 	it('indexes every filterable block type verbatim', () => {
 		for (const blockType of ARCHIVE_BLOCK_TYPES) {
