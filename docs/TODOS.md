@@ -13,39 +13,7 @@ do · `[x]` finished.
 
 ## In Progress
 
-### Generated tags in the index
-
-> **Waiting on:** one more `bun run sync`, then `bun run evaluate:search`.
-> Tags shipped and were measured: all 15 cases passed, but `semantic-material` fell from `@2 of 25`
-> to `@11 of 25`, which failed the bar. The cause was tag vocabulary split by hyphenation; the fix
-> is in and needs a re-upsert to take effect. Full diagnosis in
-> [`worksheet-vision-eval-baseline.md`](./history/worksheets/worksheet-vision-eval-baseline.md).
-
-Tags were generated and cached for every block from the start but reached neither Turbopuffer nor
-`search_text` — an oversight in the spec rather than a decision. They now go into both: a
-filterable `[]string` attribute for a future tag facet, and the tail of `search_text`.
-
-- [x] Fold `vision_tags` into `search_text`, last in the composition, and add the filterable
-      attribute. Nothing reads it back yet, so it cannot trip the `include_attributes` 400 that
-      video playback hit.
-- [x] Lowercase, deduplicate and sort, so a facet treats `UI` and `ui` as one value and an unchanged
-      block re-upserts byte-identically.
-- [x] Record a second evaluation baseline — all 15 cases green, with ranks — in
-      [`worksheet-vision-eval-baseline.md`](./history/worksheets/worksheet-vision-eval-baseline.md).
-- [x] Synced and re-evaluated. The two cases predicted to be at risk — `exact-phrase-link` and
-      `combined-filter`, Link blocks with real human descriptions — held their rank exactly. The
-      regression landed somewhere the prediction did not look.
-- [x] Collapse hyphens in tag normalization, in the attribute as well as the embedded text, so a
-      facet cannot filter on a value the index never wrote. 153 distinct tags merge away; the
-      `semantic-material` target's three orphans join groups 10x, 12x and 16x larger.
-- [ ] **For the maintainer:** re-sync and re-evaluate. The bar is `semantic-material` recovering
-      materially from `@11 of 25`, and nothing else regressing. This does nothing for
-      `vision-widget-grid` (`dark theme` against `dark mode` is synonymy, not spelling), so `@16` is
-      expected to stay roughly where it is.
-
-**Why it is worth the re-embed.** Measured over a 596-block sample of the live index: 2,273 of
-4,298 tag instances (53%) use wording found nowhere else in that block's indexed text, and 99% of
-blocks gain some. The cost is 10% more text — 86 characters against a median `search_text` of 890.
+_(none)_
 
 ---
 
@@ -107,6 +75,31 @@ _Nothing queued. Pick from the backlog below._
 ## Done
 
 _Newest first._
+
+### Generated tags in the index
+
+The tags the vision model generates are indexed: a filterable `vision_tags` attribute for a future
+facet, and the tail of `search_text`. They were generated and cached from the start but reached
+neither — an oversight in the spec rather than a decision.
+
+- [x] Measured over a 596-block sample before the change: 2,273 of 4,298 tag instances (53%) use
+      wording found nowhere else in that block's indexed text, and 99% of blocks gain some, for 10%
+      more text. Cost nothing to generate — the values were already in `vision-cache.jsonl`.
+- [x] Lowercased, dehyphenated, deduplicated and sorted, so one concept is one tag and an unchanged
+      block re-upserts byte-identically. Hyphens are collapsed in the attribute as well as the
+      embedded text, so a facet cannot filter on a value the index never wrote.
+- [x] **The first upsert failed the bar it was given.** All 15 evaluation cases passed, but
+      `semantic-material` fell from `@2 of 25` to `@11 of 25`. The cause was tag vocabulary split by
+      hyphenation — that block's `design-engineer` occurred exactly once in the whole archive, while
+      every block above it was tagged in the spacing the query used. 153 pairs differed only by a
+      hyphen.
+- [x] Collapsing hyphens merged 153 distinct tags away and recovered three of the nine positions,
+      to `@8 of 25`. The remaining gap is not a bug: all 25 results are designer-or-engineer
+      portfolio pages and the seven above the target match the query's wording better. Accepted as
+      the new reference — see
+      [`worksheet-vision-eval-baseline.md`](./history/worksheets/worksheet-vision-eval-baseline.md).
+- [x] The two cases predicted to be at risk, `exact-phrase-link` and `combined-filter`, held their
+      rank exactly through both upserts.
 
 ### Video playback in the gallery
 
