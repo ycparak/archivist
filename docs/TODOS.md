@@ -31,11 +31,19 @@ _Nothing queued. Pick from the backlog below._
   revision ever makes a full 2,585-block re-run routine.
 - **trigger.dev**, if sync moves off the maintainer's machine. Revisit only when there is an
   unattended or scheduled run to make durable — see the ADR for why it is not phase 1.
-- **`vision_medium` as a UI facet**, if the generated values cluster usefully. Measure first: a
-  grainy photograph came back labelled `painting`.
+- ~~**`vision_medium` as a UI facet.**~~ Measured and dropped. The values do not cluster usefully:
+  `screenshot` is 67.1% of the archive and `photograph` 20.3%, so two of the nine values cover 87%
+  and the commonest option would return two-thirds of everything. That is not a filter. The known
+  unreliability stands too — a grainy photograph came back labelled `painting`.
 - **A separate embedded field** for generated text, if measurement shows it dilutes retrieval for
   the Link blocks that already have good human descriptions.
 - **Native PDF input** for the seven PDF attachments, instead of describing Are.na's preview image.
+- **Two blocks that never describe.** `27520373` (a 118KB JPEG) and `28605431` (a 62KB PNG) time
+  out on generation every run and have no description. The images themselves are fine — both fetch
+  in under a second at the rendition the model is given — so the stall is generation-side, and both
+  are text-heavy, which fits the model running long on the OCR field. The timeout cap means they
+  now cost about eight minutes a run rather than twenty. Options: bound the OCR field in the
+  prompt, or record a permanent-failure marker so they stop being retried.
 
 ### V2 — agents
 
@@ -46,6 +54,35 @@ _Nothing queued. Pick from the backlog below._
 - Wrap V1 retrieval in the read-only `search_archive` tool.
 - Stream responses with block citations; cap retrieval calls at three.
 - Add an agent evaluation set for groundedness and citation coverage.
+
+### V4 — tag search UI
+
+- **Surface `vision_tags` in the interface.** Tags reach search — they are folded into `search_text`
+  and so feed lexical, semantic and hybrid alike — but nothing in the UI lets you filter or browse
+  by them. The attribute is already indexed and filterable, so this needs no sync; filtering would
+  use `ContainsAny`, exactly as `channel_slugs` does. Showing tags on a card would additionally need
+  `vision_tags` in `presentationAttributes`, which is safe now that the namespace has been written.
+
+  _The design problem, measured before deferring:_ the vocabulary does not suit a plain checkbox
+  list. 5,132 distinct tags across 2,561 blocks; **67% of them are used exactly once**, and the top
+  20 cover only 26% of instances.
+
+  _Worse, the head is synonym-fragmented._ One concept routinely spans several tags:
+
+  | Concept   | Tags                                                                      | Instances |
+  | --------- | ------------------------------------------------------------------------- | --------: |
+  | minimal   | `minimalist` 424, `minimalism` 174, `minimal` 106, `minimalist design` 71 |       775 |
+  | interface | `ui design` 293, `user interface` 249, `ui` 213, `interface` 142          |       897 |
+  | dark      | `dark mode` 257, `dark theme` 71                                          |       328 |
+
+  A facet listing the top N would show those as separate entries. Collapsing them needs either a
+  hand-maintained synonym map — the same tuning that was rejected for `dark theme` against
+  `dark mode`, and it ages badly — or a control that matches by prefix or substring so the user
+  never sees the split. That points at a type-to-filter menu rather than a checkbox list.
+
+  _Shapes worth weighing:_ a `Tag` menu in the filter row reusing `FilterMenu` with a
+  type-to-filter field; clickable tags on result cards, which is more discoverable but cannot start
+  a search; or both.
 
 ### V3 — colour
 
