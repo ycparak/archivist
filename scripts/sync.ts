@@ -4,6 +4,7 @@ import {
 	serializeChannelManifest
 } from '$lib/server/indexing/channel-manifest';
 import { parseSlugList } from '$lib/server/indexing/channel-filter';
+import { createSyncReporter } from '$lib/server/indexing/progress/reporter';
 import {
 	syncArchive,
 	type PushArenaOptions,
@@ -111,6 +112,15 @@ function resolvePushArena(): PushArenaOptions | undefined {
 const vision = resolveVisionOptions();
 const pushArena = resolvePushArena();
 const visionCache = await readVisionCache();
+const reporter = createSyncReporter();
+
+// A killed run must not leave the terminal with its cursor still hidden.
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+	process.on(signal, () => {
+		reporter.stop();
+		process.exit(130);
+	});
+}
 
 /**
  * A full backfill runs for hours. Checkpointing every 25 entries means a crash, a rate-limit wall
@@ -130,7 +140,9 @@ const onEntry = (entry: VisionCacheEntry) => {
 	if (++sinceCheckpoint < CHECKPOINT_EVERY) return;
 	sinceCheckpoint = 0;
 	void writeVisionCache(live.values()).catch((error) => {
-		console.error('  checkpoint write failed:', error instanceof Error ? error.message : error);
+		reporter.log(
+			`  checkpoint write failed: ${error instanceof Error ? error.message : String(error)}`
+		);
 	});
 };
 
@@ -142,7 +154,8 @@ try {
 	} = await syncArchive({
 		accessToken,
 		turbopuffer: { apiKey, region, namespace },
-		log: console.log,
+		log: (message) => reporter.log(message),
+		onEvent: (event) => reporter.emit(event),
 		allowLargePrune: hasFlag('allow-large-prune'),
 		visionCache,
 		vision: vision && { ...vision, onEntry },
@@ -152,6 +165,10 @@ try {
 			allowPrivate: parseSlugList(process.env.ARENA_ALLOW_PRIVATE_CHANNELS)
 		}
 	});
+
+	// Before anything is printed: the summary is the part people copy, and it must not be written
+	// into a region that is still being redrawn underneath it.
+	reporter.stop();
 
 	if (mergedVisionCache) {
 		await writeVisionCache(mergedVisionCache);
@@ -240,6 +257,7 @@ try {
 		console.log(`  Pruned:              ${summary.documentsDeleted} stale document(s)`);
 	}
 } catch (error) {
+	reporter.stop();
 	console.error('Sync failed:', error instanceof Error ? error.message : error);
 	process.exit(1);
 }

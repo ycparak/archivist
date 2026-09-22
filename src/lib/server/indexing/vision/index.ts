@@ -6,6 +6,7 @@ import {
 	type VisionCacheKey,
 	type VisionInputMode
 } from './cache';
+import type { SyncEventSink, VisionOutcome } from '../progress/events';
 import type { VisionClient, VisionMedia } from './client';
 import { imageSourceHash } from './rendition';
 import {
@@ -31,6 +32,8 @@ export interface VisionStageOptions {
 	transcodeOptions?: TranscodeOptions;
 	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
 	onEntry?: (entry: VisionCacheEntry) => void;
+	/** Structured progress for a status display. Presentation lives entirely on the other side. */
+	onEvent?: SyncEventSink;
 }
 
 export interface VisionFailure {
@@ -153,6 +156,7 @@ export async function describeBlocks(
 		signal,
 		now = () => new Date(),
 		onEntry,
+		onEvent = noop,
 		video = false,
 		transcodeOptions
 	} = options;
@@ -182,26 +186,26 @@ export async function describeBlocks(
 	}
 
 	log(`Vision: ${cached} cached, describing ${pending.length} block(s)`);
+	onEvent({ kind: 'vision-planned', pending: pending.length, cached });
 
 	if (video) {
 		const { removed } = await cleanupStaleTranscodes();
 		if (removed) log(`  cleared ${removed} scratch director(ies) from an interrupted run`);
 	}
 
-	// Roughly ten updates per run, whatever its size. A fixed interval of 25 meant a 12-block run
-	// printed nothing at all until it finished, which reads as a hang.
-	const progressEvery = Math.max(1, Math.min(25, Math.ceil(pending.length / 10)));
-
 	const entries: VisionCacheEntry[] = [];
-	let completed = 0;
 
 	await pool(pending, concurrency, async (block) => {
 		if (signal?.aborted) return;
+
+		let outcome: VisionOutcome = 'failed';
+		onEvent({ kind: 'vision-started', blockId: block.id });
 
 		try {
 			const unsupported = unsupportedFormatReason(block.imageContentType);
 			if (unsupported) {
 				summary.skippedUnsupported += 1;
+				outcome = 'skipped';
 				log(`  skipped ${block.id}: ${unsupported}`);
 				return;
 			}
@@ -212,10 +216,12 @@ export async function describeBlocks(
 			if (mode === 'video') {
 				const transcoded = await transcodeToVideoDataUrl(block.imageUrl!, {
 					signal,
+					onStage: (stage) => onEvent({ kind: 'vision-stage', blockId: block.id, stage }),
 					...transcodeOptions
 				});
 				if (transcoded.kind === 'skipped') {
 					summary.skippedTooLarge += 1;
+					outcome = 'skipped';
 					log(`  skipped ${block.id}: ${transcoded.reason}`);
 					return;
 				}
@@ -224,7 +230,8 @@ export async function describeBlocks(
 				media = { kind: 'image', url: block.imageUrl!, bytes: block.imageBytes };
 			}
 
-			const outcome = await client.describe({
+			onEvent({ kind: 'vision-stage', blockId: block.id, stage: 'awaiting-model' });
+			const described = await client.describe({
 				media,
 				block: {
 					type: block.type,
@@ -235,37 +242,34 @@ export async function describeBlocks(
 				signal
 			});
 
-			if (outcome.kind === 'skipped') {
+			if (described.kind === 'skipped') {
 				summary.skippedTooLarge += 1;
-				log(`  skipped ${block.id}: ${outcome.reason}`);
+				outcome = 'skipped';
+				log(`  skipped ${block.id}: ${described.reason}`);
 				return;
 			}
 
 			const entry = {
-				...outcome.result,
+				...described.result,
 				block_id: block.id,
 				image_src_hash: imageSourceHash(block.imageUrl!),
 				prompt_version: client.promptVersion,
 				model: client.model,
 				input_mode: mode,
-				provider: outcome.provider,
+				provider: described.provider,
 				generated_at: now().toISOString()
 			};
 			entries.push(entry);
 			onEntry?.(entry);
 			summary.generated += 1;
+			outcome = 'generated';
 			if (mode === 'video') summary.generatedFromVideo += 1;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			summary.failed.push({ blockId: block.id, error: message });
 			log(`  failed ${block.id}: ${message}`);
 		} finally {
-			completed += 1;
-			// Also log the final block: without it the tail after the last multiple of 25 runs
-			// silently, which reads as a hang when each call can take minutes.
-			if (completed % progressEvery === 0 || completed === pending.length) {
-				log(`  ${completed}/${pending.length} described`);
-			}
+			onEvent({ kind: 'vision-settled', blockId: block.id, outcome });
 		}
 	});
 
