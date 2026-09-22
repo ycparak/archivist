@@ -13,18 +13,7 @@ do · `[x]` finished.
 
 ## In Progress
 
-### Vision indexing — phase 2
-
-The code is done and committed; what is left needs a run only the maintainer can make.
-
-- [ ] **A plain `bun run sync`,** to get the runaway OCR out of the live index. No `--vision` — the
-      cached entries were repaired in place, so nothing regenerates.
-- [ ] **Two blocks remain undescribed.** `27520373` and `28605431` now fail in seconds with
-      `finish_reason=length` rather than holding a worker for eight minutes, but they still have no
-      description. Getting one means bounding the OCR field in the prompt or the schema, which bumps
-      `PROMPT_VERSION` and regenerates all 2,561 entries — roughly $0.50 and some hours, for two
-      blocks. Fold it into the next prompt revision that happens for another reason; it does not
-      justify a run of its own.
+_(none)_
 
 ---
 
@@ -131,6 +120,16 @@ Two blocks that never describe turned out to be the visible end of a larger defe
       and those entries would otherwise poison search forever. The cached entries were repaired in
       place with no model calls, taking 282KB out of the committed file; their text survives in
       their descriptions.
+- [x] **Verified live after the sync.** All three now carry no `vision_ocr` at all, and the worst
+      block's `search_text` went from roughly 271,000 characters to 656. Their descriptions are
+      untouched. All 15 evaluation cases pass; `semantic-material` moved one place to `@9 of 25`,
+      which is within the noise for a case whose target is one of 25 near-identical documents.
+- [x] **Accepted limitation:** `27520373` and `28605431` still have no description. They now fail in
+      seconds with `finish_reason=length` rather than holding a worker for eight minutes. Describing
+      them means bounding the OCR field in the prompt or the schema, which bumps `PROMPT_VERSION`
+      and regenerates all 2,561 entries — roughly $0.50 and some hours, for two blocks. Worth
+      folding into the next prompt revision that happens for another reason; not worth a run of its
+      own.
 
 ### Considered and dropped
 
