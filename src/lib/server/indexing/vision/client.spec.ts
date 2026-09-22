@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { MAX_OCR_CHARS } from '$lib/domain/archive';
 import {
 	createVisionClient,
 	DEFAULT_MODEL,
@@ -385,6 +386,77 @@ describe('describe — retries', () => {
 		).rejects.toBeInstanceOf(VisionRequestError);
 
 		expect(slept).toEqual([1000, 2000, 4000]);
+	});
+});
+
+describe('describe — bounding a runaway decode', () => {
+	/**
+	 * Two blocks make this model loop forever on the OCR field, on every provider. A token ceiling
+	 * is the only thing that reliably stops it; without one the request simply never returns.
+	 */
+	it('sends a token ceiling with every request', async () => {
+		const fetchFn = vi.fn<typeof fetch>(async () => Response.json(completion(RESULT)));
+		await client(fetchFn as unknown as typeof fetch).describe({
+			media: { kind: 'image', url: ARENA_URL },
+			block
+		});
+
+		const [, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+		expect(JSON.parse(init.body as string).max_tokens).toBeGreaterThan(0);
+	});
+
+	it('drops OCR that came back as repetition rather than text', async () => {
+		const fetchFn = vi.fn<typeof fetch>(async () =>
+			Response.json(completion({ ...RESULT, ocr: 'and critical practice that '.repeat(400) }))
+		);
+
+		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
+			media: { kind: 'image', url: ARENA_URL },
+			block
+		});
+
+		expect(outcome.kind).toBe('described');
+		if (outcome.kind !== 'described') return;
+		expect(outcome.result.ocr).toBe('');
+		// The rest of the response is untouched: the block still gets described.
+		expect(outcome.result.description).toBe(RESULT.description);
+	});
+
+	it('bounds OCR that is merely long', async () => {
+		const dense = Array.from({ length: 3000 }, (_, index) => `term${index}`).join(' ');
+		const fetchFn = vi.fn<typeof fetch>(async () =>
+			Response.json(completion({ ...RESULT, ocr: dense }))
+		);
+
+		const outcome = await client(fetchFn as unknown as typeof fetch).describe({
+			media: { kind: 'image', url: ARENA_URL },
+			block
+		});
+
+		if (outcome.kind !== 'described') throw new Error('expected a description');
+		expect(outcome.result.ocr.length).toBeLessThanOrEqual(MAX_OCR_CHARS);
+		expect(outcome.result.ocr.startsWith('term0 term1')).toBe(true);
+	});
+
+	/** With a ceiling in place this is what a runaway now looks like: fast, and legible. */
+	it('says the reply was truncated rather than reporting bare invalid JSON', async () => {
+		const fetchFn = vi.fn<typeof fetch>(async () =>
+			Response.json({
+				choices: [
+					{
+						message: { content: '{"title":"A poster","ocr":"round round' },
+						finish_reason: 'length'
+					}
+				]
+			})
+		);
+
+		await expect(
+			client(fetchFn as unknown as typeof fetch, { maxRetries: 0 }).describe({
+				media: { kind: 'image', url: ARENA_URL },
+				block
+			})
+		).rejects.toThrow(/finish_reason=length/);
 	});
 });
 
