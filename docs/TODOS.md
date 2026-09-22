@@ -15,41 +15,16 @@ do · `[x]` finished.
 
 ### Vision indexing — phase 2
 
-- [~] **Two blocks that never describe — and a bigger defect found underneath.** `27520373` is a
-  dense two-page magazine spread of French body copy; `28605431` is a poster repeating the word
-  "round" dozens of times in a spiral. Both make the model loop forever on the OCR field, on
-  **every** provider — `deepinfra`, `streamlake` and `venice` all time out identically, so it is
-  the model and the input, not routing.
-- [~] The real find: OCR had no length bound while `description` has had one since the first live
-  call, and three cached entries were runaways that happened to terminate. One held **270,500
-  characters — 34,633 words with 76 distinct between them**, a single phrase repeated some 4,300
-  times — and it had been going into `search_text`, BM25 and the embedding both, ever since.
-  The others were 13,859 and 565 characters.
-- [~] Fixed with a `max_tokens` ceiling of 2,048, which is the only thing that reliably stops a
-  runaway decode; a 6,000-character OCR clamp; and a repetition check. The separation in real
-  data is unusually clean — the runaways sit at 0.22%, 0.97% and 5.2% unique words while the
-  lowest legitimate entry of the 728 with substantial OCR is 16.3% and the median is 74%. None
-  of this touches the prompt, so `PROMPT_VERSION` stands and nothing regenerates.
-- [~] The clamp applies at index time as well as on generation, because a cache hit never
-  regenerates and those three entries would otherwise poison search forever. The cached entries
-  were repaired in place, no model calls: 282KB out of the committed file.
-- [ ] **Still undescribed.** The two blocks now fail in seconds with `finish_reason=length` instead
-      of holding a worker for eight minutes, but they have no description. Describing them needs the
-      OCR field bounded in the prompt or the schema, which bumps `PROMPT_VERSION` and regenerates
-      all 2,561 entries — roughly $0.50 and some hours for two blocks. Worth folding into the next
-      prompt revision that happens for another reason, not worth one of its own.
-- [ ] **For the maintainer:** a plain `bun run sync` to get the runaway out of the live index.
-- [ ] **Batch/async backfill mode.** A `--vision-batch` path for large regenerations, if a prompt
-      revision ever makes a full 2,585-block re-run routine.
-- [ ] **A separate embedded field** for generated text, if measurement shows it dilutes retrieval
-      for the Link blocks that already have good human descriptions.
-- [ ] **Native PDF input** for the seven PDF attachments, instead of describing Are.na's preview
-      image.
-- [x] ~~**`vision_medium` as a UI facet.**~~ Measured and dropped. The values do not cluster
-      usefully: `screenshot` is 67.1% of the archive and `photograph` 20.3%, so two of the nine
-      values cover 87% and the commonest option would return two-thirds of everything. That is not
-      a filter. The known unreliability stands too — a grainy photograph came back labelled
-      `painting`.
+The code is done and committed; what is left needs a run only the maintainer can make.
+
+- [ ] **A plain `bun run sync`,** to get the runaway OCR out of the live index. No `--vision` — the
+      cached entries were repaired in place, so nothing regenerates.
+- [ ] **Two blocks remain undescribed.** `27520373` and `28605431` now fail in seconds with
+      `finish_reason=length` rather than holding a worker for eight minutes, but they still have no
+      description. Getting one means bounding the OCR field in the prompt or the schema, which bumps
+      `PROMPT_VERSION` and regenerates all 2,561 entries — roughly $0.50 and some hours, for two
+      blocks. Fold it into the next prompt revision that happens for another reason; it does not
+      justify a run of its own.
 
 ---
 
@@ -131,6 +106,54 @@ _Nothing queued. Pick from the backlog below._
 ## Done
 
 _Newest first._
+
+### Runaway generated text
+
+Two blocks that never describe turned out to be the visible end of a larger defect.
+
+- [x] `27520373` is a dense two-page magazine spread of French body copy; `28605431` is a poster
+      repeating the word "round" dozens of times in a spiral. Both make the model loop forever on
+      the OCR field, on **every** provider — `deepinfra`, `streamlake` and `venice` all time out
+      identically, so it is the model and the input rather than routing.
+- [x] **The real find:** OCR had no length bound while `description` has had one since the first
+      live call, and three cached entries were the same runaway caught mid-loop. One held
+      **270,500 characters — 34,633 words with 76 distinct between them**, a single phrase repeated
+      some 4,300 times — and it had been going into `search_text`, BM25 and the embedding both,
+      ever since. The others were 13,859 and 565 characters.
+- [x] Three guards, none of which touch the prompt, so `PROMPT_VERSION` stands and nothing
+      regenerates: a `max_tokens` ceiling of 2,048, the only thing that reliably stops a runaway
+      decode and twice the 99th-percentile response; a 6,000-character OCR clamp, above the largest
+      legitimate OCR in the archive at 5,624; and a repetition check. The separation in real data is
+      unusually clean — the runaways sit at 0.22%, 0.97% and 5.2% unique words while the lowest
+      legitimate entry of the 728 with substantial OCR is 16.3% and the median is 74%. The check
+      caught the 565-character one, which was far too small to find by size.
+- [x] The clamp runs at index time as well as on generation, because a cache hit never regenerates
+      and those entries would otherwise poison search forever. The cached entries were repaired in
+      place with no model calls, taking 282KB out of the committed file; their text survives in
+      their descriptions.
+
+### Considered and dropped
+
+Kept as a record so these are not rediscovered and re-proposed.
+
+- [x] ~~**Native PDF input.**~~ Nine of the twelve non-video attachments are PDFs and every one is
+      described from its cover alone — the Formula 1 master brand guidelines are indexed as "a
+      brand guidelines cover featuring the modern Formula 1 logo". Verified as feasible (OpenRouter
+      takes a `file` content part and parses server-side for any model, `mistral-ocr` at $2 per
+      1,000 pages) and contained (`input_mode: 'pdf'` would regenerate only those nine). Dropped
+      because the maintainer is happy with the covers as indexed.
+- [x] ~~**A separate embedded field** for generated text.~~ Conditional on measurement showing that
+      generated prose dilutes retrieval for Link blocks with real human descriptions. It was
+      measured across two upserts and it does not: `exact-phrase-link` held at `@2` and
+      `combined-filter` held at `@2`, which is exactly that population. The one case that did move
+      moved because its neighbours became better described, not because it was diluted.
+- [x] ~~**Batch/async backfill mode** (`--vision-batch`).~~ Conditional on a full re-run becoming
+      routine. It has not, and the only candidate on the horizon — the prompt revision for the two
+      undescribed blocks — is bounded by hours rather than dollars, so batch pricing would not help.
+- [x] ~~**`vision_medium` as a UI facet.**~~ The values do not cluster usefully: `screenshot` is
+      67.1% of the archive and `photograph` 20.3%, so two of the nine cover 87% and the commonest
+      option would return two-thirds of everything. That is not a filter. The known unreliability
+      stands too — a grainy photograph came back labelled `painting`.
 
 ### Generated tags in the index
 
