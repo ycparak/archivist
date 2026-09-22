@@ -80,6 +80,8 @@ export interface TranscodeOptions extends RunFfmpegOptions {
 	fetchFn?: typeof fetch;
 	maxSourceBytes?: number;
 	maxTranscodedBytes?: number;
+	/** Reports which half of the work is running, so a status display can say which. */
+	onStage?: (stage: 'downloading' | 'transcoding') => void;
 }
 
 /**
@@ -94,9 +96,11 @@ export async function transcodeToVideoDataUrl(
 		fetchFn = fetch,
 		maxSourceBytes = MAX_SOURCE_BYTES,
 		maxTranscodedBytes = MAX_TRANSCODED_BYTES,
+		onStage,
 		...ffmpegOptions
 	} = options;
 
+	onStage?.('downloading');
 	const response = await fetchFn(url, { headers: { 'User-Agent': 'archivist' } });
 	if (!response.ok) {
 		return { kind: 'skipped', reason: `source returned HTTP ${response.status}` };
@@ -116,6 +120,7 @@ export async function transcodeToVideoDataUrl(
 		const output = join(directory, 'out.mp4');
 		await writeFile(input, source);
 
+		onStage?.('transcoding');
 		await runFfmpeg(
 			[
 				'-y',

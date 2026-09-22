@@ -4,6 +4,20 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- `bun run sync` now shows a live status region instead of a log that goes quiet for minutes at a
+  time. It reports the phase and position (`describing 180/2569`, `upserting 3/13`), what is in
+  flight this second (`1 transcoding · 31 awaiting model · oldest 1m 24s`), a rate and finishing
+  estimate measured over the run, and running totals coloured by outcome. A block that has been
+  waiting more than two minutes is called out in amber, which is the signal that was missing the
+  time a stalled socket quietly hung a multi-hour run. Output falls back to the previous
+  line-by-line progress when it is piped to a file or `NO_COLOR` is set, and the final summary is
+  still plain text you can copy.
+- A vision request that stalls is now retried once rather than four times. Every attempt runs to a
+  four-minute timeout, so a block that never completes used to hold a worker for twenty minutes at
+  the tail of a run, long after everything else had finished — which is most of why a finished run
+  looked hung. Failures that are actually worth retrying, like a rate limit or a 503, keep the full
+  budget.
+
 - Search now finds blocks by what the image actually looks like, not just what Are.na says about it. A vision model describes
   every block with an image — subject, composition, palette, typography, medium, and any text it can
   read — and that description is indexed alongside the block's own metadata. This mostly helps image

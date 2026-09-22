@@ -39,6 +39,15 @@ const RETRY_BASE_MS = 1_000;
  */
 const DEFAULT_REQUEST_TIMEOUT_MS = 240_000;
 
+/**
+ * Timeouts get their own, much smaller budget. A request that stalls tends to stall every time —
+ * the three blocks that failed the reference backfill did so on five attempts out of five — so
+ * spending the full retry budget buys nothing and costs twenty minutes of a worker at the tail of
+ * a run, where every other block has finished and the whole thing looks hung. Two attempts is the
+ * cheapest way to tell a one-off stall apart from a block that will not complete at all.
+ */
+const DEFAULT_MAX_TIMEOUT_ATTEMPTS = 2;
+
 function isRetryable(status: number): boolean {
 	return status === 408 || status === 429 || status >= 500;
 }
@@ -82,6 +91,8 @@ export interface VisionClientOptions {
 	maxImageBytes?: number;
 	maxRetries?: number;
 	requestTimeoutMs?: number;
+	/** Total attempts spent on timeouts, budgeted separately from `maxRetries`. */
+	maxTimeoutAttempts?: number;
 	/** Injectable so tests exercise the retry path without waiting on it. */
 	sleepFn?: (ms: number) => Promise<void>;
 }
@@ -201,6 +212,7 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 		maxImageBytes = MAX_IMAGE_BYTES,
 		maxRetries = DEFAULT_MAX_RETRIES,
 		requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+		maxTimeoutAttempts = DEFAULT_MAX_TIMEOUT_ATTEMPTS,
 		sleepFn = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 	} = options;
 
@@ -241,6 +253,8 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 					}
 				]
 			});
+
+			let timeoutAttempts = 0;
 
 			for (let attempt = 0; ; attempt += 1) {
 				const timeout = AbortSignal.timeout(requestTimeoutMs);
@@ -283,9 +297,10 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 					if (signal?.aborted) throw error;
 
 					if (timeout.aborted) {
-						if (lastAttempt) {
+						timeoutAttempts += 1;
+						if (lastAttempt || timeoutAttempts >= maxTimeoutAttempts) {
 							throw new VisionRequestError(
-								`OpenRouter request timed out after ${requestTimeoutMs}ms, ${attempt + 1} attempt(s)`,
+								`OpenRouter request timed out after ${requestTimeoutMs}ms, ${timeoutAttempts} attempt(s)`,
 								null,
 								{ cause: error }
 							);
