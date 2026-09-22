@@ -10,10 +10,24 @@ import {
 /**
  * These drive the real ffmpeg binary against a generated clip rather than mocking `spawn`, because
  * the thing worth testing is that the arguments actually produce a file a provider will accept —
- * a mocked child process would pass with any arguments at all.
+ * a mocked child process would pass with any arguments at all, and these arguments have been wrong
+ * twice.
+ *
+ * `--no-vision-video` makes a machine without ffmpeg a supported way to run this project, so the
+ * suites that need it skip rather than fail there. CI installs it and the check below asserts it,
+ * so a skip can never quietly turn into missing coverage on the branch gate.
  */
 
 const GENERATED_GIF_URL = 'https://cdn.example/animation.gif';
+
+const { spawnSync: probe } = await import('node:child_process');
+const hasFfmpeg = probe('ffmpeg', ['-version']).status === 0;
+
+describe.runIf(process.env.CI)('the transcode suite', () => {
+	it('has ffmpeg, so it is actually running rather than silently skipped', () => {
+		expect(hasFfmpeg).toBe(true);
+	});
+});
 
 /** A tiny animation, made by ffmpeg so the fixture is not a committed binary. */
 async function sampleGif(size = '320x240'): Promise<Buffer> {
@@ -24,7 +38,9 @@ async function sampleGif(size = '320x240'): Promise<Buffer> {
 
 	const dir = mkdtempSync(join(tmpdir(), 'archivist-test-'));
 	const out = join(dir, 'in.gif');
-	spawnSync('ffmpeg', [
+	// Checked, because an unchecked failure here surfaces as an opaque ENOENT on the output file
+	// rather than naming the missing dependency — which is exactly how this failed in CI.
+	const made = spawnSync('ffmpeg', [
 		'-y',
 		'-loglevel',
 		'error',
@@ -34,6 +50,12 @@ async function sampleGif(size = '320x240'): Promise<Buffer> {
 		`testsrc=size=${size}:rate=10:duration=1`,
 		out
 	]);
+	if (made.status !== 0) {
+		rmSync(dir, { recursive: true, force: true });
+		throw new Error(
+			`could not generate the test clip: ffmpeg ${made.error ? `is missing (${made.error.message})` : `exited with ${made.status}: ${made.stderr?.toString().trim()}`}`
+		);
+	}
 	const bytes = readFileSync(out);
 	rmSync(dir, { recursive: true, force: true });
 	return bytes;
@@ -58,7 +80,7 @@ describe('isAnimated', () => {
 	});
 });
 
-describe('transcodeToVideoDataUrl', () => {
+describe.skipIf(!hasFfmpeg)('transcodeToVideoDataUrl', () => {
 	it('produces an mp4 data url the model can be handed', async () => {
 		const fetchFn = respondWith(await sampleGif());
 		const result = await transcodeToVideoDataUrl(GENERATED_GIF_URL, { fetchFn });
@@ -137,7 +159,7 @@ describe('transcodeToVideoDataUrl', () => {
 	});
 });
 
-describe('transcodeToVideoDataUrl — leaves nothing behind', () => {
+describe.skipIf(!hasFfmpeg)('transcodeToVideoDataUrl — leaves nothing behind', () => {
 	async function tempDirCount() {
 		const { readdirSync } = await import('node:fs');
 		const { tmpdir } = await import('node:os');
@@ -227,7 +249,7 @@ describe('cleanupStaleTranscodes', () => {
 	});
 });
 
-describe('transcodeToVideoDataUrl — awkward source dimensions', () => {
+describe.skipIf(!hasFfmpeg)('transcodeToVideoDataUrl — awkward source dimensions', () => {
 	/**
 	 * libx264 at yuv420p refuses odd dimensions. A real run hit this on three blocks (401x402,
 	 * 439x440, 503x714) because the scale expression only forced the height even.
