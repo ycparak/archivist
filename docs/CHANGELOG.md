@@ -4,6 +4,12 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- Video blocks now play in the gallery — autoplaying, looping, muted and inline — instead of
+  showing a still frame. Only the visible cards play, reduced-motion settings are honoured, and
+  there are no controls: the card is a link, so a click takes you to the block on Are.na. Video
+  URLs only appear in the index after `bun run sync`, and until then the gallery behaves exactly as
+  it did.
+
 - `bun run sync` now shows a live status region instead of a log that goes quiet for minutes at a
   time. It reports the phase and position (`describing 180/2569`, `upserting 3/13`), what is in
   flight this second (`1 transcoding · 31 awaiting model · oldest 1m 24s`), a rate and finishing

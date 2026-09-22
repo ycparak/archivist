@@ -15,6 +15,27 @@ interface TypeSpecificFields {
 	imageHeight: number | null;
 	imageBytes: number | null;
 	imageContentType: string | null;
+	videoUrl: string | null;
+	videoContentType: string | null;
+}
+
+interface BlockAttachmentLike {
+	url: string;
+	content_type?: string | null;
+}
+
+/**
+ * Only an attachment whose own content type says video carries a playable file. Embeds point at a
+ * player page rather than a file, and an attachment can just as easily be a PDF — seven of the
+ * archive's fifty-two are.
+ */
+function videoFields(attachment: BlockAttachmentLike | null | undefined) {
+	const contentType = attachment?.content_type?.toLowerCase().trim() ?? null;
+	const isVideo = Boolean(contentType?.startsWith('video/'));
+	return {
+		videoUrl: isVideo ? (attachment?.url ?? null) : null,
+		videoContentType: isVideo ? contentType : null
+	};
 }
 
 interface BlockImageLike {
@@ -42,35 +63,40 @@ function extractTypeSpecificFields(item: ArenaBlockItem): TypeSpecificFields {
 				title: item.title ?? null,
 				content: item.content.plain,
 				imageUrl: null,
-				...imageFields(null)
+				...imageFields(null),
+				...videoFields(null)
 			};
 		case 'Image':
 			return {
 				title: item.title ?? null,
 				content: null,
 				imageUrl: item.image.large.src,
-				...imageFields(item.image)
+				...imageFields(item.image),
+				...videoFields(null)
 			};
 		case 'Link':
 			return {
 				title: item.title ?? null,
 				content: item.content?.plain ?? null,
 				imageUrl: item.image?.large.src ?? null,
-				...imageFields(item.image)
+				...imageFields(item.image),
+				...videoFields(null)
 			};
 		case 'Attachment':
 			return {
 				title: item.title ?? item.attachment.filename ?? null,
 				content: null,
 				imageUrl: item.image?.large.src ?? null,
-				...imageFields(item.image)
+				...imageFields(item.image),
+				...videoFields(item.attachment)
 			};
 		case 'Embed':
 			return {
 				title: item.title ?? item.embed.title ?? null,
 				content: null,
 				imageUrl: item.image?.large.src ?? null,
-				...imageFields(item.image)
+				...imageFields(item.image),
+				...videoFields(null)
 			};
 		default:
 			return item satisfies never;
@@ -86,7 +112,9 @@ export function toArchiveBlock(item: ArenaBlockItem, channel: ChannelContext): A
 		imageWidth,
 		imageHeight,
 		imageBytes,
-		imageContentType
+		imageContentType,
+		videoUrl,
+		videoContentType
 	} = extractTypeSpecificFields(item);
 
 	return {
@@ -100,6 +128,8 @@ export function toArchiveBlock(item: ArenaBlockItem, channel: ChannelContext): A
 		imageHeight,
 		imageBytes,
 		imageContentType,
+		videoUrl,
+		videoContentType,
 		ownerId: item.user?.id ?? null,
 		description: item.description?.plain ?? null,
 		sourceTitle: item.source?.title ?? null,

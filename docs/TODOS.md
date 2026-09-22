@@ -6,18 +6,34 @@ Seeded from [`implementation_plan.md`](./implementation_plan.md) — vertical sl
 
 ## Up Next
 
-### Video playback in the gallery
-
-- [ ] **Autoplaying, looping, muted video in result cards.** The UI only renders `<img>`, and the index
-      stores no video URL (only the thumbnail), so this needs a new indexed field and a re-sync — not
-      just a component change. Plan, open questions and the exact touch points are in
-      [`specs/spec-video-playback.md`](./specs/spec-video-playback.md).
-
 ## In Progress
 
 _(none)_
 
 ## Done
+
+### Video playback in the gallery
+
+- [x] **Autoplaying, looping, muted video in result cards.** Done — video attachments play in the
+      gallery instead of showing a still. The block's own thumbnail is the poster, so a card looks
+      identical before the first frame paints and stays correct if the file never loads.
+- [x] Scope turned out to be far smaller than the spec assumed: the archive holds 52 `Attachment`
+      blocks in total (against 918 `Image` and ~1,550 `Link`), of which seven are PDFs and roughly
+      thirteen are video. The spec's worry about 24 concurrent decoders on one page is therefore
+      theoretical — viewport gating is kept because it is cheap and correct, not because it is
+      load-bearing.
+- [x] Playback is driven by an `IntersectionObserver` attachment rather than the `autoplay`
+      attribute: with `autoplay`, every card below the fold starts decoding on mount and is only
+      paused afterwards, and the `prefers-reduced-motion` check has to win a race it does not
+      reliably win. Reduced motion keeps the poster frame. No controls at all — the whole card is a
+      link to Are.na, and a control strip inside it would fight every click.
+- [x] `muted` is asserted in the SSR markup, not just set on the client: an unmuted video is not
+      allowed to autoplay, and a missing attribute would make the first paint wrong before any
+      script runs. That is the one failure here that would only ever appear in production.
+- [x] The new attributes are requested optionally. Turbopuffer rejects an entire query with a 400
+      when `include_attributes` names an attribute the namespace has never been written, so asking
+      for `video_url` before the maintainer re-syncs would have taken search down completely rather
+      than costing one feature. Verified against the live namespace, where it did exactly that.
 
 ### Sync progress you can actually read
 

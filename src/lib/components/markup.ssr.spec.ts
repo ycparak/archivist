@@ -34,6 +34,8 @@ function result(overrides: Partial<SearchResult> = {}): SearchResult {
 		imageAlt: null,
 		imageWidth: null,
 		imageHeight: null,
+		videoUrl: null,
+		videoContentType: null,
 		sourceTitle: null,
 		...overrides
 	};
@@ -270,6 +272,88 @@ describe('ResultCard markup', () => {
 		});
 
 		expect(body).toContain('Untitled image');
+	});
+});
+
+describe('ResultCard markup — video blocks', () => {
+	const video = (overrides: Partial<SearchResult> = {}) =>
+		result({
+			blockType: 'Attachment',
+			videoUrl: 'https://attachments.are.na/1/abc.mp4',
+			videoContentType: 'video/mp4',
+			...overrides
+		});
+
+	it('plays the attachment instead of showing its thumbnail', () => {
+		const { body } = render(ResultCard, { props: { result: video() } });
+
+		expect(body).toContain('<video');
+		expect(body).toContain('src="https://attachments.are.na/1/abc.mp4"');
+		expect(body).toContain('type="video/mp4"');
+		expect(body).not.toContain('<img');
+	});
+
+	/**
+	 * The one failure that would only ever show up in production: an unmuted video is not allowed
+	 * to autoplay, and if the attribute is missing from the server markup the first paint is
+	 * already wrong before any script runs.
+	 */
+	it('carries muted in the server markup, or autoplay is refused outright', () => {
+		expect(render(ResultCard, { props: { result: video() } }).body).toContain('muted=""');
+	});
+
+	it('loops, plays inline, and asks for no more than metadata up front', () => {
+		const { body } = render(ResultCard, { props: { result: video() } });
+
+		expect(body).toContain('loop');
+		expect(body).toContain('playsinline');
+		expect(body).toContain('preload="metadata"');
+	});
+
+	/** The card is a link; a control strip inside it would fight every click. */
+	it('shows no controls', () => {
+		expect(render(ResultCard, { props: { result: video() } }).body).not.toContain('controls');
+	});
+
+	it('uses the thumbnail as the poster, so the card looks the same before the first frame', () => {
+		const { body } = render(ResultCard, { props: { result: video() } });
+
+		expect(body).toContain('poster="https://images.are.na/felt.jpg"');
+	});
+
+	it('names the video for a screen reader, since it has no alt text of its own', () => {
+		expect(
+			render(ResultCard, { props: { result: video({ imageAlt: 'A glass marble rolling' }) } }).body
+		).toContain('aria-label="A glass marble rolling"');
+
+		expect(
+			render(ResultCard, { props: { result: video({ title: 'Glass in motion' }) } }).body
+		).toContain('aria-label="Glass in motion"');
+	});
+
+	it('keeps the aspect box it would have used for the thumbnail', () => {
+		const { body } = render(ResultCard, {
+			props: { result: video({ imageWidth: 800, imageHeight: 600 }) }
+		});
+
+		expect(body).toContain('width="800"');
+		expect(body).not.toContain('aspect-4/3');
+	});
+
+	it('leaves every other block on the image path', () => {
+		const { body } = render(ResultCard, { props: { result: result() } });
+
+		expect(body).not.toContain('<video');
+		expect(body).toContain('<img');
+	});
+
+	it('still shows a thumbnail for an Embed, which has no playable file', () => {
+		const { body } = render(ResultCard, {
+			props: { result: result({ blockType: 'Embed' }) }
+		});
+
+		expect(body).not.toContain('<video');
+		expect(body).toContain('<img');
 	});
 
 	it('shows only the block title and a link to Are.na, without channels or other metadata', () => {
