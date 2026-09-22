@@ -207,3 +207,28 @@ It does nothing for `vision-widget-grid`, whose problem is `dark theme` against 
 synonym map would address that, but tuning one against two evaluation cases is over-fitting, and
 the structural answer if this recurs is the backlog item on giving generated text its own embedded
 field rather than sharing `search_text`.
+
+### The fix, applied
+
+Hyphens are collapsed to spaces in tag normalization — in the attribute as well as in
+`search_text`. Two normalizations would have been a trap for whoever builds the facet: they would
+filter on `web-design` and get different results than search finds. One normalization means the
+filter value and the indexed wording cannot disagree.
+
+Across the cache that merges **153 distinct tags** away, 5,285 down to 5,132, and the
+`semantic-material` target's three orphans each join a much larger group:
+
+| Before             | Instances | After              | Instances |
+| ------------------ | --------: | ------------------ | --------: |
+| `design-engineer`  |         1 | `design engineer`  |        10 |
+| `dark-theme`       |         6 | `dark theme`       |        71 |
+| `personal-website` |         4 | `personal website` |        66 |
+
+The cost, stated rather than hidden: genuine compounds are respelled. `e-commerce` becomes
+`e commerce`, `sans-serif` becomes `sans serif`, `sci-fi` becomes `sci fi` — 158 instances against
+the 332 the merge repairs. A hardcoded exception list would fix the cosmetics, but that is the kind
+of hand-tuning that ages badly, and a facet can prettify its own labels.
+
+**Still to verify:** whether this recovers `semantic-material`'s rank. It is a plausible mechanism,
+not a proven outcome, and only a re-sync and re-evaluation will say. `vision-widget-grid` is not
+expected to move — `dark theme` against `dark mode` is synonymy, which spelling does not touch.
