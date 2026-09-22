@@ -31,5 +31,10 @@ export const archiveNamespaceSchema = {
 	vision_description: { type: 'string', filterable: false },
 	vision_ocr: { type: 'string', filterable: false },
 	/** Filterable for a future facet, but unproven — see the spec before exposing it. */
-	vision_medium: { type: 'string', filterable: true }
+	vision_medium: { type: 'string', filterable: true },
+	/**
+	 * Filterable for a future tag facet. Nothing reads it back yet: an attribute named in
+	 * `include_attributes` before a sync has written it fails the whole query with a 400.
+	 */
+	vision_tags: { type: '[]string', filterable: true }
 } satisfies Record<string, Turbopuffer.AttributeSchema>;
