@@ -15,8 +15,10 @@ do · `[x]` finished.
 
 ### Generated tags in the index
 
-> **Waiting on:** `bun run sync`, then `bun run evaluate:search`.
-> No `--vision` needed — nothing is regenerated, so it costs no model calls.
+> **Shipped and measured.** All 15 evaluation cases pass, but the bar asked that no rank get
+> materially worse and one did: `semantic-material` fell from `@2 of 25` to `@11 of 25`.
+> Diagnosis and the proposed fix are in
+> [`worksheet-vision-eval-baseline.md`](./history/worksheets/worksheet-vision-eval-baseline.md).
 
 Tags were generated and cached for every block from the start but reached neither Turbopuffer nor
 `search_text` — an oversight in the spec rather than a decision. They now go into both: a
@@ -29,9 +31,15 @@ filterable `[]string` attribute for a future tag facet, and the tail of `search_
       block re-upserts byte-identically.
 - [x] Record a second evaluation baseline — all 15 cases green, with ranks — in
       [`worksheet-vision-eval-baseline.md`](./history/worksheets/worksheet-vision-eval-baseline.md).
-- [ ] **For the maintainer:** run the sync, then compare `evaluate:search` against that baseline.
-      Folding tags into `search_text` changes the embedded text for every block, so the upsert
-      re-embeds all of them rather than skipping unchanged rows.
+- [x] Synced and re-evaluated. The two cases predicted to be at risk — `exact-phrase-link` and
+      `combined-filter`, Link blocks with real human descriptions — held their rank exactly. The
+      regression landed somewhere the prediction did not look.
+- [ ] **Decide:** collapse hyphens in tag normalization and re-sync, or accept the ranking as it
+      stands. 153 tag pairs differ only by a hyphen across 3,587 instances, and all three of
+      `semantic-material`'s hyphenated tags are the rare spelling of a much commoner spaced form —
+      `design-engineer` occurs exactly once in the archive, on that block. The change is one line
+      and no model calls, but it needs another full re-upsert to take effect, and it would not help
+      `vision-widget-grid`, whose problem is `dark theme` against `dark mode`.
 
 **Why it is worth the re-embed.** Measured over a 596-block sample of the live index: 2,273 of
 4,298 tag instances (53%) use wording found nowhere else in that block's indexed text, and 99% of
