@@ -422,10 +422,47 @@ describe('describe — request timeout', () => {
 				apiKey: 'k',
 				fetchFn: fetchFn as unknown as typeof fetch,
 				requestTimeoutMs: 20,
-				maxRetries: 2,
 				sleepFn: async () => {}
 			}).describe({ media: { kind: 'image', url: ARENA_URL }, block })
-		).rejects.toThrow(/timed out after 20ms, 3 attempt\(s\)/);
+		).rejects.toThrow(/timed out after 20ms, 2 attempt\(s\)/);
+	});
+
+	/**
+	 * A stall is not a transient blip: the three blocks that failed the reference backfill timed out
+	 * on every attempt they were given. The full retry budget would spend twenty minutes proving it.
+	 */
+	it('spends only the timeout budget, not the full retry budget', async () => {
+		const fetchFn = stalls(Number.POSITIVE_INFINITY);
+		await expect(
+			createVisionClient({
+				apiKey: 'k',
+				fetchFn: fetchFn as unknown as typeof fetch,
+				requestTimeoutMs: 20,
+				maxRetries: 8,
+				sleepFn: async () => {}
+			}).describe({ media: { kind: 'image', url: ARENA_URL }, block })
+		).rejects.toThrow(/timed out/);
+
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+	});
+
+	it('leaves the retry budget for failures that are worth retrying', async () => {
+		// Five 503s exhaust a budget a two-attempt timeout cap would have cut short.
+		let calls = 0;
+		const fetchFn = vi.fn<typeof fetch>(async () => {
+			calls += 1;
+			return calls <= 3 ? new Response('busy', { status: 503 }) : Response.json(completion(RESULT));
+		});
+
+		const outcome = await createVisionClient({
+			apiKey: 'k',
+			fetchFn: fetchFn as unknown as typeof fetch,
+			requestTimeoutMs: 20,
+			sleepFn: async () => {}
+		}).describe({ media: { kind: 'image', url: ARENA_URL }, block });
+
+		expect(outcome.kind).toBe('described');
+		expect(fetchFn).toHaveBeenCalledTimes(4);
 	});
 
 	it('does not retry when the caller aborts the run', async () => {
