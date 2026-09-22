@@ -6,6 +6,27 @@ Seeded from [`implementation_plan.md`](./implementation_plan.md) — vertical sl
 
 ## Up Next
 
+### Generated tags in the index
+
+- [~] **Index `vision_tags`.** Code complete and tested; the re-upsert is handed off. Tags were
+  generated and cached for every block but reached neither Turbopuffer nor `search_text`, which
+  was an oversight in the spec rather than a decision. They now go into both: a filterable
+  `[]string` attribute for a future tag facet, and the tail of `search_text`.
+- [~] Measured over a 596-block sample of the live index: 2,273 of 4,298 tag instances (53%) contain
+  wording that appears nowhere else in that block's indexed text, and 99% of blocks gain some.
+  The cost is 10% more text — 86 characters against a median `search_text` of 890 — which is why
+  tags go last in the composition.
+- [~] Costs nothing to generate: the values are already in `vision-cache.jsonl`, so no
+  `PROMPT_VERSION` bump and no OpenRouter spend. Nothing reads the attribute back yet, so it
+  cannot trip the `include_attributes` 400 that video playback hit.
+- [~] Tags are lowercased, deduplicated and sorted, so a facet treats `UI` and `ui` as one value and
+  an unchanged block re-upserts byte-identically.
+- [ ] **Remaining, for the maintainer:** a `bun run sync` (no `--vision` needed — nothing is
+      regenerated), then `bun run evaluate:search` compared against the second baseline in
+      [`worksheet-vision-eval-baseline.md`](./history/worksheets/worksheet-vision-eval-baseline.md).
+      Folding tags into `search_text` changes the embedded text for every block, so the upsert
+      re-embeds all of them rather than skipping unchanged rows.
+
 ## In Progress
 
 _(none)_
@@ -185,12 +206,7 @@ Work these in order — each one is shippable on its own.
 
 ## Needs Input
 
-- [ ] `channel-manifest.json` ships empty (`[]`) — the channel filter won't appear until the
-      maintainer runs a real `bun run sync`. That writes to the live Turbopuffer namespace and
-      authenticates against the maintainer's own Are.na account, so it wasn't run as part of the
-      channel-manifest task without their go-ahead (see
-      [worksheet](./history/worksheets/worksheet-channel-manifest.md#deliberately-not-done-running-the-real-sync)).
-      [AGENT NOTE: run `bun run sync` (or approve running it) to populate the manifest for real.]
+_(none)_
 
 ## Backlog — Vision indexing phase 2 (only after phase 1 has shipped and been measured)
 
@@ -207,17 +223,6 @@ Work these in order — each one is shippable on its own.
   **Remaining, for the maintainer:** `bun run sync --vision`. A dry run plans 174 blocks — the 134
   animations plus ~40 already pending from new or changed blocks. Expect ~615 MB of downloads;
   consider `--vision-concurrency=12` since each in-flight transcode holds its source in memory.
-
-- **Index `vision_tags`.** Tags are generated and cached on every block already but reach neither
-  Turbopuffer nor `search_text`, which was an oversight in the spec rather than a decision.
-  Measured over the 2,526 cached entries: **44% of tags (7,992 of 18,143) contain wording that
-  appears nowhere else in the indexed text** — `cyberpunk`, `dark mode`, `typography`,
-  `web design`, `user interface`. That is search vocabulary being thrown away.
-  Costs **nothing to generate**: the values are in `vision-cache.jsonl`, so no `PROMPT_VERSION`
-  bump and no OpenRouter spend. Add a `vision_tags` `[]string` attribute (filterable, for a future
-  tag facet), fold it into `search_text`, and re-upsert. Re-run `evaluate:search` afterwards and
-  compare against the baseline — eight short tags is far less text than a 500-character
-  description, so dilution risk is low, but it is not zero and the baseline exists for this.
 
 - **Colour search via `vision_palette`.** Viable, and worth doing after tags. The model already
   returns 3-5 dominant colours per block as hex, cached and otherwise unused.

@@ -29,7 +29,8 @@ function document(id: string): SearchDocument {
 		vision_title: null,
 		vision_description: null,
 		vision_ocr: null,
-		vision_medium: null
+		vision_medium: null,
+		vision_tags: []
 	};
 }
 

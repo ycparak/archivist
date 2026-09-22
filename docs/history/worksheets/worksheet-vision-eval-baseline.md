@@ -112,3 +112,36 @@ the exact population the spec predicts generated prose could drown out.
 
 `bun run check`, `bun run lint`, `bun run test`, `bun run build` — all pass. `bun run evaluate:search`
 exits 0.
+
+## Second baseline: before `vision_tags` is indexed
+
+Recorded so the tag change has a clean before/after. All 15 cases pass against the live namespace
+as of this run, with `vision_*` text indexed but tags not:
+
+```
+exact-phrase-text: block:50290366@1 of 3
+exact-phrase-link: block:50207334@2 of 47
+semantic-material: block:47027380@2 of 25
+semantic-place: block:50231202@2 of 43
+channel-filter: block:32253420@16 of 16
+multi-channel-filter: block:32253420@22, block:43484078@7 of 22
+block-type-filter: block:31353299@2 of 9
+date-filter: block:50368557@1 of 6
+combined-filter: block:50207334@2 of 40
+no-result: passed
+vision-widget-grid: block:17698965@12 of 41
+vision-ocr-refugee-document: block:13214360@1 of 42
+vision-poster-sans-theme: block:21165584@1 of 47
+vision-planner-ui: block:23363409@3 of 41
+vision-time-machine: block:32633860@1 of 45
+```
+
+**What tags are expected to change.** Measured over a 596-block sample of the live index: 2,273 of
+4,298 tag instances (**52.9%**) contain wording that appears nowhere else in that block's indexed
+text, and **99.3%** of blocks gain at least some new vocabulary. The cost is 10% more text —
+86 characters against a median `search_text` of 890 — which is why tags go last and why dilution
+risk is judged low rather than zero.
+
+**The bar after the re-upsert:** all 15 still pass, and no case's rank gets materially worse. The
+two to watch are the same two as before, `exact-phrase-link` (`@2 of 47`) and `combined-filter`
+(`@2 of 40`) — Link blocks with real human descriptions, the population most exposed to dilution.
