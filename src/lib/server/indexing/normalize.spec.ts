@@ -112,6 +112,69 @@ describe('toArchiveBlock', () => {
 		expect(withoutPreview.imageAlt).toBeNull();
 	});
 
+	/**
+	 * The attachment's own content type is the only thing that says a file is playable. Fifty-two
+	 * blocks in the archive are attachments and seven of them are PDFs, so the type matters more
+	 * than the block class does.
+	 */
+	it('keeps the playable file for a video attachment', () => {
+		const block = toArchiveBlock(
+			{
+				...sharedFields,
+				type: 'Attachment',
+				attachment: {
+					url: 'https://attachments.are.na/1/clip.mp4',
+					content_type: 'video/mp4'
+				},
+				image
+			},
+			channel
+		);
+
+		expect(block.videoUrl).toBe('https://attachments.are.na/1/clip.mp4');
+		expect(block.videoContentType).toBe('video/mp4');
+		// The thumbnail survives as the poster.
+		expect(block.imageUrl).toBe('https://example.com/large.jpg');
+	});
+
+	it('normalizes the content type, since Are.na is not consistent about case', () => {
+		const block = toArchiveBlock(
+			{
+				...sharedFields,
+				type: 'Attachment',
+				attachment: { url: 'https://attachments.are.na/1/clip.mp4', content_type: 'VIDEO/MP4 ' }
+			},
+			channel
+		);
+
+		expect(block.videoContentType).toBe('video/mp4');
+	});
+
+	it('leaves a non-video attachment with nothing to play', () => {
+		for (const contentType of ['application/pdf', 'image/png', null, undefined]) {
+			const block = toArchiveBlock(
+				{
+					...sharedFields,
+					type: 'Attachment',
+					attachment: { url: 'https://attachments.are.na/1/doc.pdf', content_type: contentType }
+				},
+				channel
+			);
+
+			expect(block.videoUrl).toBeNull();
+			expect(block.videoContentType).toBeNull();
+		}
+	});
+
+	it('leaves an Embed thumbnail-only, since it points at a player rather than a file', () => {
+		const block = toArchiveBlock(
+			{ ...sharedFields, type: 'Embed', embed: { url: 'https://youtube.com/watch?v=1' }, image },
+			channel
+		);
+
+		expect(block.videoUrl).toBeNull();
+	});
+
 	it('normalizes an Embed block: no content, optional thumbnail image', () => {
 		const embed = { url: 'https://youtube.com/watch?v=1' };
 		const block = toArchiveBlock({ ...sharedFields, type: 'Embed', embed, image }, channel);

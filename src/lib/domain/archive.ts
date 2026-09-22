@@ -18,6 +18,9 @@ export const archiveBlockSchema = z.object({
 	/** Sync-time only: lets the vision stage apply its size guard without a HEAD request. */
 	imageBytes: z.number().int().nonnegative().nullable().optional(),
 	imageContentType: z.string().nullable().optional(),
+	/** Playable file for a video attachment. Null for every other block, including Embeds. */
+	videoUrl: z.url().nullable().optional(),
+	videoContentType: z.string().nullable().optional(),
 	/** Are.na user id of the block's author; write-back is owner-only. */
 	ownerId: z.number().int().nullable().optional(),
 	createdAt: z.coerce.date().optional(),
@@ -59,6 +62,8 @@ export type SearchDocument = {
 	image_alt: string | null;
 	image_width: number | null;
 	image_height: number | null;
+	video_url: string | null;
+	video_content_type: string | null;
 	source_title: string | null;
 	vision_title: string | null;
 	vision_description: string | null;
@@ -108,6 +113,8 @@ export function toSearchDocument(
 		image_alt: normalizeText(block.imageAlt) || null,
 		image_width: block.imageWidth ?? null,
 		image_height: block.imageHeight ?? null,
+		video_url: block.videoUrl ?? null,
+		video_content_type: block.videoContentType ?? null,
 		source_title: normalizeText(block.sourceTitle) || null,
 		vision_title: normalizeText(vision?.title) || null,
 		vision_description: normalizeText(vision?.description) || null,

@@ -33,6 +33,8 @@ export type SearchResult = {
 	imageAlt: string | null;
 	imageWidth: number | null;
 	imageHeight: number | null;
+	videoUrl: string | null;
+	videoContentType: string | null;
 	sourceTitle: string | null;
 };
 
