@@ -4,6 +4,11 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- Fixed a bug where a block's extracted text could run away: three blocks had text that repeated a
+  single phrase over and over, one of them 270,000 characters of it, and all of it was being fed
+  into search. Generated text is now bounded and repetition is detected and discarded. Takes effect
+  after `bun run sync`.
+
 - New favicon, with an `.ico` alongside the SVG so browsers that cannot render an SVG icon still
   get one.
 

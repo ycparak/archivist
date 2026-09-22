@@ -13,7 +13,43 @@ do · `[x]` finished.
 
 ## In Progress
 
-_(none)_
+### Vision indexing — phase 2
+
+- [~] **Two blocks that never describe — and a bigger defect found underneath.** `27520373` is a
+  dense two-page magazine spread of French body copy; `28605431` is a poster repeating the word
+  "round" dozens of times in a spiral. Both make the model loop forever on the OCR field, on
+  **every** provider — `deepinfra`, `streamlake` and `venice` all time out identically, so it is
+  the model and the input, not routing.
+- [~] The real find: OCR had no length bound while `description` has had one since the first live
+  call, and three cached entries were runaways that happened to terminate. One held **270,500
+  characters — 34,633 words with 76 distinct between them**, a single phrase repeated some 4,300
+  times — and it had been going into `search_text`, BM25 and the embedding both, ever since.
+  The others were 13,859 and 565 characters.
+- [~] Fixed with a `max_tokens` ceiling of 2,048, which is the only thing that reliably stops a
+  runaway decode; a 6,000-character OCR clamp; and a repetition check. The separation in real
+  data is unusually clean — the runaways sit at 0.22%, 0.97% and 5.2% unique words while the
+  lowest legitimate entry of the 728 with substantial OCR is 16.3% and the median is 74%. None
+  of this touches the prompt, so `PROMPT_VERSION` stands and nothing regenerates.
+- [~] The clamp applies at index time as well as on generation, because a cache hit never
+  regenerates and those three entries would otherwise poison search forever. The cached entries
+  were repaired in place, no model calls: 282KB out of the committed file.
+- [ ] **Still undescribed.** The two blocks now fail in seconds with `finish_reason=length` instead
+      of holding a worker for eight minutes, but they have no description. Describing them needs the
+      OCR field bounded in the prompt or the schema, which bumps `PROMPT_VERSION` and regenerates
+      all 2,561 entries — roughly $0.50 and some hours for two blocks. Worth folding into the next
+      prompt revision that happens for another reason, not worth one of its own.
+- [ ] **For the maintainer:** a plain `bun run sync` to get the runaway out of the live index.
+- [ ] **Batch/async backfill mode.** A `--vision-batch` path for large regenerations, if a prompt
+      revision ever makes a full 2,585-block re-run routine.
+- [ ] **A separate embedded field** for generated text, if measurement shows it dilutes retrieval
+      for the Link blocks that already have good human descriptions.
+- [ ] **Native PDF input** for the seven PDF attachments, instead of describing Are.na's preview
+      image.
+- [x] ~~**`vision_medium` as a UI facet.**~~ Measured and dropped. The values do not cluster
+      usefully: `screenshot` is 67.1% of the archive and `photograph` 20.3%, so two of the nine
+      values cover 87% and the commonest option would return two-thirds of everything. That is not
+      a filter. The known unreliability stands too — a grainy photograph came back labelled
+      `painting`.
 
 ---
 
@@ -25,26 +61,6 @@ _Nothing queued. Pick from the backlog below._
 
 ## Backlog
 
-### Vision indexing — phase 2
-
-- **Batch/async backfill mode.** A `--vision-batch` path for large regenerations, if a prompt
-  revision ever makes a full 2,585-block re-run routine.
-- **trigger.dev**, if sync moves off the maintainer's machine. Revisit only when there is an
-  unattended or scheduled run to make durable — see the ADR for why it is not phase 1.
-- ~~**`vision_medium` as a UI facet.**~~ Measured and dropped. The values do not cluster usefully:
-  `screenshot` is 67.1% of the archive and `photograph` 20.3%, so two of the nine values cover 87%
-  and the commonest option would return two-thirds of everything. That is not a filter. The known
-  unreliability stands too — a grainy photograph came back labelled `painting`.
-- **A separate embedded field** for generated text, if measurement shows it dilutes retrieval for
-  the Link blocks that already have good human descriptions.
-- **Native PDF input** for the seven PDF attachments, instead of describing Are.na's preview image.
-- **Two blocks that never describe.** `27520373` (a 118KB JPEG) and `28605431` (a 62KB PNG) time
-  out on generation every run and have no description. The images themselves are fine — both fetch
-  in under a second at the rendition the model is given — so the stall is generation-side, and both
-  are text-heavy, which fits the model running long on the OCR field. The timeout cap means they
-  now cost about eight minutes a run rather than twenty. Options: bound the OCR field in the
-  prompt, or record a permanent-failure marker so they stop being retried.
-
 ### V2 — agents
 
 > Do not start these until the human explicitly starts the V2 milestone — see the Product boundary
@@ -55,7 +71,12 @@ _Nothing queued. Pick from the backlog below._
 - Stream responses with block citations; cap retrieval calls at three.
 - Add an agent evaluation set for groundedness and citation coverage.
 
-### V4 — tag search UI
+### V3 - Trigger.dev
+
+- **trigger.dev**, if sync moves off the maintainer's machine. Revisit only when there is an
+  unattended or scheduled run to make durable — see the ADR for why it is not phase 1.
+
+### V4 — Search improvements
 
 - **Surface `vision_tags` in the interface.** Tags reach search — they are folded into `search_text`
   and so feed lexical, semantic and hybrid alike — but nothing in the UI lets you filter or browse
@@ -83,8 +104,6 @@ _Nothing queued. Pick from the backlog below._
   _Shapes worth weighing:_ a `Tag` menu in the filter row reusing `FilterMenu` with a
   type-to-filter field; clickable tags on result cards, which is more discoverable but cannot start
   a search; or both.
-
-### V3 — colour
 
 - **Colour search via `vision_palette`.** The model already returns 3–5 dominant colours per block
   as hex, cached and otherwise unused. A colour picker resolves the chosen colour to a bucket and
