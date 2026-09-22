@@ -232,3 +232,48 @@ of hand-tuning that ages badly, and a facet can prettify its own labels.
 **Still to verify:** whether this recovers `semantic-material`'s rank. It is a plausible mechanism,
 not a proven outcome, and only a re-sync and re-evaluation will say. `vision-widget-grid` is not
 expected to move — `dark theme` against `dark mode` is synonymy, which spelling does not touch.
+
+## Result after the hyphen collapse
+
+The fix worked mechanically and partially in effect. Nothing regressed against the previous run.
+
+| Case                 | Pre-tags    | Post-tags   | Post-collapse |
+| -------------------- | ----------- | ----------- | ------------- |
+| `semantic-material`  | `@2 of 25`  | `@11 of 25` | `@8 of 25`    |
+| `vision-widget-grid` | `@12 of 41` | `@16 of 37` | `@15 of 39`   |
+| `vision-planner-ui`  | `@3 of 41`  | `@2 of 39`  | `@2 of 39`    |
+| `exact-phrase-link`  | `@2 of 47`  | `@2 of 45`  | `@2 of 45`    |
+| `combined-filter`    | `@2 of 40`  | `@2 of 42`  | `@2 of 42`    |
+| the other ten        | unchanged   | unchanged   | unchanged     |
+
+`semantic-material` recovered three of the nine positions it lost, overtaking four blocks, and its
+tags now read `design engineer`, `dark theme`, `personal website` as intended.
+`vision-widget-grid` moved one place, which is the "no meaningful change" that was predicted for
+it — spelling does not touch `dark theme` against `dark mode`.
+
+### Why the remaining six positions are not a bug
+
+The seven blocks still above the target match the query's wording better than it does. The query is
+`independent product designer and engineer`:
+
+| Rank | Block                                             | Why it wins                                      |
+| ---: | ------------------------------------------------- | ------------------------------------------------ |
+|    1 | Social media post advertising design services     | tagged `designer for hire`, `product design`     |
+|    2 | Siddharth Arun                                    | tagged `designer`, `product design`              |
+|    3 | Grant Custer                                      | tagged `designer` **and** `engineer`, separately |
+|    4 | KPRKR                                             | tagged `product designer`                        |
+|    6 | Wireframe Design Studio — **Independent** studio… | carries "independent" in its title               |
+
+The target is `bt norris, design engineer` — a design engineer, not described as a product designer
+and not described as independent. All 25 results are designer-or-engineer portfolio pages, so which
+one is "most" the query is close to arbitrary.
+
+The `@2` baseline was measured before tags existed. Tags did not make the target worse; they made
+its neighbours better described. **Accepted as the new reference**, rather than pursued further: the
+remaining candidate fix is the backlog item on giving generated text its own embedded field, which
+is a large change to shift one case inside a homogeneous cluster.
+
+Worth knowing for later: `semantic-material` is a weak gate. Its target is one of 25 near-identical
+documents, so its rank will keep moving on any retrieval change, and movement there says less than
+movement in a case whose answer is distinctive. It still passes and still earns its place — the
+rank is just not the signal it looks like.
