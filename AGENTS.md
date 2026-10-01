@@ -12,12 +12,14 @@ This is an **agent router**: concise context loaded every session, read by both 
 
 Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, Turbopuffer (search datastore), Are.na V3 (source of truth for content).
 
-- `src/lib/domain/`: framework-free domain types and transformations. This code ships to the browser, so keep it free of Zod schemas, provider shapes, and any runtime validation library — put those behind `src/lib/server/`.
-- `src/lib/server/arena/`: Are.na transport and pagination only.
-- `src/lib/server/indexing/`: normalization, document construction, and sync orchestration.
-- `src/lib/server/search/`: search request validation, Turbopuffer adapter, and result mapping.
+- `src/lib/domain/`: framework-free domain types and transformations. `search.ts` (the URL grammar, `SearchResult`, `ArchiveSearchState`) ships to the browser, so it must stay free of Zod schemas, provider shapes, and any runtime validation library. `archive.ts` (`ArchiveBlock`, `SearchDocument`, `toSearchDocument`) is imported only from `src/lib/server/` and does use Zod; never import it from a component or route markup. Provider validation and provider shapes live under `src/lib/server/`.
+- `src/lib/server/arena/`: Are.na transport, payload schemas, and pagination only.
+- `src/lib/server/indexing/`: normalization, channel filtering, document construction, sync orchestration, the vision stage (`vision/`), and CLI progress reporting (`progress/`).
+- `src/lib/server/search/`: search request validation, the read-side `SearchRepository`, result mapping, and the Turbopuffer write client and schema the sync uses.
+- `src/lib/server/rate-limit.ts`: edge rate limiting, wired in through `src/hooks.server.ts`.
 - `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
 - `src/routes/`: HTTP and UI composition only. Provider calls and ranking expressions do not belong in route files.
+- `scripts/`: the manual CLIs (`sync.ts`, `evaluate-search.ts`) and the search evaluation fixture.
 
 Full technical detail: [docs/architecture.md](./docs/architecture.md).
 
@@ -27,10 +29,9 @@ All project documentation lives in `./docs/`. Keep active feature specs and work
 `./docs/specs/`, completed worksheets in `./docs/history/worksheets/`, and architecture decisions
 in `./docs/decisions/`.
 
-**Product**
+**Product & architecture**
 
-- [docs/prd.md](./docs/prd.md) — product requirements, audience, V1 job to be done
-- [docs/architecture.md](./docs/architecture.md) — data access model, Turbopuffer schema, retrieval behavior, sync lifecycle
+- [docs/architecture.md](./docs/architecture.md) — data access model, Turbopuffer schema, retrieval behavior, sync lifecycle, vision indexing
 
 **Workflow**
 
@@ -63,20 +64,21 @@ in `./docs/decisions/`.
 - In autonomous/loop mode, complete exactly one task at a time and commit immediately. Do not batch unless the user explicitly asks.
 - When coding or reviewing, follow the Engineering Guardrails and Product/Search rules below and the guidelines in linked docs.
 
-## Product Boundary
+## Scope
 
-- V1 is an open-source public gallery and search surface for one maintainer's Are.na archive.
-- Results are original Are.na blocks. Do not introduce generated collections, summaries, tags, link crawling, auth, accounts, analytics, background queues, or a chat UI in V1.
-- Exception, decided: a vision model describes blocks that are already synced, and that text is indexed for retrieval. Scope and constraints are fixed by [docs/decisions/adr-vision-indexing.md](./docs/decisions/adr-vision-indexing.md) and [docs/specs/spec-vision-indexing.md](./docs/specs/spec-vision-indexing.md) — read both before touching `src/lib/server/indexing/vision/`. Query time stays LLM-free.
+Archivist is a public gallery and search surface for one maintainer's Are.na archive. A new plan is being written; until it lands, the points below describe what the code does and are the boundary for changes. Anything beyond them needs the maintainer's explicit go-ahead.
+
+- Results are original Are.na blocks. Nothing generated is ever presented as a result.
+- There is no auth, accounts, analytics, background queue, chat/agent UI, or link crawling. Do not install Mastra or add agent behavior.
+- Query time is LLM-free. The one use of a model is the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
 - Sync is manual and maintainer-only. Public requests query Turbopuffer only; they must never proxy to Are.na.
-- V2 may use Mastra for an evidence-first research mode. Keep V1 retrieval framework-agnostic so it can become a Mastra tool later. Do not start V2 work until the human explicitly starts that milestone.
 
 ## Search Invariants
 
 - Use the `search_text` schema in `docs/architecture.md` for both BM25 and native embeddings.
 - `src/lib/domain/search.ts` owns the URL search grammar (parameter names, the implicit-mode rule, the date format). The server parser and the UI both consume it; do not restate a parameter name anywhere else.
 - Hybrid means one Turbopuffer `multiQuery` with BM25 + native ANN and `rerank_by: ['RRF']`; do not implement ad-hoc score arithmetic in the UI.
-- Filter only `block_type`, `channel_slugs`, and `connected_at` in V1.
+- Filter only `block_type`, `channel_slugs`, and `connected_at`.
 - Schema changes that alter an existing Turbopuffer attribute's type require a new versioned namespace. Record that migration as an ADR in `docs/decisions/`.
 
 ## Engineering Guardrails
@@ -124,7 +126,7 @@ bun run build   # wrangler types, vite build
 
 ## Pull Request Hygiene
 
-- Keep the first V1 pull request to one vertical slice.
+- Keep each pull request to one vertical slice.
 - State the changed behavior, test evidence, and any environment/configuration change.
 - Never commit `.env`, local snapshots containing private blocks, or a populated Turbopuffer export.
 

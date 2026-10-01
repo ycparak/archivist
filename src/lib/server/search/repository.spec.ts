@@ -159,7 +159,7 @@ describe('buildSearchFilters', () => {
 		expect(buildSearchFilters(input())).toBeUndefined();
 	});
 
-	it('uses only V1 attributes and composes categories with AND', () => {
+	it('uses only the three filterable attributes and composes categories with AND', () => {
 		expect(
 			buildSearchFilters(
 				input({

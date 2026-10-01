@@ -20,7 +20,7 @@ These mirror the architecture boundaries in [`AGENTS.md`](../AGENTS.md) — this
 
 ## Data Loading
 
-- Fetch and validate in `+page.server.ts` / `+server.ts` `load`/handler functions. Validate untrusted input (query params, request bodies) with Zod at that boundary, per the Quality bar in `AGENTS.md`.
+- Fetch and validate in `+page.server.ts` / `+server.ts` `load`/handler functions. Validate untrusted input (query params, request bodies) with Zod at that boundary, per the Engineering Guardrails in `AGENTS.md`.
 - Keep URL search params as the source of truth for browse/search/filter state (`?q=&mode=&channel=&type=&from=&to=`) so state survives reload and is linkable. Don't shadow that state in a separate client store that can drift from the URL.
 - Use a plain `<form method="GET">` for URL-backed search state. SvelteKit intercepts GET submissions and navigates client-side, so the same markup works with and without JavaScript.
   **A GET submit replaces the entire query string with the form's own fields.** Any URL state that is not a control in that form — an active `channel` filter set from a result card, say — must be rendered as a hidden input, or submitting the form silently drops it.
@@ -38,7 +38,7 @@ These mirror the architecture boundaries in [`AGENTS.md`](../AGENTS.md) — this
 
 - Unit test normalizers, filter builders, and search-result mappers in `src/lib/domain/` and `src/lib/server/` with Vitest — colocate as `*.spec.ts` next to the source file (see `src/lib/domain/archive.spec.ts`).
 - Test behavior (given this input, this output/shape), not internal implementation details.
-- Archivist intentionally has one node-based Vitest project and no separate component/browser test project. Markup contracts that matter (a form's `method`/`action`, hidden fields carrying URL state, `for`/`id` label association, `alt`, the live region) can still be asserted in the node project by server-rendering a component with `render()` from `svelte/server` — see `src/lib/components/markup.ssr.spec.ts`. Parse what you assert (`new URL(href).searchParams`, an attribute match) rather than matching raw HTML substrings, which pin Svelte's attribute order and parameter order rather than behavior. Genuinely interactive behavior (focus, announcement, reflow) stays manual; record what was checked in the task's worksheet.
+- Archivist intentionally has one node-based Vitest project and no separate component/browser test project. Markup contracts that matter (a form's `method`/`action`, hidden fields carrying URL state, `for`/`id` label association, `alt`, the live region) can still be asserted in the node project by server-rendering a component with `render()` from `svelte/server` — see `src/lib/components/markup.ssr.spec.ts`. Parse what you assert (`new URL(href).searchParams`, an attribute match) rather than matching raw HTML substrings, which pin Svelte's attribute order and parameter order rather than behavior. Genuinely interactive behavior (focus, announcement, reflow) stays manual; record what was checked in the task's worksheet or the commit message.
 
 ## Use the Svelte MCP Server
 

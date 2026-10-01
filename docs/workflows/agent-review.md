@@ -31,16 +31,16 @@ Activate only the personas relevant to the changed surface area. Each persona ow
   Owned docs: `docs/svelte-guidelines.md`.
 
 - **Search & Retrieval Expert**: Turbopuffer schema and query correctness, hybrid `multiQuery`/RRF usage, filter construction, namespace-versioning discipline for attribute-type changes.
-  Owned docs: `docs/architecture.md` (Turbopuffer namespace, Retrieval behavior), the Search invariants section of `AGENTS.md`.
+  Owned docs: `docs/architecture.md` (Turbopuffer namespace, Retrieval behavior), the Search Invariants section of `AGENTS.md`.
 
 - **Data/Sync Expert**: Are.na V3 transport and pagination correctness, rate-limit/backoff handling, normalization and deduplication in `src/lib/server/indexing/`, sync idempotency.
-  Owned docs: `docs/architecture.md` (Sync lifecycle, Why this data-access model).
+  Owned docs: `docs/architecture.md` (Sync lifecycle, Why this data-access model, Vision indexing).
 
-- **Systems Architect**: ownership boundaries between `src/lib/domain/`, `src/lib/server/*/`, and `src/routes/`; wrong-layer placement (provider calls or ranking logic leaking into routes); product-boundary drift (V1 scope creep).
-  Owned docs: `AGENTS.md` (Product boundary, Architecture boundaries, Search invariants).
+- **Systems Architect**: ownership boundaries between `src/lib/domain/`, `src/lib/server/*/`, and `src/routes/`; wrong-layer placement (provider calls or ranking logic leaking into routes); scope drift.
+  Owned docs: `AGENTS.md` (Architecture (Brief), Scope, Search Invariants).
 
 - **QA Engineer**: coverage quality, regression risk, test adequacy and test selection. Validates that tests are legitimate (no hardcoded expected values, no skipped assertions) and exercise behavior, not implementation details.
-  Owned docs: `*.spec.ts` files colocated under `src/lib/`, `scripts/fixtures/` if present.
+  Owned docs: `*.spec.ts` files colocated under `src/`, `scripts/fixtures/`.
 
 Each persona should also load any spec or doc directly relevant to the files being changed, even if not listed above.
 
@@ -68,7 +68,7 @@ If there are no findings, explicitly say so and list residual risks/testing gaps
 
 ## Quality Checklist
 
-- Product boundary respected: no generated collections, summaries, tags, OCR, link crawling, auth, accounts, analytics, background queues, or chat UI introduced into V1 without an explicit human decision to start V2.
+- Scope in `AGENTS.md` respected: no auth, accounts, analytics, background queues, link crawling, query-time LLM, agent behavior, or chat UI introduced without an explicit decision from the maintainer.
 - Correct ownership: `src/lib/domain/` stays framework-free, `src/lib/server/` stays server-only and provider-shape-private, `src/routes/` stays composition-only.
 - Provider API shapes (Are.na, Turbopuffer) never leak past their adapter module — UI and route code consume `SearchResult`, never raw rows/payloads.
 - Turbopuffer attribute-type changes are versioned into a new namespace with an ADR in `docs/decisions/`, never an in-place type change.
@@ -99,7 +99,7 @@ Block handoff when:
 
 - A `P0` or unresolved `P1` finding remains.
 - A likely regression risk is untested in a high-impact path (search ranking, sync idempotency, provider-shape leakage).
-- Ownership or architecture boundaries regress materially, or the V1 product boundary is crossed without explicit human sign-off.
+- Ownership or architecture boundaries regress materially, or the scope in `AGENTS.md` is crossed without explicit human sign-off.
 
 Warn (non-blocking) when:
 

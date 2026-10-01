@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { searchEvaluationCasesSchema } from '$lib/server/search/evaluation';
 
 describe('search evaluation fixture', () => {
-	it('covers every V1 retrieval scenario with cases that gate the run', async () => {
+	it('covers every retrieval scenario with cases that gate the run', async () => {
 		const fixture = JSON.parse(
 			await readFile(
 				new URL('../../../../scripts/fixtures/search-cases.json', import.meta.url),
