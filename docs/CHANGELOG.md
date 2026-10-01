@@ -4,6 +4,12 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- `bun run sync` now runs the vision stage and writes generated titles and descriptions back to
+  Are.na by default. Opt out with `--no-vision` and `--no-push-arena`; `--vision` and
+  `--push-arena-apply` no longer exist. `OPENROUTER_API_KEY` and a read + write Are.na token are now
+  required unless the matching opt-out is passed. Unknown flags are rejected, so a mistyped opt-out
+  cannot silently run the stage.
+
 - Removed the `bun run sync` flags `--vision-limit`, `--vision-concurrency`, `--revision`,
   `--push-arena`, `--push-arena-limit` and `--allow-large-prune`. Vision runs always use 32 workers
   and describe every uncached block; to regenerate a block, delete its line from `vision-cache.jsonl`.

@@ -10,8 +10,8 @@
 Maintainer CLI (bun run sync, manual)
   -> Are.na V3 (personal access token)
   -> normalize original block metadata, dedupe across channels
-  -> [optional] OpenRouter vision model, cached in vision-cache.jsonl
-  -> [optional] write generated titles/descriptions back to Are.na
+  -> OpenRouter vision model, cached in vision-cache.jsonl (skip: --no-vision)
+  -> write generated titles/descriptions back to Are.na (skip: --no-push-arena)
   -> Turbopuffer namespace: arena-blocks-v1
   -> channel-manifest.json, vision-cache.jsonl (committed)
 
@@ -36,7 +36,7 @@ Code layout:
 
 ## Why this data-access model
 
-The sync uses a **personal access token**. Everything it does is read-only, including the whole indexing path, except `--push-arena-apply`, which writes generated titles and descriptions back to Are.na and so needs a token with write scope. Are.na documents personal tokens as the simplest route for personal scripts. A public unauthenticated path is limited to 30 requests per minute and can omit private or archive-specific content; an authenticated free account is documented at 120 requests per minute. The token runs only in the manually invoked sync, never in a deployed request. Do not send a live Are.na request for a visitor's query.
+The sync uses a **personal access token**. Everything it does is read-only, including the whole indexing path, except the write-back of generated titles and descriptions, which is on by default (`--no-push-arena` skips it) and so needs a token with write scope. Are.na documents personal tokens as the simplest route for personal scripts. A public unauthenticated path is limited to 30 requests per minute and can omit private or archive-specific content; an authenticated free account is documented at 120 requests per minute. The token runs only in the manually invoked sync, never in a deployed request. Do not send a live Are.na request for a visitor's query.
 
 The sync discovers its own scope: it resolves the token owner's user id (`GET /v3/me`), lists every channel that user owns (`GET /v3/users/{id}/contents?type=Channel`, paginated), and syncs each one's contents. There is no channel allowlist to hand-maintain. The cost is a scope that is bounded but not reviewed per run, which sits closer to what Are.na's Acceptable Use policy calls "systematic downloading" / "structured data harvesting". That policy already applies to any full-channel-history sync regardless of size, and the mitigations in place matter more because scope is not reviewed: manual, occasional invocation only; a 300ms pause between requests and between channels; proactive waiting when `X-RateLimit-Remaining` is at or below 1 until `X-RateLimit-Reset`; and up to 5 retries per page on a 429, waiting as long as `Retry-After` (or the reset header) says (see `src/lib/server/arena/client.ts`). Pages are requested 50 at a time (the API maximum is 100). Nested channels inside a channel are counted as skipped items, not followed.
 
@@ -86,7 +86,7 @@ Generated text is bounded before it is indexed (`src/lib/domain/archive.ts`, `vi
 
 A presentation attribute is not additive the way a written attribute is: Turbopuffer rejects an entire query with a 400 when `include_attributes` names an attribute the namespace has never been written, so shipping a read before the sync that creates it takes search down rather than degrading it. `repository.ts` therefore treats such attributes as optional. It asks for them, drops them for the life of the process once the namespace says it has never heard of them, and asks again after a restart (a fresh Worker isolate) following a sync that has written them. `video_url` and `video_content_type` are handled this way. `vision_tags` is the same hazard and is deliberately not requested at all.
 
-The `vision_*` attributes are populated from `src/lib/server/indexing/vision-cache.jsonl`, which is committed. They are written on every sync, not only when the vision stage runs, so a sync without `--vision` still indexes what earlier runs generated rather than stripping it back out.
+The `vision_*` attributes are populated from `src/lib/server/indexing/vision-cache.jsonl`, which is committed. They are written on every sync, not only when the vision stage runs, so a sync with `--no-vision` still indexes what earlier runs generated rather than stripping it back out.
 
 The embedding model is `nvidia/nemotron-3-embed-8b` with 1024 dimensions and cosine distance, set in the schema file and not in the query route. A model or dimension change is a namespace migration.
 
@@ -142,11 +142,11 @@ RRF belongs in Turbopuffer, not in client code. It combines independently ranked
 
 `bun run sync` (`scripts/sync.ts` driving `syncArchive`):
 
-1. The script requires `ARENA_ACCESS_TOKEN`, `TURBOPUFFER_API_KEY` and `TURBOPUFFER_REGION`, plus `OPENROUTER_API_KEY` only when a vision flag is given, and exits with an explanation otherwise.
+1. The script requires `ARENA_ACCESS_TOKEN`, `TURBOPUFFER_API_KEY` and `TURBOPUFFER_REGION`, plus `OPENROUTER_API_KEY` unless `--no-vision` is given, and exits with an explanation otherwise. Unknown flags are rejected, since the default run writes to Are.na.
 2. Resolve the token owner's user id and discover every channel they own, then drop ignored and (by default) private channels. Fetch each remaining channel's pages in turn. If the first three channels all fail, abort: that is a token problem, not three broken channels. Any other failed Are.na request for a channel is recorded and the sync continues; a response that does not match the expected schema aborts the run.
 3. Normalize blocks into stable documents and deduplicate by Are.na block ID while unioning channel membership. When the same block is in several channels, keep the most recent `connected_at`; every other field comes from the block resource itself.
-4. With `--vision` (or `--vision-dry-run`), the vision stage runs over the deduplicated blocks. See [Vision indexing](#vision-indexing). Without a vision flag this step is skipped and the existing cache is indexed as-is.
-5. With `--push-arena-apply`, write generated titles and descriptions back to Are.na. This runs before the upsert so that a failure here does not cost the upsert.
+4. Unless `--no-vision` is given, the vision stage runs over the deduplicated blocks (`--vision-dry-run` plans without calling the model). See [Vision indexing](#vision-indexing). With `--no-vision` this step is skipped and the existing cache is indexed as-is.
+5. Unless `--no-push-arena` is given, write generated titles and descriptions back to Are.na (from the cache, so with `--no-vision` it writes whatever earlier runs generated). This runs before the upsert so that a failure here does not cost the upsert.
 6. Upsert documents in batches of 200, folding generated text into `search_text`. Re-running the same sync is idempotent.
 7. Prune: page through every document id in the namespace (id-only, `rank_by id asc`, advancing `id Gt` filter, 10,000 ids per page) and delete in batches of 1,000 the ids not in this sync's deduplicated set. This runs after the upsert, so a failure leaves a superset of the truth, never a partial index. It also removes blocks from channels that are now ignored or private. Because ids are deduplicated across channels before the diff, a block still in any synced channel is never pruned.
 8. The script writes the merged vision cache (only when the vision stage actually ran), writes the channel manifest, and prints a summary: channels discovered/ignored/private-skipped/synced/failed, blocks fetched, nested items skipped, unique blocks, documents upserted and pruned, plus vision and write-back counts when those stages ran.
@@ -169,7 +169,7 @@ Image blocks usually arrive titled with a filename and no description, which mak
 
 **Running it.** Concurrency is fixed at 32, measured: one description takes 20 to 160 seconds and per-slot throughput is roughly flat as slots are added. Per-block failures are collected, not fatal, and leave no cache entry, so the next run retries them. The script checkpoints the cache to disk every 25 entries, so an interrupted run loses at most that many. `--vision-dry-run` reports the plan and makes no model calls; the rest of the sync still runs.
 
-**Write-back** (`writeback.ts`, `titles.ts`, `--push-arena-apply`). The one part of the project that writes to the maintainer's archive. Only blocks the token's owner authored are touched, since Are.na rejects updates to anyone else's. A title is replaced only when it carries no information: an upload filename, an opaque hash or bare URL, platform boilerplate (`… on X: "…"`, `- YouTube`, Instagram), or a long title that merely restates the description. A missing title is filled in. A description is written only when the block has none. Each write also stamps `metadata.vision_v`, `vision_at` and `vision_src`. Writes are paced at 500ms (Are.na's free tier is 120 per minute), a rate-limited block waits out `Retry-After` up to 3 times, and the run aborts if the first 5 writes all fail, which almost always means a read-only token. There is no preview mode and no cap on how many blocks a run writes.
+**Write-back** (`writeback.ts`, `titles.ts`; on by default, `--no-push-arena` skips it). The one part of the project that writes to the maintainer's archive. Only blocks the token's owner authored are touched, since Are.na rejects updates to anyone else's. A title is replaced only when it carries no information: an upload filename, an opaque hash or bare URL, platform boilerplate (`… on X: "…"`, `- YouTube`, Instagram), or a long title that merely restates the description. A missing title is filled in. A description is written only when the block has none. Each write also stamps `metadata.vision_v`, `vision_at` and `vision_src`. Writes are paced at 500ms (Are.na's free tier is 120 per minute), a rate-limited block waits out `Retry-After` up to 3 times, and the sync aborts before indexing if the first 5 writes all fail, which almost always means a read-only token. There is no preview mode and no cap on how many blocks a run writes.
 
 ## Sources checked
 
