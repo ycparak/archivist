@@ -60,7 +60,7 @@ in `./docs/decisions/`.
 - Update [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) when completing user-visible work.
 - Load only docs relevant to the current task and scope.
 - If a behavior or rule changes in practice, update the owning doc in the same task.
-- Never run `bun run sync` (or any command that writes to the live Turbopuffer namespace or calls the maintainer's Are.na account, including `--vision` and `--push-arena-apply`). When a task needs a sync or re-index after the code changes, finish the code and tests, then hand back and ask the maintainer to run it, saying which command and why. Read-only commands such as `bun run evaluate:search` are fine. `--vision-dry-run` is not a dry run of the sync: it still upserts and prunes.
+- Never run `bun run sync` (or any command that writes to the live Turbopuffer namespace or calls the maintainer's Are.na account). A plain `bun run sync` does all of it: it calls OpenRouter, writes titles back to Are.na, and upserts and prunes the namespace. `--no-vision` and `--no-push-arena` skip the first two, never the third. When a task needs a sync or re-index after the code changes, finish the code and tests, then hand back and ask the maintainer to run it, saying which command and why. Read-only commands such as `bun run evaluate:search` are fine. `--vision-dry-run` is not a dry run of the sync: it still upserts and prunes.
 - In autonomous/loop mode, complete exactly one task at a time and commit immediately. Do not batch unless the user explicitly asks.
 - When coding or reviewing, follow the Engineering Guardrails and Product/Search rules below and the guidelines in linked docs.
 

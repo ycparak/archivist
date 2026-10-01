@@ -3,9 +3,9 @@
 A fast, public search engine and gallery for a personal [Are.na](https://www.are.na) archive.
 
 Are.na is good at collecting and bad at finding. Archivist syncs every channel you own into
-[Turbopuffer](https://turbopuffer.com) and puts lexical, semantic and hybrid search over it — and,
-optionally, has a vision model describe each image so you can find a block by what it _looks like_,
-not just by whatever filename it arrived with.
+[Turbopuffer](https://turbopuffer.com) and puts lexical, semantic and hybrid search over it — and
+has a vision model describe each image so you can find a block by what it _looks like_, not just by
+whatever filename it arrived with.
 
 That last part matters more than it sounds. In the archive this was built for, 915 image blocks had
 906 titles — and almost all of them looked like `cleanshot-2025-02-28-at-17.36.56.png`. Roughly a
@@ -19,17 +19,17 @@ syncs every channel that user owns. Run it and you get your archive, not anyone 
 
 ## What you need
 
-|                                                  | Why                                                                | Cost                                |
-| ------------------------------------------------ | ------------------------------------------------------------------ | ----------------------------------- |
-| [Bun](https://bun.sh) 1.4+                       | runtime and package manager                                        | free                                |
-| [ffmpeg](https://ffmpeg.org) on PATH             | transcodes animated blocks before describing them — **optional**   | free                                |
-| An Are.na account                                | the source of truth (read token; read + write only for write-back) | free tier is fine                   |
-| A [Turbopuffer](https://turbopuffer.com) account | search index + embeddings                                          | free tier covers a personal archive |
-| An [OpenRouter](https://openrouter.ai) account   | vision descriptions — **optional**                                 | ~$0.50 for 2,600 images             |
-| A [Cloudflare](https://cloudflare.com) account   | deploying the public site — **optional**                           | free tier is fine                   |
+|                                                  | Why                                                 | Cost                                |
+| ------------------------------------------------ | --------------------------------------------------- | ----------------------------------- |
+| [Bun](https://bun.sh) 1.4+                       | runtime and package manager                         | free                                |
+| [ffmpeg](https://ffmpeg.org) on PATH             | transcodes animated blocks before describing them   | free                                |
+| An Are.na account                                | the source of truth (read + write token; see below) | free tier is fine                   |
+| A [Turbopuffer](https://turbopuffer.com) account | search index + embeddings                           | free tier covers a personal archive |
+| An [OpenRouter](https://openrouter.ai) account   | vision descriptions — skip with `--no-vision`       | ~$0.50 for 2,600 images             |
+| A [Cloudflare](https://cloudflare.com) account   | deploying the public site — **optional**            | free tier is fine                   |
 
-You can run everything locally without Cloudflare, and skip OpenRouter entirely if you only want
-metadata search.
+You can run everything locally without Cloudflare. `bun run sync --no-vision --no-push-arena` is
+the metadata-only sync: no OpenRouter account, no ffmpeg, and a read-only Are.na token is enough.
 
 ## Setup
 
@@ -39,26 +39,62 @@ bun install
 cp .env.example .env
 ```
 
-Fill in `.env`.
+Fill in `.env`:
+
+```bash
+ARENA_ACCESS_TOKEN=          # dev.are.na -> your application -> personal access token (read + write)
+TURBOPUFFER_API_KEY=
+TURBOPUFFER_REGION=          # e.g. gcp-us-central1, from your Turbopuffer dashboard
+TURBOPUFFER_NAMESPACE=arena-blocks-v1
+
+ARENA_IGNORE_CHANNELS=       # comma-separated slugs to skip
+ARENA_ALLOW_PRIVATE_CHANNELS= # private channels are skipped unless listed here
+
+OPENROUTER_API_KEY=          # needed unless you pass --no-vision
+```
+
+**Are.na token scope.** A plain `bun run sync` writes generated titles and descriptions back to
+Are.na, so `ARENA_ACCESS_TOKEN` needs **read + write** scope — see
+[the gotcha below](#gotcha-a-read-only-token-cannot-write-back). With a read-only token, pass
+`--no-push-arena`.
+
+Private channels are excluded by default, so nothing private is published by accident — you have to
+name a channel explicitly to include it.
 
 ## First run
 
 ```bash
-bun run sync          # fetch your archive and index it
+bun run sync          # fetch your archive, describe it, write titles back, and index it
 bun run dev           # http://localhost:5173
 ```
 
-The first sync takes a few minutes, mostly paced Are.na requests. It is idempotent: run it again
-whenever your archive changes and it will upsert what is new and prune what is gone.
+A plain `bun run sync` does everything: it describes every block with an image, writes generated
+titles and descriptions back to Are.na where they are missing, and indexes the result. Read the
+sections below before the first run — vision costs money and write-back changes your archive. Two
+opt-outs:
 
-## Adding vision descriptions
+```bash
+bun run sync --no-vision          # skip the vision stage; index whatever the cache already holds
+bun run sync --no-push-arena      # never write to Are.na
+```
 
-Optional, and the most useful thing this project does. Preview the cost first:
+Unknown flags are rejected rather than ignored, because a mistyped opt-out would otherwise run the
+stage anyway. The sync is idempotent: run it again whenever your archive changes and it will upsert
+what is new and prune what is gone.
+
+The first run with vision takes hours; with `--no-vision` it takes a few minutes, mostly paced
+Are.na requests.
+
+## Vision descriptions
+
+On by default, and the most useful thing this project does. Preview the cost first:
 
 ```bash
 bun run sync --vision-dry-run     # reports how many blocks would be described; no model calls
-bun run sync --vision             # actually describes them
 ```
+
+`--vision-dry-run` only skips the model calls. The rest of the sync still runs: it indexes, prunes
+and — unless you add `--no-push-arena` — writes back to Are.na from whatever the cache holds.
 
 For a ~2,600-block archive expect **about $0.50** and a few hours. It is safe to interrupt: results
 are checkpointed every 25 descriptions, and re-running skips everything already done **before
@@ -93,20 +129,22 @@ repository.
 
 This is on by default. Without ffmpeg every animated block is reported as failed, with a message
 naming ffmpeg, while the rest of the run carries on; pass `--no-vision-video` to fall back to
-single-frame stills instead. Animations cost roughly twice an
-image (~$0.0005 each) and take longer, since the source is downloaded before it is transcoded.
+single-frame stills instead. Animations cost roughly twice an image (~$0.0005 each) and take longer,
+since the source is downloaded before it is transcoded.
 
 ### Writing the descriptions back to Are.na
 
-Also optional, and the only thing here that modifies your actual archive:
+Also on by default, and the only thing here that modifies your actual archive. Pass
+`--no-push-arena` to skip it:
 
 ```bash
-bun run sync --push-arena-apply
+bun run sync --no-push-arena
 ```
 
-There is no preview and no cap: it writes to every eligible block as soon as it runs, so be sure
-before you start. The summary's `skipped` line accounts for the rest of your archive, so the numbers
-should reconcile against your block count.
+There is no preview and no cap: a plain `bun run sync` writes to every eligible block as soon as the
+vision stage has produced something for it, so be sure before you run it. The summary's `skipped`
+line accounts for the rest of your archive, so the numbers should reconcile against your block
+count.
 
 It replaces titles that carry no information — filenames, hashes, bare URLs, and the platform
 boilerplate you get from a shared post (`Seth Thompson on X: "…" / X`, where the title is a
@@ -122,19 +160,20 @@ first if that matters to you.
 #### Gotcha: a read-only token cannot write back
 
 This is the one thing most likely to waste your time, because everything _else_ in the project works
-fine with a read-only token, so you will probably have one.
+fine with a read-only token, so you may well have one.
 
-`ARENA_ACCESS_TOKEN` needs **read + write** scope for `--push-arena-apply`. Create a personal access
-token with both at [dev.are.na](https://dev.are.na) and put it in `.env`. The rest of the project
-never exercises the write scope.
+`ARENA_ACCESS_TOKEN` needs **read + write** scope unless you pass `--no-push-arena`. Create a
+personal access token with both at [dev.are.na](https://dev.are.na) and put it in `.env`. Nothing
+else in the project exercises the write scope.
 
-With a read-only token every update is rejected. The run now stops after five consecutive failures
-and says so:
+With a read-only token every update is rejected. The write-back stops after five consecutive
+failures and the sync fails with this message, before anything is indexed:
 
 ```
 Aborting Are.na write-back: the first 5 writes all failed (most recently block 36703616:
 Are.na request failed with status 401 updating block 36703616). This usually means
-ARENA_ACCESS_TOKEN is read-only — writing titles and descriptions needs write scope.
+ARENA_ACCESS_TOKEN is read-only — writing titles and descriptions needs write scope; use a read +
+write token, or pass --no-push-arena.
 ```
 
 Always read the summary line rather than assuming success — it reports what was written against what
@@ -157,21 +196,21 @@ blocks already written are simply "already fine" and skipped, and only the failu
 
 ## Commands
 
-| Command                           | What it does                                               |
-| --------------------------------- | ---------------------------------------------------------- |
-| `bun run dev`                     | local dev server                                           |
-| `bun run preview`                 | run the built Worker locally with wrangler                 |
-| `bun run sync`                    | fetch Are.na, index into Turbopuffer, prune what is gone   |
-| `bun run sync --vision`           | also generate descriptions for blocks with images          |
-| `bun run sync --vision-dry-run`   | report what vision would cost; makes no model calls        |
-| `bun run sync --no-vision-video`  | describe animations from one frame instead of transcoding  |
-| `bun run sync --push-arena-apply` | write generated titles back to Are.na (read + write token) |
-| `bun run evaluate:search`         | run the search evaluation against your index               |
-| `bun run check`                   | generate types, then typecheck                             |
-| `bun run lint`                    | prettier + eslint                                          |
-| `bun run format`                  | prettier, writing changes                                  |
-| `bun run test`                    | vitest                                                     |
-| `bun run build`                   | production build                                           |
+| Command                          | What it does                                              |
+| -------------------------------- | --------------------------------------------------------- |
+| `bun run dev`                    | local dev server                                          |
+| `bun run preview`                | run the built Worker locally with wrangler                |
+| `bun run sync`                   | fetch Are.na, describe images, write titles back, index   |
+| `bun run sync --no-vision`       | skip the vision stage; index the existing cache as-is     |
+| `bun run sync --no-push-arena`   | do not write generated titles back to Are.na              |
+| `bun run sync --vision-dry-run`  | report what vision would cost; makes no model calls       |
+| `bun run sync --no-vision-video` | describe animations from one frame instead of transcoding |
+| `bun run evaluate:search`        | run the search evaluation against your index              |
+| `bun run check`                  | generate types, then typecheck                            |
+| `bun run lint`                   | prettier + eslint                                         |
+| `bun run format`                 | prettier, writing changes                                 |
+| `bun run test`                   | vitest                                                    |
+| `bun run build`                  | production build                                          |
 
 Run `check`, `lint`, `test` and `build` before opening a pull request.
 
@@ -210,7 +249,8 @@ query strings redacted.
 Are.na V3  ──►  sync (manual, local)  ──►  Turbopuffer  ──►  SvelteKit on Cloudflare
                       │
                       ├─ normalize + dedupe blocks across channels
-                      ├─ [optional] vision model describes each image
+                      ├─ vision model describes each image
+                      ├─ writes generated titles back to Are.na
                       └─ prune blocks that left the archive
 ```
 
