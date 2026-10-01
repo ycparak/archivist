@@ -246,26 +246,6 @@ When the cache is merged, entries for blocks that left the archive are dropped. 
 - If the first 5 writes all fail, the sync stops before indexing. This almost always means a read-only token.
 - There is no preview and no cap on how many blocks one run writes.
 
-## Changelog and TODO format
-
-`docs/CHANGELOG.md` and `docs/TODOS.md` must keep one consistent format. When you change either file, match the entries already there. Do not invent a new shape.
-
-**`CHANGELOG.md`**
-
-- Everything sits under `## Unreleased`, in `###` groups in this order: `Added`, `Changed`, `Removed`, `Fixed`. Leave out empty groups.
-- Newest entries first within a group.
-- One bullet per change, on one line, with no blank lines between bullets.
-- Write one or two sentences in the past tense. Start with a verb and say what the user sees or does differently.
-- Put commands, flags, files and values in backticks.
-- If a change needs a re-sync to show up, end with ``Takes effect after `bun run sync`.``
-
-**`TODOS.md`**
-
-- Keep the sections in this order: In Progress, Up Next, Needs Input, Backlog, Done. Write `_(none)_` under an empty one.
-- Write each item as `- [ ] **Title.** One sentence.` Use `[~]` and `[x]` as the header describes.
-- Link a spec or worksheet at the end of the line when one exists.
-- Done items go newest first, and end with the short commit hash in parentheses.
-
 ## Sources checked
 
 - [Are.na API documentation](https://www.are.na/developers/explore): authentication, tiers, pagination, caching, and rate limits.
