@@ -56,7 +56,7 @@ whenever your archive changes and it will upsert what is new and prune what is g
 Optional, and the most useful thing this project does. Preview the cost first:
 
 ```bash
-bun run sync --vision-dry-run     # reports how many blocks would be described; spends nothing
+bun run sync --vision-dry-run     # reports how many blocks would be described; no model calls
 bun run sync --vision             # actually describes them
 ```
 
@@ -69,7 +69,8 @@ the expensive artifact — keeping it in the repo means a teammate, a fresh clon
 index costs nothing to restore.
 
 A block is only ever described again if its image changed, you bump `PROMPT_VERSION`, you switch
-models, you pass `--revision`, or the way it is read changes (see animations below).
+models, or the way it is read changes (see animations below). To redo one block by hand, delete its
+line from the cache file.
 
 #### Animations are read as motion, not as one frame
 
@@ -100,13 +101,12 @@ image (~$0.0005 each) and take longer, since the source is downloaded before it 
 Also optional, and the only thing here that modifies your actual archive:
 
 ```bash
-bun run sync --push-arena                                  # print the diff, write nothing
-bun run sync --push-arena-apply --push-arena-limit=5       # apply a handful, then go and look
-bun run sync --push-arena-apply                            # apply the rest
+bun run sync --push-arena-apply
 ```
 
-`--push-arena-limit=N` caps how many blocks one run writes; the `skipped` line accounts for the
-rest of your archive, so the numbers should reconcile against your block count.
+There is no preview and no cap: it writes to every eligible block as soon as it runs, so be sure
+before you start. The summary's `skipped` line accounts for the rest of your archive, so the numbers
+should reconcile against your block count.
 
 It replaces titles that carry no information — filenames, hashes, bare URLs, and the platform
 boilerplate you get from a shared post (`Seth Thompson on X: "…" / X`, where the title is a
@@ -157,27 +157,21 @@ blocks already written are simply "already fine" and skipped, and only the failu
 
 ## Commands
 
-| Command                               | What it does                                              |
-| ------------------------------------- | --------------------------------------------------------- |
-| `bun run dev`                         | local dev server                                          |
-| `bun run preview`                     | run the built Worker locally with wrangler                |
-| `bun run sync`                        | fetch Are.na, index into Turbopuffer, prune what is gone  |
-| `bun run sync --vision`               | also generate descriptions for blocks with images         |
-| `bun run sync --vision-dry-run`       | report what vision would cost; spend nothing              |
-| `bun run sync --vision-limit=N`       | describe at most N new blocks this run                    |
-| `bun run sync --vision-concurrency=N` | parallel description requests (default 32)                |
-| `bun run sync --no-vision-video`      | describe animations from one frame instead of transcoding |
-| `bun run sync --revision[=slug,…]`    | ignore the cache, for everything or named channels        |
-| `bun run sync --push-arena`           | preview Are.na write-back                                 |
-| `bun run sync --push-arena-apply`     | perform Are.na write-back (needs a read + write token)    |
-| `bun run sync --push-arena-limit=N`   | write back at most N blocks this run                      |
-| `bun run sync --allow-large-prune`    | permit a prune of more than half the index                |
-| `bun run evaluate:search`             | run the search evaluation against your index              |
-| `bun run check`                       | generate types, then typecheck                            |
-| `bun run lint`                        | prettier + eslint                                         |
-| `bun run format`                      | prettier, writing changes                                 |
-| `bun run test`                        | vitest                                                    |
-| `bun run build`                       | production build                                          |
+| Command                           | What it does                                               |
+| --------------------------------- | ---------------------------------------------------------- |
+| `bun run dev`                     | local dev server                                           |
+| `bun run preview`                 | run the built Worker locally with wrangler                 |
+| `bun run sync`                    | fetch Are.na, index into Turbopuffer, prune what is gone   |
+| `bun run sync --vision`           | also generate descriptions for blocks with images          |
+| `bun run sync --vision-dry-run`   | report what vision would cost; makes no model calls        |
+| `bun run sync --no-vision-video`  | describe animations from one frame instead of transcoding  |
+| `bun run sync --push-arena-apply` | write generated titles back to Are.na (read + write token) |
+| `bun run evaluate:search`         | run the search evaluation against your index               |
+| `bun run check`                   | generate types, then typecheck                             |
+| `bun run lint`                    | prettier + eslint                                          |
+| `bun run format`                  | prettier, writing changes                                  |
+| `bun run test`                    | vitest                                                     |
+| `bun run build`                   | production build                                           |
 
 Run `check`, `lint`, `test` and `build` before opening a pull request.
 

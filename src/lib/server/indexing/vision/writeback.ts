@@ -40,8 +40,7 @@ function metadataFor(entry: VisionCacheEntry, now: Date): ArenaBlockUpdate['meta
 }
 
 /**
- * What write-back would do, without doing any of it. `--push-arena` prints this; only
- * `--push-arena-apply` acts on it.
+ * What write-back would do, without doing any of it. `--push-arena-apply` acts on it.
  */
 export function planWriteBack(
 	blocks: ArchiveBlock[],
@@ -115,19 +114,6 @@ export interface WriteBackSummary {
 	skipped: WriteBackSkips;
 }
 
-/** The shape of a run that has not happened yet: every count describes the plan. */
-export function summarizePlans(plans: WriteBackPlan[], skipped: WriteBackSkips): WriteBackSummary {
-	return {
-		blocksPlanned: plans.length,
-		titlesAdded: plans.filter((plan) => plan.title?.action.kind === 'add').length,
-		titlesReplaced: plans.filter((plan) => plan.title?.action.kind === 'replace').length,
-		descriptionsAdded: plans.filter((plan) => plan.description).length,
-		blocksUpdated: 0,
-		failed: [],
-		skipped
-	};
-}
-
 export interface ApplyWriteBackOptions {
 	updateBlock: (id: number, body: ArenaBlockUpdate) => Promise<void>;
 	/** Are.na is rate-limited and this is a write path; requests are paced, not parallelised. */
@@ -135,7 +121,6 @@ export interface ApplyWriteBackOptions {
 	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
 	log?: (message: string) => void;
 	signal?: AbortSignal;
-	limit?: number;
 	/** How many times one block waits out a rate limit before it is recorded as failed. */
 	rateLimitRetries?: number;
 }
@@ -166,16 +151,13 @@ export async function applyWriteBack(
 		delayFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 		log = noop,
 		signal,
-		limit,
 		rateLimitRetries = DEFAULT_RATE_LIMIT_RETRIES
 	} = options;
-
-	const selected = limit === undefined ? plans : plans.slice(0, limit);
 
 	// Every count here describes what was actually written, not what was planned — a summary that
 	// reports the plan makes a partly failed run look complete.
 	const summary: WriteBackSummary = {
-		blocksPlanned: selected.length,
+		blocksPlanned: plans.length,
 		titlesAdded: 0,
 		titlesReplaced: 0,
 		descriptionsAdded: 0,
@@ -184,7 +166,7 @@ export async function applyWriteBack(
 		skipped
 	};
 
-	for (const [index, plan] of selected.entries()) {
+	for (const [index, plan] of plans.entries()) {
 		if (signal?.aborted) break;
 
 		let lastError: unknown;
@@ -219,26 +201,11 @@ export async function applyWriteBack(
 			}
 		}
 
-		if ((index + 1) % 25 === 0 || index === selected.length - 1) {
-			log(`  ${index + 1}/${selected.length} block(s) written`);
+		if ((index + 1) % 25 === 0 || index === plans.length - 1) {
+			log(`  ${index + 1}/${plans.length} block(s) written`);
 		}
-		if (index < selected.length - 1) await delayFn(delayMs, signal);
+		if (index < plans.length - 1) await delayFn(delayMs, signal);
 	}
 
 	return summary;
-}
-
-export function formatPlanLine(plan: WriteBackPlan): string {
-	const parts: string[] = [];
-	if (plan.title) {
-		const verb =
-			plan.title.action.kind === 'add' ? 'add title' : `retitle (${plan.title.action.reason})`;
-		parts.push(
-			`${verb}: ${JSON.stringify(plan.title.from ?? '')} -> ${JSON.stringify(plan.title.to)}`
-		);
-	}
-	if (plan.description) {
-		parts.push(`add description: ${JSON.stringify(plan.description.to.slice(0, 60))}…`);
-	}
-	return `  ${plan.arenaUrl}\n    ${parts.join('\n    ')}`;
 }
