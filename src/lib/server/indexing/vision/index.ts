@@ -19,10 +19,6 @@ import {
 export interface VisionStageOptions {
 	client: VisionClient;
 	cache: VisionCache;
-	/** Cap on how many uncached blocks this run may pay for. */
-	limit?: number;
-	/** Ignore the cache for every block, or only for blocks in these channels. */
-	revise?: boolean | ReadonlySet<string>;
 	concurrency?: number;
 	log?: (message: string) => void;
 	signal?: AbortSignal;
@@ -48,7 +44,6 @@ export interface VisionStageSummary {
 	generatedFromVideo: number;
 	skippedTooLarge: number;
 	skippedUnsupported: number;
-	skippedOverLimit: number;
 	failed: VisionFailure[];
 }
 
@@ -97,31 +92,22 @@ function cacheKey(block: ArchiveBlock, client: VisionClient, video: boolean): Vi
 	};
 }
 
-function isRevised(block: ArchiveBlock, revise: VisionStageOptions['revise']): boolean {
-	if (revise === true) return true;
-	if (!revise) return false;
-	return block.channels.some((channel) => revise.has(channel.slug));
-}
-
 /** What the run would cost before it costs it. */
 export function planVisionWork(
 	blocks: ArchiveBlock[],
-	options: Pick<VisionStageOptions, 'client' | 'cache' | 'revise' | 'limit' | 'video'>
-): { withImage: ArchiveBlock[]; cached: number; pending: ArchiveBlock[]; overLimit: number } {
-	const { client, cache, revise, limit, video = false } = options;
+	options: Pick<VisionStageOptions, 'client' | 'cache' | 'video'>
+): { withImage: ArchiveBlock[]; cached: number; pending: ArchiveBlock[] } {
+	const { client, cache, video = false } = options;
 	const withImage = blocks.filter((block) => block.imageUrl);
 
 	const pending: ArchiveBlock[] = [];
 	let cached = 0;
 	for (const block of withImage) {
-		const hit =
-			!isRevised(block, revise) && isCacheHit(cache.get(block.id), cacheKey(block, client, video));
-		if (hit) cached += 1;
+		if (isCacheHit(cache.get(block.id), cacheKey(block, client, video))) cached += 1;
 		else pending.push(block);
 	}
 
-	const allowed = limit === undefined ? pending : pending.slice(0, limit);
-	return { withImage, cached, pending: allowed, overLimit: pending.length - allowed.length };
+	return { withImage, cached, pending };
 }
 
 /** Bounded fan-out over one shared cursor, so a slow block never stalls the others. */
@@ -149,8 +135,6 @@ export async function describeBlocks(
 	const {
 		client,
 		cache,
-		limit,
-		revise,
 		concurrency = DEFAULT_CONCURRENCY,
 		log = noop,
 		signal,
@@ -161,13 +145,7 @@ export async function describeBlocks(
 		transcodeOptions
 	} = options;
 
-	const { withImage, cached, pending, overLimit } = planVisionWork(blocks, {
-		client,
-		cache,
-		revise,
-		limit,
-		video
-	});
+	const { withImage, cached, pending } = planVisionWork(blocks, { client, cache, video });
 
 	const summary: VisionStageSummary = {
 		blocksWithImage: withImage.length,
@@ -176,7 +154,6 @@ export async function describeBlocks(
 		generatedFromVideo: 0,
 		skippedTooLarge: 0,
 		skippedUnsupported: 0,
-		skippedOverLimit: overLimit,
 		failed: []
 	};
 

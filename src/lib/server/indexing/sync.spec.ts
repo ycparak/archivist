@@ -557,7 +557,7 @@ describe('syncArchive', () => {
 			);
 		});
 
-		it('skips pruning above the safety limit unless explicitly allowed', async () => {
+		it('skips pruning above the safety limit', async () => {
 			const existing = ['block:100', 'block:101', 'block:102', 'block:7', 'block:8', 'block:9'];
 
 			const guarded = okTurbopufferFetch(existing);
@@ -571,17 +571,6 @@ describe('syncArchive', () => {
 			expect(skipped.summary.documentsDeleted).toBe(0);
 			expect(skipped.summary.pruneSkipped).toMatch(/3 of 6/);
 			expect(writeBodies(guarded)).toHaveLength(1);
-
-			const allowed = okTurbopufferFetch(existing);
-			const forced = await syncArchive({
-				accessToken: 't',
-				fetchFn: twoChannelsFetch(),
-				channelDelayMs: 0,
-				maxPruneFraction: 0.4,
-				allowLargePrune: true,
-				turbopuffer: turbopufferConfig(allowed)
-			});
-			expect(forced.summary.documentsDeleted).toBe(3);
 		});
 
 		it('does nothing when the namespace already matches', async () => {

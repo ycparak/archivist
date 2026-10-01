@@ -5,11 +5,7 @@ import {
 } from '$lib/server/indexing/channel-manifest';
 import { parseSlugList } from '$lib/server/indexing/channel-filter';
 import { createSyncReporter } from '$lib/server/indexing/progress/reporter';
-import {
-	syncArchive,
-	type PushArenaOptions,
-	type VisionSyncOptions
-} from '$lib/server/indexing/sync';
+import { syncArchive, type VisionSyncOptions } from '$lib/server/indexing/sync';
 import { createVisionClient } from '$lib/server/indexing/vision/client';
 import {
 	parseVisionCache,
@@ -20,25 +16,8 @@ import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 
 const VISION_CACHE_URL = new URL('../src/lib/server/indexing/vision-cache.jsonl', import.meta.url);
 
-function flagValue(name: string): string | undefined {
-	const prefix = `--${name}=`;
-	return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
-}
-
 function hasFlag(name: string): boolean {
-	return process.argv.includes(`--${name}`) || flagValue(name) !== undefined;
-}
-
-/** `--revision` revises everything; `--revision=a,b` revises only those channels. */
-function parseRevise(): boolean | Set<string> | undefined {
-	if (!hasFlag('revision')) return undefined;
-	const value = flagValue('revision');
-	if (!value) return true;
-	const slugs = value
-		.split(',')
-		.map((slug) => slug.trim())
-		.filter(Boolean);
-	return slugs.length ? new Set(slugs) : true;
+	return process.argv.includes(`--${name}`);
 }
 
 async function readVisionCache(): Promise<Map<string, VisionCacheEntry>> {
@@ -62,29 +41,12 @@ function resolveVisionOptions(): Omit<VisionSyncOptions, 'onEntry'> | undefined 
 		process.exit(1);
 	}
 
-	const limit = positiveIntFlag('vision-limit');
-	const concurrency = positiveIntFlag('vision-concurrency');
-
 	return {
 		client: createVisionClient({ apiKey }),
-		limit,
-		concurrency,
-		revise: parseRevise(),
 		// Animations are read as motion by default; the opt-out is for machines without ffmpeg.
 		video: !hasFlag('no-vision-video'),
 		dryRun
 	};
-}
-
-function positiveIntFlag(name: string): number | undefined {
-	const raw = flagValue(name);
-	if (raw === undefined) return undefined;
-	const value = Number(raw);
-	if (!Number.isInteger(value) || value < 0) {
-		console.error(`--${name} must be a non-negative integer, got "${raw}"`);
-		process.exit(1);
-	}
-	return value;
 }
 
 const accessToken = process.env.ARENA_ACCESS_TOKEN;
@@ -103,14 +65,8 @@ if (!apiKey || !region) {
 }
 const namespace = process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE;
 
-function resolvePushArena(): PushArenaOptions | undefined {
-	const apply = hasFlag('push-arena-apply');
-	if (!hasFlag('push-arena') && !apply) return undefined;
-	return { apply, limit: positiveIntFlag('push-arena-limit') };
-}
-
 const vision = resolveVisionOptions();
-const pushArena = resolvePushArena();
+const pushArena = hasFlag('push-arena-apply');
 const visionCache = await readVisionCache();
 const reporter = createSyncReporter();
 
@@ -156,7 +112,6 @@ try {
 		turbopuffer: { apiKey, region, namespace },
 		log: (message) => reporter.log(message),
 		onEvent: (event) => reporter.emit(event),
-		allowLargePrune: hasFlag('allow-large-prune'),
 		visionCache,
 		vision: vision && { ...vision, onEntry },
 		pushArena,
@@ -203,7 +158,7 @@ try {
 		console.log(`  Blocks with image:   ${v.blocksWithImage}`);
 		console.log(`  Vision cache hits:   ${v.cacheHits} (no model call, no cost)`);
 		if (vision?.dryRun) {
-			const would = v.blocksWithImage - v.cacheHits - v.skippedOverLimit;
+			const would = v.blocksWithImage - v.cacheHits;
 			console.log(`  Vision would run:    ${would} block(s) — dry run, nothing spent`);
 		} else {
 			console.log(`  Vision generated:    ${v.generated}`);
@@ -213,7 +168,6 @@ try {
 			console.log(`  Vision skipped:      ${v.skippedTooLarge} (media too large)`);
 		if (v.skippedUnsupported)
 			console.log(`  Vision skipped:      ${v.skippedUnsupported} (format not describable)`);
-		if (v.skippedOverLimit) console.log(`  Vision over limit:   ${v.skippedOverLimit}`);
 		if (v.failed.length) {
 			console.log(`  Vision failed:       ${v.failed.length}`);
 			for (const failure of v.failed.slice(0, 10)) {
@@ -224,13 +178,7 @@ try {
 	}
 	if (summary.writeBack) {
 		const w = summary.writeBack;
-		if (pushArena?.apply) {
-			console.log(
-				`  Are.na written:      ${w.blocksUpdated} of ${w.blocksPlanned} planned block(s)`
-			);
-		} else {
-			console.log(`  Are.na would write:  ${w.blocksPlanned} block(s) — nothing written`);
-		}
+		console.log(`  Are.na written:      ${w.blocksUpdated} of ${w.blocksPlanned} planned block(s)`);
 		console.log(`    titles replaced:   ${w.titlesReplaced}`);
 		console.log(`    titles added:      ${w.titlesAdded}`);
 		console.log(`    descriptions:      ${w.descriptionsAdded}`);
@@ -244,15 +192,10 @@ try {
 			}
 			if (w.failed.length > 10) console.log(`      ... and ${w.failed.length - 10} more`);
 		}
-		if (!pushArena?.apply) {
-			console.log('    Re-run with --push-arena-apply to write.');
-		}
 	}
 	if (summary.pruneSkipped) {
 		console.log(`  Pruned:              skipped (${summary.pruneSkipped})`);
-		console.log(
-			'  Stale documents remain searchable. Re-run with --allow-large-prune if intended.'
-		);
+		console.log('  Stale documents remain searchable.');
 	} else {
 		console.log(`  Pruned:              ${summary.documentsDeleted} stale document(s)`);
 	}
