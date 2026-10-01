@@ -3,7 +3,6 @@ import {
 	DEFAULT_RENDITION_WIDTH,
 	imageSourceHash,
 	imageSourceKey,
-	isResizable,
 	renditionUrl
 } from './rendition';
 
@@ -93,12 +92,5 @@ describe('imageSourceHash', () => {
 		const replaced = { ...ARENA_PAYLOAD, key: '49584987/original_ffffffff.png' };
 		const url = `https://images.are.na/${Buffer.from(JSON.stringify(replaced)).toString('base64')}`;
 		expect(imageSourceHash(url)).not.toBe(imageSourceHash(ARENA_URL));
-	});
-});
-
-describe('isResizable', () => {
-	it('separates resizer URLs from everything else', () => {
-		expect(isResizable(ARENA_URL)).toBe(true);
-		expect(isResizable(CLOUDFRONT_URL)).toBe(false);
 	});
 });

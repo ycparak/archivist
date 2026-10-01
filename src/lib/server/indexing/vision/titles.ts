@@ -66,14 +66,3 @@ export function lowQualityTitleReason(
 	if (isVerboseRestatement(trimmed, description)) return 'restates-description';
 	return null;
 }
-
-export function isLowQualityTitle(
-	title: string | null | undefined,
-	description?: string | null
-): boolean {
-	return lowQualityTitleReason(title, description) !== null;
-}
-
-export function hasTitle(title: string | null | undefined): boolean {
-	return Boolean(title?.trim());
-}

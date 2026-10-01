@@ -146,8 +146,3 @@ export function readArchiveSearchStateFromEntries(
 export function hasActiveFilters(state: ArchiveSearchState): boolean {
 	return Boolean(state.channelSlugs.length || state.blockTypes.length || state.from || state.to);
 }
-
-export function withChannel(state: ArchiveSearchState, slug: string): ArchiveSearchState {
-	if (state.channelSlugs.includes(slug)) return state;
-	return { ...state, channelSlugs: [...state.channelSlugs, slug] };
-}
