@@ -26,7 +26,7 @@ Keep it tight. Another agent should be able to retrace your steps by reading the
 
 1. Check the git workspace state. If the working tree is dirty with WIP, either finish it cleanly or stash it. Note this in your worksheet.
 2. Run validation to confirm the project is healthy before starting:
-   - `bun run check` — svelte-kit sync, wrangler types, and svelte-check (TypeScript)
+   - `bun run check` — wrangler types, svelte-kit sync, svelte-check, and `tsc` on `scripts/`
    - `bun run lint` — prettier + eslint
    - `bun run test` — Vitest
 3. Fix any failures before entering the loop.

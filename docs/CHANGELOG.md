@@ -44,6 +44,7 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Fixed
 
+- Fixed the missing-ffmpeg error from `bun run sync`, which suggested the removed `--no-vision-video` flag. It now suggests `--no-vision`.
 - Fixed runaway generated text. Three blocks had text that repeated one phrase, one of them 270,000 characters long, and all of it was indexed. Generated text is now capped and repetition is discarded. Takes effect after `bun run sync`.
 - Fixed hybrid results so they are capped at the same server limit as other modes after de-duplication, which keeps the result count and status in step.
 - Fixed `GET /api/search` so blank parameters count as missing, and a `type` outside Are.na's five block types returns a 400 instead of an empty result.
