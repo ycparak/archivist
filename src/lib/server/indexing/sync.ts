@@ -254,10 +254,14 @@ export async function syncArchive(options: SyncOptions): Promise<{
 			signal
 		});
 		summary.vision = visionSummary;
+		// Same reasoning as pruning: a failed channel's blocks only look gone, and their entries are
+		// paid-for work.
+		const fetchedIds = new Set(blocks.map((block) => block.id));
+		const fetchIncomplete = summary.channelsFailed.length > 0 || Boolean(signal?.aborted);
 		visionCache = mergeVisionCache(
 			existingVisionCache,
 			entries,
-			new Set(blocks.map((block) => block.id))
+			fetchIncomplete ? new Set([...fetchedIds, ...existingVisionCache.keys()]) : fetchedIds
 		);
 		visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
 	}
