@@ -16,15 +16,6 @@ export function mediaRatio(result: Pick<SearchResult, 'imageWidth' | 'imageHeigh
 	return Math.min(MAX_MEDIA_RATIO, Math.max(MIN_MEDIA_RATIO, imageWidth / imageHeight));
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-export function formatArchiveDate(value: string | null): string | null {
-	if (!value) return null;
-	const parsed = new Date(value);
-	if (Number.isNaN(parsed.getTime())) return null;
-	return `${parsed.getUTCDate()} ${MONTHS[parsed.getUTCMonth()]} ${parsed.getUTCFullYear()}`;
-}
-
 const UNTITLED_LABELS: Record<ArchiveBlockType, string> = {
 	Image: 'Untitled image',
 	Link: 'Untitled link',

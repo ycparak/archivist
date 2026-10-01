@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLowQualityTitle, lowQualityTitleReason } from './titles';
+import { lowQualityTitleReason } from './titles';
 
 /**
  * Every string below is a real title from the archive. False positives destroy metadata the
@@ -94,7 +94,7 @@ describe('lowQualityTitleReason — titles that must survive', () => {
 		'SS24 april:capsule Gustavo styles our football-focused capsule collection for spring',
 		'From the typography community on Reddit: Hey guys! Let me present you Sahara'
 	])('keeps %s', (title) => {
-		expect(isLowQualityTitle(title)).toBe(false);
+		expect(lowQualityTitleReason(title)).toBeNull();
 	});
 });
 

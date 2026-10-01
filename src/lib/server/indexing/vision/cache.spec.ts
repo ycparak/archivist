@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
 	isCacheHit,
-	lookupVisionResult,
 	mergeVisionCache,
 	parseVisionCache,
 	serializeVisionCache,
@@ -56,14 +55,6 @@ describe('isCacheHit', () => {
 	it('ignores fields that do not affect the output', () => {
 		expect(isCacheHit(entry({ provider: 'venice' }), key)).toBe(true);
 		expect(isCacheHit(entry({ generated_at: '2020-01-01T00:00:00.000Z' }), key)).toBe(true);
-	});
-});
-
-describe('lookupVisionResult', () => {
-	it('returns the entry on a hit and nothing on a stale entry', () => {
-		const cache = new Map([['17698965', entry()]]);
-		expect(lookupVisionResult(cache, key)?.title).toBe('Dark-mode watch complications');
-		expect(lookupVisionResult(cache, { ...key, promptVersion: 2 })).toBeUndefined();
 	});
 });
 
