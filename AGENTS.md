@@ -14,12 +14,13 @@ Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, Turbopuffer (sear
 
 - `src/lib/domain/`: framework-free domain types and transformations. `search.ts` (the URL grammar, `SearchResult`, `ArchiveSearchState`) ships to the browser, so it must stay free of Zod schemas, provider shapes, and any runtime validation library. `archive.ts` (`ArchiveBlock`, `SearchDocument`, `toSearchDocument`) is imported only from `src/lib/server/` and does use Zod; never import it from a component or route markup. Provider validation and provider shapes live under `src/lib/server/`.
 - `src/lib/server/arena/`: Are.na transport, payload schemas, and pagination only.
-- `src/lib/server/indexing/`: normalization, channel filtering, document construction, sync orchestration, the vision stage (`vision/`), and CLI progress reporting (`progress/`).
-- `src/lib/server/search/`: search request validation, the read-side `SearchRepository`, result mapping, and the Turbopuffer write client and schema the sync uses.
+- `src/lib/server/indexing/`: normalization, channel filtering, the channel manifest, sync orchestration, the vision stage (`vision/`), and CLI progress reporting (`progress/`). It also holds the two committed files the sync writes: `channel-manifest.json` and `vision-cache.jsonl`.
+- `src/lib/server/search/`: search request validation, env config, `executeArchiveSearch` (dedupe and paging), the read-side `SearchRepository`, result mapping, the evaluation-case schema, and the Turbopuffer write client and schema the sync uses.
 - `src/lib/server/rate-limit.ts`: edge rate limiting, wired in through `src/hooks.server.ts`.
 - `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
 - `src/routes/`: HTTP and UI composition only. Provider calls and ranking expressions do not belong in route files.
-- `scripts/`: the manual CLIs (`sync.ts`, `evaluate-search.ts`) and the search evaluation fixture.
+- `src/styles/`: fonts and the role-based colour tokens.
+- `scripts/`: the manual CLIs (`sync.ts`, `evaluate-search.ts`), the search evaluation fixture, and `worktree.sh`.
 
 Full technical detail: [docs/architecture.md](./docs/architecture.md).
 
@@ -113,7 +114,7 @@ This repo configures the official Svelte MCP server for **both** Claude Code (`.
 Run after a meaningful change and fix failures before handoff:
 
 ```sh
-bun run check   # wrangler types, svelte-kit sync, svelte-check (TypeScript)
+bun run check   # wrangler types, svelte-kit sync, svelte-check, tsc on scripts/
 bun run lint    # prettier --check, eslint
 bun run test    # vitest
 bun run build   # wrangler types, vite build
