@@ -4,7 +4,7 @@ Use git worktrees to work on parallel tasks without stashing or switching branch
 
 ## Creating a worktree
 
-Source the script so the `cd` takes effect in your shell:
+Source the script from bash or zsh so the `cd` takes effect in your shell. It leaves your shell's options and variables untouched, and works from inside another worktree too:
 
 ```bash
 . ./scripts/worktree.sh
@@ -13,8 +13,8 @@ Source the script so the `cd` takes effect in your shell:
 This will:
 
 1. Generate a random name (e.g. `wild-reef`)
-2. Create a new branch and worktree at `.worktrees/<name>/`
-3. Copy `.env` into the worktree
+2. Create a new branch and worktree at `.worktrees/<name>/` in the main checkout
+3. Copy the main checkout's `.env` into the worktree
 4. `cd` into the worktree
 
 ## Listing worktrees
