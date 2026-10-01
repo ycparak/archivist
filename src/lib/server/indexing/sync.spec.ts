@@ -688,4 +688,35 @@ describe('syncArchive — vision stage', () => {
 
 		expect(result.visionCache?.map((entry) => entry.block_id)).toEqual(['11']);
 	});
+
+	it('keeps cache entries for unfetched blocks when a channel failed', async () => {
+		const unfetched = {
+			...VISION_RESULT,
+			block_id: '999',
+			image_src_hash: 'sha256:old',
+			prompt_version: 1,
+			model: 'test-model',
+			input_mode: 'image' as const,
+			provider: 'test',
+			generated_at: '2026-01-01T00:00:00.000Z'
+		};
+
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: routedFetch({
+				'/v3/me': () => meResponse(7, 'maintainer'),
+				'/v3/users/7/contents': () =>
+					contentsResponse([ownedChannel(1, 'alpha', 'Alpha'), ownedChannel(2, 'beta', 'Beta')]),
+				'/v3/channels/alpha/contents': () => contentsResponse([imageBlock(11)]),
+				'/v3/channels/beta/contents': () => jsonResponse({ error: 'boom' }, { status: 500 })
+			}) as unknown as typeof fetch,
+			delayFn: async () => {},
+			visionCache: new Map([['999', unfetched]]),
+			vision: { client: visionClient() }
+		});
+
+		expect(result.summary.channelsFailed).toHaveLength(1);
+		expect(result.visionCache?.map((entry) => entry.block_id)).toEqual(['11', '999']);
+	});
 });
