@@ -74,7 +74,8 @@ function runFfmpeg(args: string[], options: RunFfmpegOptions = {}): Promise<void
 }
 
 export type TranscodeResult =
-	{ kind: 'video'; dataUrl: string; bytes: number } | { kind: 'skipped'; reason: string };
+	| { kind: 'video'; dataUrl: string; bytes: number }
+	| { kind: 'skipped'; cause: 'unreachable' | 'too-large'; reason: string };
 
 export interface TranscodeOptions extends RunFfmpegOptions {
 	fetchFn?: typeof fetch;
@@ -103,13 +104,18 @@ export async function transcodeToVideoDataUrl(
 	onStage?.('downloading');
 	const response = await fetchFn(url, { headers: { 'User-Agent': 'archivist' } });
 	if (!response.ok) {
-		return { kind: 'skipped', reason: `source returned HTTP ${response.status}` };
+		return {
+			kind: 'skipped',
+			cause: 'unreachable',
+			reason: `source returned HTTP ${response.status}`
+		};
 	}
 
 	const source = Buffer.from(await response.arrayBuffer());
 	if (source.byteLength > maxSourceBytes) {
 		return {
 			kind: 'skipped',
+			cause: 'too-large',
 			reason: `source is ${(source.byteLength / 1024 / 1024).toFixed(1)}MB, over the ${maxSourceBytes / 1024 / 1024}MB download limit`
 		};
 	}
@@ -155,6 +161,7 @@ export async function transcodeToVideoDataUrl(
 		if (encoded.byteLength > maxTranscodedBytes) {
 			return {
 				kind: 'skipped',
+				cause: 'too-large',
 				reason: `transcoded to ${(encoded.byteLength / 1024 / 1024).toFixed(1)}MB, over the ${maxTranscodedBytes / 1024 / 1024}MB inline limit`
 			};
 		}
