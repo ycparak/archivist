@@ -64,7 +64,8 @@ User-visible changes, newest first.
 - Restyled the app with the design system from the maintainer's personal site: ABC Areal (with
   Neureal Mono, copied to `static/fonts/`), a 13px interface size, an oklch gray ramp, blue
   accents, and square 1px-bordered controls. Color tokens are now role-based (surfaces, text,
-  rules, controls, action/state) instead of the previous ad-hoc aliases; see `docs/design.md`.
+  rules, controls, action/state) instead of the previous ad-hoc aliases; they live in
+  `src/styles/globals.css`.
 - New layout: a recessed sidebar beside a gray pane, with the search field and one row of filters
   above a justified-row gallery where each image row shares a height. Result cards now show only
   the block's image and title; the introduction paragraph, the type/source/date/channel metadata,

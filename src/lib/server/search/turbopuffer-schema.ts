@@ -30,7 +30,7 @@ export const archiveNamespaceSchema = {
 	vision_title: { type: 'string', filterable: false },
 	vision_description: { type: 'string', filterable: false },
 	vision_ocr: { type: 'string', filterable: false },
-	/** Filterable for a future facet, but unproven — see the spec before exposing it. */
+	/** Filterable for a future facet, but unreliable: a grainy photograph came back as `painting`. Measure before exposing it. */
 	vision_medium: { type: 'string', filterable: true },
 	/**
 	 * Filterable for a future tag facet. Nothing reads it back yet: an attribute named in

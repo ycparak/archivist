@@ -39,27 +39,7 @@ bun install
 cp .env.example .env
 ```
 
-Fill in `.env`:
-
-```bash
-ARENA_ACCESS_TOKEN=          # dev.are.na -> your application -> personal access token
-TURBOPUFFER_API_KEY=
-TURBOPUFFER_REGION=          # e.g. gcp-us-central1, from your Turbopuffer dashboard
-TURBOPUFFER_NAMESPACE=arena-blocks-v1
-
-ARENA_IGNORE_CHANNELS=       # comma-separated slugs to skip
-ARENA_ALLOW_PRIVATE_CHANNELS= # private channels are skipped unless listed here
-
-OPENROUTER_API_KEY=          # only needed for --vision
-```
-
-**Are.na token scope.** A **read** token covers everything here except one command. Syncing,
-indexing and vision descriptions never write to Are.na. Only `--push-arena-apply` does, and it needs
-a token with **read + write** — see [the gotcha below](#gotcha-a-read-only-token-cannot-write-back)
-before you try it.
-
-Private channels are excluded by default, so nothing private is published by accident — you have to
-name a channel explicitly to include it.
+Fill in `.env`.
 
 ## First run
 
@@ -107,10 +87,12 @@ lets the model see what actually happens:
 Downloads are temporary: each animation is fetched to a scratch directory, the source is deleted as
 soon as ffmpeg has read it, and the directory is removed whether the transcode succeeds, is rejected
 for size, or fails. A run that is killed outright cannot clean up after itself, so the next run
-sweeps anything left behind before it starts. Nothing is written to the repository.
+sweeps anything it left behind (once it is an hour old) before it starts. Nothing is written to the
+repository.
 
-This is on by default. Without ffmpeg the run stops with an explanation; pass
-`--no-vision-video` to fall back to single-frame stills instead. Animations cost roughly twice an
+This is on by default. Without ffmpeg every animated block is reported as failed, with a message
+naming ffmpeg, while the rest of the run carries on; pass `--no-vision-video` to fall back to
+single-frame stills instead. Animations cost roughly twice an
 image (~$0.0005 each) and take longer, since the source is downloaded before it is transcoded.
 
 ### Writing the descriptions back to Are.na
@@ -178,6 +160,7 @@ blocks already written are simply "already fine" and skipped, and only the failu
 | Command                               | What it does                                              |
 | ------------------------------------- | --------------------------------------------------------- |
 | `bun run dev`                         | local dev server                                          |
+| `bun run preview`                     | run the built Worker locally with wrangler                |
 | `bun run sync`                        | fetch Are.na, index into Turbopuffer, prune what is gone  |
 | `bun run sync --vision`               | also generate descriptions for blocks with images         |
 | `bun run sync --vision-dry-run`       | report what vision would cost; spend nothing              |
@@ -192,6 +175,7 @@ blocks already written are simply "already fine" and skipped, and only the failu
 | `bun run evaluate:search`             | run the search evaluation against your index              |
 | `bun run check`                       | generate types, then typecheck                            |
 | `bun run lint`                        | prettier + eslint                                         |
+| `bun run format`                      | prettier, writing changes                                 |
 | `bun run test`                        | vitest                                                    |
 | `bun run build`                       | production build                                          |
 
@@ -239,8 +223,8 @@ Are.na V3  ──►  sync (manual, local)  ──►  Turbopuffer  ──►  S
 - **Sync is manual and local.** A visitor's search never calls Are.na, and your tokens never reach
   the browser.
 - **One canonical text field.** `search_text` concatenates the block's own title, description,
-  content and channel titles, then any generated description and OCR. It feeds both BM25 and the
-  native embedding.
+  content, source title and channel titles, then any generated description, OCR and tags. It feeds
+  both BM25 and the native embedding.
 - **Hybrid search** is a single Turbopuffer `multiQuery` with BM25 + ANN fused by reciprocal rank.
 - **Results are always original Are.na blocks.** Nothing generated is presented as a result; the
   generated text is a retrieval signal that helps the real block surface.
@@ -258,18 +242,12 @@ Are.na V3  ──►  sync (manual, local)  ──►  Turbopuffer  ──►  S
 
 ## Documentation
 
-| Document                                     | What's in it                                                                       |
-| -------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [AGENTS.md](AGENTS.md)                       | the implementation contract, shared by Claude Code and Codex                       |
-| [docs/prd.md](docs/prd.md)                   | product requirements and the V1 job to be done                                     |
-| [docs/architecture.md](docs/architecture.md) | data model, Turbopuffer schema, retrieval, sync lifecycle                          |
-| [docs/design.md](docs/design.md)             | visual and interaction contract                                                    |
-| [docs/decisions/](docs/decisions/)           | architecture decision records, including why vision indexing works the way it does |
-| [docs/specs/](docs/specs/)                   | active feature specs and in-progress worksheets                                    |
-| [docs/TODOS.md](docs/TODOS.md)               | current backlog                                                                    |
-
-## License
-
-There is no license file in this repository yet, which means default copyright applies and nobody
-has been granted permission to reuse it. If you intend this to be genuinely open source — the PRD
-says it is — add one.
+| Document                                               | What's in it                                                      |
+| ------------------------------------------------------ | ----------------------------------------------------------------- |
+| [AGENTS.md](AGENTS.md)                                 | the implementation contract, shared by Claude Code and Codex      |
+| [docs/architecture.md](docs/architecture.md)           | data model, Turbopuffer schema, retrieval, sync lifecycle, vision |
+| [docs/svelte-guidelines.md](docs/svelte-guidelines.md) | Svelte 5 and SvelteKit conventions for this repo                  |
+| [docs/workflows/](docs/workflows/)                     | agent task loop, review protocol, worktrees                       |
+| [docs/specs/](docs/specs/)                             | active feature specs and in-progress worksheets                   |
+| [docs/TODOS.md](docs/TODOS.md)                         | current backlog                                                   |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md)                 | user-visible changes                                              |
