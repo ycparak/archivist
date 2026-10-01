@@ -47,11 +47,6 @@ export const searchSuccessResponseSchema = z.object({
 	hasMore: z.boolean()
 });
 
-export const searchErrorResponseSchema = z.object({
-	error: z.string(),
-	correlationId: z.string().optional()
-});
-
 export interface SearchResponse {
 	results: SearchResult[];
 	timings: SearchTimings;

@@ -5,7 +5,6 @@ import {
 	hasActiveFilters,
 	readArchiveSearchState,
 	toArchiveSearchHref,
-	withChannel,
 	type ArchiveSearchState
 } from './search';
 
@@ -110,11 +109,6 @@ describe('search state transitions', () => {
 		blockTypes: ['Image', 'Link'],
 		from: '2024-01-02',
 		to: '2024-01-31'
-	});
-
-	it('adds a channel at most once', () => {
-		expect(withChannel(state(), 'materials').channelSlugs).toEqual(['materials']);
-		expect(withChannel(active, 'materials')).toBe(active);
 	});
 
 	it('reports whether any filter is active', () => {
