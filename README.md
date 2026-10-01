@@ -116,9 +116,9 @@ the model see what actually happens:
 
 Downloads are temporary: each animation is fetched to a scratch directory, the source is deleted as
 soon as ffmpeg has read it, and the directory is removed whether the transcode succeeds, is rejected
-for size, or fails. A run that is killed outright cannot clean up after itself, so the next run
-sweeps anything it left behind (once it is an hour old) before it starts. Nothing is written to the
-repository.
+for size, or fails. A run that is killed outright cannot clean up after itself, so the next run that
+has animations to describe sweeps anything it left behind (once it is an hour old) before it starts
+on them. Nothing is written to the repository.
 
 ffmpeg must be on PATH. Without it every animated block is reported as failed, with a message
 naming ffmpeg, while the rest of the run carries on; pass `--no-vision` to skip the stage.
@@ -141,7 +141,7 @@ count.
 
 It replaces titles that carry no information — filenames, hashes, bare URLs, and the platform
 boilerplate you get from a shared post (`Seth Thompson on X: "…" / X`, where the title is a
-250-character copy of the description) — and adds descriptions where there are none.
+250-character copy of the description) — and adds titles and descriptions where there are none.
 
 It will **not** touch a title that says something real, however long, and it will **never**
 overwrite a description you wrote. Blocks authored by other people are skipped automatically:
@@ -163,10 +163,10 @@ With a read-only token every update is rejected. The write-back stops after five
 failures and the sync fails with this message, before anything is indexed:
 
 ```
-Aborting Are.na write-back: the first 5 writes all failed (most recently block 36703616:
-Are.na request failed with status 401 updating block 36703616). This usually means
-ARENA_ACCESS_TOKEN is read-only — writing titles and descriptions needs write scope; use a read +
-write token, or pass --no-push-arena.
+Sync failed: Aborting Are.na write-back: the first 5 writes all failed (most recently block
+36703616: Are.na request failed with status 401 updating block 36703616). This usually means
+ARENA_ACCESS_TOKEN is read-only — writing titles and descriptions needs write scope (use a read +
+write token, or pass --no-push-arena) — not that these blocks are individually broken.
 ```
 
 Always read the summary line rather than assuming success — it reports what was written against what
@@ -197,7 +197,7 @@ blocks already written are simply "already fine" and skipped, and only the failu
 | `bun run sync --no-vision`     | skip the vision stage; index the existing cache as-is   |
 | `bun run sync --no-push-arena` | do not write generated titles back to Are.na            |
 | `bun run evaluate:search`      | run the search evaluation against your index            |
-| `bun run check`                | generate types, then typecheck                          |
+| `bun run check`                | generate types, then typecheck `src/` and `scripts/`    |
 | `bun run lint`                 | prettier + eslint                                       |
 | `bun run format`               | prettier, writing changes                               |
 | `bun run test`                 | vitest                                                  |
@@ -210,8 +210,10 @@ Run `check`, `lint`, `test` and `build` before opening a pull request.
 The fixture in `scripts/fixtures/search-cases.json` asserts specific Are.na **block IDs from the
 original author's archive**, so against your own archive every case will fail. That is expected.
 Either replace the fixture with blocks from your archive, or ignore the command. The harness itself
-is generic — it reports the rank of each expected block, which is what makes it possible to tell
-whether a change improved retrieval or quietly buried something.
+is generic — it reports the rank of each expected block within the first page of 24 results, which
+is what makes it possible to tell whether a change improved retrieval or quietly buried something.
+A case with a `pending` reason records a target the index cannot meet yet: its failure does not fail
+the run, and the run tells you when it starts passing.
 
 ## Deploying
 
@@ -252,7 +254,8 @@ Are.na V3  ──►  sync (manual, local)  ──►  Turbopuffer  ──►  S
   both BM25 and the native embedding.
 - **Hybrid search** is a single Turbopuffer `multiQuery` with BM25 + ANN fused by reciprocal rank.
 - **Results are always original Are.na blocks.** Nothing generated is presented as a result; the
-  generated text is a retrieval signal that helps the real block surface.
+  generated text is a retrieval signal that helps the real block surface. The one exception is
+  write-back: a title it writes to Are.na becomes the block's own, and shows on the next sync.
 
 ## Known limits
 
@@ -274,6 +277,7 @@ Are.na V3  ──►  sync (manual, local)  ──►  Turbopuffer  ──►  S
 | [docs/svelte-guidelines.md](docs/svelte-guidelines.md) | Svelte 5 and SvelteKit conventions for this repo                  |
 | [docs/workflows/](docs/workflows/)                     | agent task loop, review protocol, worktrees                       |
 | [docs/specs/](docs/specs/)                             | active feature specs and in-progress worksheets                   |
+| [docs/decisions/](docs/decisions/)                     | architecture decision records                                     |
 | [docs/TODOS.md](docs/TODOS.md)                         | current backlog                                                   |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md)                 | user-visible changes                                              |
 
