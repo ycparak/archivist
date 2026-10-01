@@ -171,6 +171,10 @@ try {
 		if (v.generatedFromVideo) console.log(`  Vision from video:   ${v.generatedFromVideo}`);
 		if (v.skippedTooLarge)
 			console.log(`  Vision skipped:      ${v.skippedTooLarge} (media too large)`);
+		if (v.skippedUnreachable)
+			console.log(
+				`  Vision skipped:      ${v.skippedUnreachable} (source could not be downloaded)`
+			);
 		if (v.skippedUnsupported)
 			console.log(`  Vision skipped:      ${v.skippedUnsupported} (format not describable)`);
 		if (v.failed.length) {

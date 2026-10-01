@@ -41,6 +41,8 @@ export interface VisionStageSummary {
 	generated: number;
 	generatedFromVideo: number;
 	skippedTooLarge: number;
+	/** An animation whose source could not be downloaded. */
+	skippedUnreachable: number;
 	skippedUnsupported: number;
 	failed: VisionFailure[];
 }
@@ -150,6 +152,7 @@ export async function describeBlocks(
 		generated: 0,
 		generatedFromVideo: 0,
 		skippedTooLarge: 0,
+		skippedUnreachable: 0,
 		skippedUnsupported: 0,
 		failed: []
 	};
@@ -194,7 +197,8 @@ export async function describeBlocks(
 					...transcodeOptions
 				});
 				if (transcoded.kind === 'skipped') {
-					summary.skippedTooLarge += 1;
+					if (transcoded.cause === 'unreachable') summary.skippedUnreachable += 1;
+					else summary.skippedTooLarge += 1;
 					outcome = 'skipped';
 					log(`  skipped ${block.id}: ${transcoded.reason}`);
 					return;
