@@ -97,6 +97,7 @@ Archivist is a public gallery and search surface for one maintainer's Are.na arc
 - Add a focused unit test for every normalizer, filter builder, and search-result mapper. Test behavior, not private implementation details.
 - Use accessible native controls, URL-backed browse/search state, server-side data access, and responsive image dimensions.
 - Keep secrets server-only; do not log tokens, full raw API payloads, or user search queries.
+- When changing `docs/CHANGELOG.md` or `docs/TODOS.md`, keep one consistent format by matching the existing entries: the changelog sits under `## Unreleased` in `Added` / `Changed` / `Removed` / `Fixed` groups, newest first, one past-tense line per change; TODOs keep their fixed sections, with items written as `- [ ] **Title.** One sentence.`
 - Prefer the existing official SDKs. Add a dependency only when it removes meaningful production code; document why in an ADR if it changes the architecture.
 
 ## Tooling — Svelte MCP Server

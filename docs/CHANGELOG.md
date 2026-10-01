@@ -1,6 +1,6 @@
 # Changelog
 
-User-visible changes, newest first. The format is set in [`architecture.md`](./architecture.md#changelog-and-todo-format).
+User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS.md#engineering-guardrails).
 
 ## Unreleased
 
