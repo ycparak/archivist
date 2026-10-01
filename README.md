@@ -245,3 +245,7 @@ Are.na V3  ──►  sync (manual, local)  ──►  Turbopuffer  ──►  S
 | [docs/specs/](docs/specs/)                             | active feature specs and in-progress worksheets                   |
 | [docs/TODOS.md](docs/TODOS.md)                         | current backlog                                                   |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md)                 | user-visible changes                                              |
+
+## License
+
+[MIT](LICENSE).
