@@ -3,7 +3,7 @@
  *
  * Block type is deliberately not part of this decision. An earlier rule exempted every Link on the
  * grounds that Link titles are real scraped page metadata — true of most, and false of the 93 that
- * are platform chrome wrapped around a copy of the description. See the ADR amendment.
+ * are platform chrome wrapped around a copy of the description.
  *
  * Counts below are over the 2,577 titled blocks in the live archive at the time of writing. False
  * negatives are acceptable here; false positives destroy metadata the maintainer wrote.
