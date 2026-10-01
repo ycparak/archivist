@@ -4,6 +4,12 @@ User-visible changes, newest first.
 
 ## Unreleased
 
+- Removed the `bun run sync` flags `--vision-limit`, `--vision-concurrency`, `--revision`,
+  `--push-arena`, `--push-arena-limit` and `--allow-large-prune`. Vision runs always use 32 workers
+  and describe every uncached block; to regenerate a block, delete its line from `vision-cache.jsonl`.
+  `--push-arena-apply` is now the only write-back flag and writes immediately, with no preview or
+  cap. A prune that would delete more than half the index is still refused, with no override.
+
 - Fixed a bug where a block's extracted text could run away: three blocks had text that repeated a
   single phrase over and over, one of them 270,000 characters of it, and all of it was being fed
   into search. Generated text is now bounded and repetition is detected and discarded. Takes effect

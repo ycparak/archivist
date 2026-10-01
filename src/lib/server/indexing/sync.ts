@@ -19,13 +19,7 @@ import { toArchiveBlock } from './normalize';
 import { describeBlocks, planVisionWork, type VisionStageSummary } from './vision';
 import { mergeVisionCache, type VisionCache, type VisionCacheEntry } from './vision/cache';
 import type { VisionClient } from './vision/client';
-import {
-	applyWriteBack,
-	formatPlanLine,
-	planWriteBack,
-	summarizePlans,
-	type WriteBackSummary
-} from './vision/writeback';
+import { applyWriteBack, planWriteBack, type WriteBackSummary } from './vision/writeback';
 
 export interface SyncOptions {
 	accessToken: string;
@@ -41,8 +35,6 @@ export interface SyncOptions {
 	channelFilter?: ChannelFilter;
 	/** Refuse to prune when it would delete more than this fraction of the namespace. */
 	maxPruneFraction?: number;
-	/** Bypass `maxPruneFraction`, e.g. after deliberately ignoring most channels. */
-	allowLargePrune?: boolean;
 	/**
 	 * Generated text to index. Supplied on every run, not only when the stage is enabled — a sync
 	 * without `vision` must still index what previous runs generated, or it would silently strip
@@ -51,22 +43,12 @@ export interface SyncOptions {
 	visionCache?: VisionCache;
 	/** Omit to index the existing cache without generating anything new. */
 	vision?: VisionSyncOptions;
-	/** Omit to leave the maintainer's Are.na archive untouched. */
-	pushArena?: PushArenaOptions;
-}
-
-export interface PushArenaOptions {
-	/** Without this, the plan is printed and nothing is written. */
-	apply?: boolean;
-	limit?: number;
-	delayMs?: number;
+	/** Write generated titles and descriptions back to Are.na. Off by default. */
+	pushArena?: boolean;
 }
 
 export interface VisionSyncOptions {
 	client: VisionClient;
-	limit?: number;
-	revise?: boolean | ReadonlySet<string>;
-	concurrency?: number;
 	/** Read animated blocks as motion by transcoding them locally first. Needs ffmpeg on PATH. */
 	video?: boolean;
 	/** Report what would be generated and what it would cost, then write nothing. */
@@ -162,7 +144,6 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		maxLeadingChannelFailures = DEFAULT_MAX_LEADING_CHANNEL_FAILURES,
 		channelFilter = EMPTY_CHANNEL_FILTER,
 		maxPruneFraction = DEFAULT_MAX_PRUNE_FRACTION,
-		allowLargePrune = false,
 		visionCache: existingVisionCache = new Map<string, VisionCacheEntry>(),
 		vision,
 		pushArena
@@ -277,7 +258,6 @@ export async function syncArchive(options: SyncOptions): Promise<{
 				generatedFromVideo: 0,
 				skippedTooLarge: 0,
 				skippedUnsupported: 0,
-				skippedOverLimit: plan.overLimit,
 				failed: []
 			};
 			log(
@@ -306,23 +286,12 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	if (pushArena) {
 		onEvent({ kind: 'phase', phase: 'writing-back' });
 		const { plans, skipped } = planWriteBack(blocks, visionText, { ownerId: me.id });
-		const selected = pushArena.limit === undefined ? plans : plans.slice(0, pushArena.limit);
-
-		if (!pushArena.apply) {
-			log(`Are.na write-back (dry run): ${selected.length} block(s) would change`);
-			for (const plan of selected.slice(0, 20)) log(formatPlanLine(plan));
-			if (selected.length > 20) log(`  ... and ${selected.length - 20} more`);
-			summary.writeBack = summarizePlans(selected, skipped);
-		} else {
-			log(`Are.na write-back: updating ${selected.length} block(s)`);
-			summary.writeBack = await applyWriteBack(plans, skipped, {
-				updateBlock: (id, body) => client.updateBlock(id, body),
-				limit: pushArena.limit,
-				delayMs: pushArena.delayMs,
-				log,
-				signal
-			});
-		}
+		log(`Are.na write-back: updating ${plans.length} block(s)`);
+		summary.writeBack = await applyWriteBack(plans, skipped, {
+			updateBlock: (id, body) => client.updateBlock(id, body),
+			log,
+			signal
+		});
 	}
 
 	onEvent({ kind: 'phase', phase: 'upserting' });
@@ -346,7 +315,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 
 		if (stale.length === 0) {
 			log('No stale documents to prune');
-		} else if (!allowLargePrune && stale.length > existingCount * maxPruneFraction) {
+		} else if (stale.length > existingCount * maxPruneFraction) {
 			summary.pruneSkipped = `would delete ${stale.length} of ${existingCount} document(s), over the ${maxPruneFraction * 100}% safety limit`;
 		} else {
 			const { rowsDeleted } = await deleteSearchDocuments(stale, turbopuffer, {

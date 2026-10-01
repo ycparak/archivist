@@ -81,41 +81,6 @@ describe('planVisionWork', () => {
 		expect(plan.cached).toBe(1);
 		expect(plan.pending).toHaveLength(0);
 	});
-
-	it('caps pending work at the limit and reports the remainder', () => {
-		const blocks = ['1', '2', '3', '4'].map((id) => block({ id }));
-		const plan = planVisionWork(blocks, { client: stubClient(), cache: new Map(), limit: 2 });
-		expect(plan.pending).toHaveLength(2);
-		expect(plan.overLimit).toBe(2);
-	});
-
-	it('revises everything when asked', () => {
-		const plan = planVisionWork([block()], {
-			client: stubClient(),
-			cache: new Map([['1', entryFor('1')]]),
-			revise: true
-		});
-		expect(plan.pending).toHaveLength(1);
-		expect(plan.cached).toBe(0);
-	});
-
-	it('revises only blocks in the named channels', () => {
-		const blocks = [
-			block({ id: '1', channels: [{ slug: 'alpha', title: 'Alpha' }] }),
-			block({ id: '2', channels: [{ slug: 'beta', title: 'Beta' }] })
-		];
-		const cache = new Map([
-			['1', entryFor('1')],
-			['2', entryFor('2')]
-		]);
-		const plan = planVisionWork(blocks, {
-			client: stubClient(),
-			cache,
-			revise: new Set(['beta'])
-		});
-		expect(plan.pending.map((item) => item.id)).toEqual(['2']);
-		expect(plan.cached).toBe(1);
-	});
 });
 
 describe('describeBlocks', () => {
@@ -204,20 +169,6 @@ describe('describeBlocks', () => {
 		});
 		const { entries } = await describeBlocks([block()], { client, cache: new Map(), now });
 		expect(entries).toEqual([]);
-	});
-
-	it('honours the limit so a run cannot overspend', async () => {
-		const client = stubClient();
-		const blocks = ['1', '2', '3'].map((id) => block({ id }));
-		const { summary } = await describeBlocks(blocks, {
-			client,
-			cache: new Map(),
-			limit: 1,
-			now
-		});
-
-		expect(client.describe).toHaveBeenCalledOnce();
-		expect(summary).toMatchObject({ generated: 1, skippedOverLimit: 2 });
 	});
 
 	/** Asserting only an upper bound would pass even if the pool ran everything one at a time. */
