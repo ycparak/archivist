@@ -600,7 +600,7 @@ function imageBlock(id: number) {
 		image: {
 			src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif',
 			file_size: 1000,
-			content_type: 'image/gif',
+			content_type: 'image/png',
 			small: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif' },
 			medium: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif' },
 			large: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif', width: 10, height: 10 },
@@ -663,21 +663,6 @@ describe('syncArchive — vision stage', () => {
 		expect(result.summary.vision).toMatchObject({ blocksWithImage: 1, generated: 1 });
 		expect(result.visionCache).toHaveLength(1);
 		expect(result.visionCache?.[0]).toMatchObject({ block_id: '11', title: 'Generated title' });
-	});
-
-	it('spends nothing and writes no cache on a dry run', async () => {
-		const client = visionClient();
-		const result = await syncArchive({
-			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
-			fetchFn: visionFetch() as unknown as typeof fetch,
-			delayFn: async () => {},
-			vision: { client, dryRun: true }
-		});
-
-		expect(client.describe).not.toHaveBeenCalled();
-		expect(result.visionCache).toBeNull();
-		expect(result.summary.vision).toMatchObject({ blocksWithImage: 1, generated: 0 });
 	});
 
 	it('drops cache entries for blocks that have left the archive', async () => {

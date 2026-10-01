@@ -20,7 +20,7 @@ const VISION_CACHE_URL = new URL('../src/lib/server/indexing/vision-cache.jsonl'
  * Vision and Are.na write-back are on by default, so a mistyped opt-out (`--no-vison`) must not be
  * ignored: it would run the stage, and write to the maintainer's archive, anyway.
  */
-const KNOWN_FLAGS = new Set(['no-vision', 'no-push-arena', 'vision-dry-run', 'no-vision-video']);
+const KNOWN_FLAGS = new Set(['no-vision', 'no-push-arena']);
 
 const unknownFlags = process.argv
 	.slice(2)
@@ -46,14 +46,7 @@ async function readVisionCache(): Promise<Map<string, VisionCacheEntry>> {
 }
 
 function resolveVisionOptions(): Omit<VisionSyncOptions, 'onEntry'> | undefined {
-	const dryRun = hasFlag('vision-dry-run');
-	if (hasFlag('no-vision')) {
-		if (dryRun) {
-			console.error('--vision-dry-run and --no-vision contradict each other; pass one.');
-			process.exit(1);
-		}
-		return undefined;
-	}
+	if (hasFlag('no-vision')) return undefined;
 
 	const apiKey = process.env.OPENROUTER_API_KEY;
 	if (!apiKey) {
@@ -63,12 +56,7 @@ function resolveVisionOptions(): Omit<VisionSyncOptions, 'onEntry'> | undefined 
 		process.exit(1);
 	}
 
-	return {
-		client: createVisionClient({ apiKey }),
-		// Animations are read as motion by default; the opt-out is for machines without ffmpeg.
-		video: !hasFlag('no-vision-video'),
-		dryRun
-	};
+	return { client: createVisionClient({ apiKey }) };
 }
 
 const accessToken = process.env.ARENA_ACCESS_TOKEN;
@@ -179,12 +167,7 @@ try {
 		const v = summary.vision;
 		console.log(`  Blocks with image:   ${v.blocksWithImage}`);
 		console.log(`  Vision cache hits:   ${v.cacheHits} (no model call, no cost)`);
-		if (vision?.dryRun) {
-			const would = v.blocksWithImage - v.cacheHits;
-			console.log(`  Vision would run:    ${would} block(s) — dry run, nothing spent`);
-		} else {
-			console.log(`  Vision generated:    ${v.generated}`);
-		}
+		console.log(`  Vision generated:    ${v.generated}`);
 		if (v.generatedFromVideo) console.log(`  Vision from video:   ${v.generatedFromVideo}`);
 		if (v.skippedTooLarge)
 			console.log(`  Vision skipped:      ${v.skippedTooLarge} (media too large)`);
