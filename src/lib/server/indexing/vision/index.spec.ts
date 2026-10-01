@@ -322,7 +322,8 @@ describe('describeBlocks — animated blocks', () => {
 			transcodeOptions: { fetchFn: async () => new Response('', { status: 404 }) }
 		});
 
-		expect(summary.skippedTooLarge).toBe(1);
+		expect(summary.skippedUnreachable).toBe(1);
+		expect(summary.skippedTooLarge).toBe(0);
 		expect(summary.failed).toEqual([]);
 		expect(client.describe).not.toHaveBeenCalled();
 	});

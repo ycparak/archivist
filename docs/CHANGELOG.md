@@ -44,6 +44,7 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Fixed
 
+- Fixed the `bun run sync` summary counting an animation that could not be downloaded as "media too large". It now has its own line.
 - Fixed `bun run sync` dropping saved vision descriptions for blocks in a channel that failed that run. Nothing is dropped from the cache unless every channel synced.
 - Fixed the missing-ffmpeg error from `bun run sync`, which suggested the removed `--no-vision-video` flag. It now suggests `--no-vision`.
 - Fixed runaway generated text. Three blocks had text that repeated one phrase, one of them 270,000 characters long, and all of it was indexed. Generated text is now capped and repetition is discarded. Takes effect after `bun run sync`.
