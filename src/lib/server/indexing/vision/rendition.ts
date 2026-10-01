@@ -81,7 +81,3 @@ export function renditionUrl(url: string, width = DEFAULT_RENDITION_WIDTH): stri
 	const next = { ...payload, edits: { ...payload.edits, resize } };
 	return `https://${ARENA_IMAGE_HOST}/${Buffer.from(JSON.stringify(next)).toString('base64')}`;
 }
-
-export function isResizable(url: string): boolean {
-	return decodePayload(url) !== null;
-}
