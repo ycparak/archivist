@@ -23,8 +23,6 @@ export interface VisionStageOptions {
 	log?: (message: string) => void;
 	signal?: AbortSignal;
 	now?: () => Date;
-	/** Read animations as motion by transcoding them locally first. Needs ffmpeg on PATH. */
-	video?: boolean;
 	transcodeOptions?: TranscodeOptions;
 	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
 	onEntry?: (entry: VisionCacheEntry) => void;
@@ -77,33 +75,33 @@ export function unsupportedFormatReason(contentType: string | null | undefined):
 	return DESCRIBABLE_TYPES.has(normalized) ? null : `${normalized} is not a describable image`;
 }
 
-/** An animation is only read as video when the caller asked for it and ffmpeg can be used. */
-function inputModeFor(block: ArchiveBlock, video: boolean): VisionInputMode {
-	return video && isAnimated(block.imageContentType) ? 'video' : 'image';
+/** Animations are read as motion, which needs ffmpeg on PATH to transcode them first. */
+function inputModeFor(block: ArchiveBlock): VisionInputMode {
+	return isAnimated(block.imageContentType) ? 'video' : 'image';
 }
 
-function cacheKey(block: ArchiveBlock, client: VisionClient, video: boolean): VisionCacheKey {
+function cacheKey(block: ArchiveBlock, client: VisionClient): VisionCacheKey {
 	return {
 		blockId: block.id,
 		imageSourceHash: imageSourceHash(block.imageUrl ?? ''),
 		promptVersion: client.promptVersion,
 		model: client.model,
-		inputMode: inputModeFor(block, video)
+		inputMode: inputModeFor(block)
 	};
 }
 
 /** What the run would cost before it costs it. */
 export function planVisionWork(
 	blocks: ArchiveBlock[],
-	options: Pick<VisionStageOptions, 'client' | 'cache' | 'video'>
+	options: Pick<VisionStageOptions, 'client' | 'cache'>
 ): { withImage: ArchiveBlock[]; cached: number; pending: ArchiveBlock[] } {
-	const { client, cache, video = false } = options;
+	const { client, cache } = options;
 	const withImage = blocks.filter((block) => block.imageUrl);
 
 	const pending: ArchiveBlock[] = [];
 	let cached = 0;
 	for (const block of withImage) {
-		if (isCacheHit(cache.get(block.id), cacheKey(block, client, video))) cached += 1;
+		if (isCacheHit(cache.get(block.id), cacheKey(block, client))) cached += 1;
 		else pending.push(block);
 	}
 
@@ -141,11 +139,10 @@ export async function describeBlocks(
 		now = () => new Date(),
 		onEntry,
 		onEvent = noop,
-		video = false,
 		transcodeOptions
 	} = options;
 
-	const { withImage, cached, pending } = planVisionWork(blocks, { client, cache, video });
+	const { withImage, cached, pending } = planVisionWork(blocks, { client, cache });
 
 	const summary: VisionStageSummary = {
 		blocksWithImage: withImage.length,
@@ -165,7 +162,7 @@ export async function describeBlocks(
 	log(`Vision: ${cached} cached, describing ${pending.length} block(s)`);
 	onEvent({ kind: 'vision-planned', pending: pending.length, cached });
 
-	if (video) {
+	if (pending.some((block) => isAnimated(block.imageContentType))) {
 		const { removed } = await cleanupStaleTranscodes();
 		if (removed) log(`  cleared ${removed} scratch director(ies) from an interrupted run`);
 	}
@@ -187,7 +184,7 @@ export async function describeBlocks(
 				return;
 			}
 
-			const mode = inputModeFor(block, video);
+			const mode = inputModeFor(block);
 			let media: VisionMedia;
 
 			if (mode === 'video') {

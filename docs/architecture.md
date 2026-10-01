@@ -2,7 +2,7 @@
 
 ## Decision summary
 
-**SvelteKit + TypeScript on Cloudflare Workers** (`@sveltejs/adapter-cloudflare`) serves the public app. **Are.na V3** is the source of truth, read only by a manually run sync CLI. The official **Turbopuffer TypeScript SDK** is the sole search datastore: native embeddings and full-text BM25 over one canonical text field, with its `multiQuery` endpoint and reciprocal-rank fusion for hybrid retrieval. An optional vision model, called only from the sync CLI, describes images so they can be found by what they look like.
+**SvelteKit + TypeScript on Cloudflare Workers** (`@sveltejs/adapter-cloudflare`) serves the public app. **Are.na V3** is the source of truth, read only by a manually run sync CLI. The official **Turbopuffer TypeScript SDK** is the sole search datastore: native embeddings and full-text BM25 over one canonical text field, with its `multiQuery` endpoint and reciprocal-rank fusion for hybrid retrieval. A vision model, called only from the sync CLI, describes images so they can be found by what they look like.
 
 ## System shape
 
@@ -36,63 +36,93 @@ Code layout:
 
 ## Why this data-access model
 
-The sync uses a **personal access token**. Everything it does is read-only, including the whole indexing path, except the write-back of generated titles and descriptions, which is on by default (`--no-push-arena` skips it) and so needs a token with write scope. Are.na documents personal tokens as the simplest route for personal scripts. A public unauthenticated path is limited to 30 requests per minute and can omit private or archive-specific content; an authenticated free account is documented at 120 requests per minute. The token runs only in the manually invoked sync, never in a deployed request. Do not send a live Are.na request for a visitor's query.
+The sync uses a personal Are.na access token. It only reads, with one exception: it writes generated titles and descriptions back to Are.na. That write-back is on by default, so the token needs write access. `--no-push-arena` turns it off.
 
-The sync discovers its own scope: it resolves the token owner's user id (`GET /v3/me`), lists every channel that user owns (`GET /v3/users/{id}/contents?type=Channel`, paginated), and syncs each one's contents. There is no channel allowlist to hand-maintain. The cost is a scope that is bounded but not reviewed per run, which sits closer to what Are.na's Acceptable Use policy calls "systematic downloading" / "structured data harvesting". That policy already applies to any full-channel-history sync regardless of size, and the mitigations in place matter more because scope is not reviewed: manual, occasional invocation only; a 300ms pause between requests and between channels; proactive waiting when `X-RateLimit-Remaining` is at or below 1 until `X-RateLimit-Reset`; and up to 5 retries per page on a 429, waiting as long as `Retry-After` (or the reset header) says (see `src/lib/server/arena/client.ts`). Pages are requested 50 at a time (the API maximum is 100). Nested channels inside a channel are counted as skipped items, not followed.
+The token only runs in the sync, on the maintainer's machine. It never runs in a deployed request. A visitor's search never calls Are.na.
 
-Channel scope is filtered after discovery (`src/lib/server/indexing/channel-filter.ts`): channels with `visibility: private` are skipped unless their slug is in `ARENA_ALLOW_PRIVATE_CHANNELS`, and any slug in `ARENA_IGNORE_CHANNELS` is skipped regardless (the ignore list wins). Both are comma-separated env vars read by `scripts/sync.ts`, kept out of the repo so private slugs are not committed. Skipped channels are omitted from the channel manifest. `closed` channels are publicly readable on Are.na and are treated as public.
+Are.na allows 30 requests a minute without a token and 120 a minute on a free account. A token is the simplest route for a personal script.
+
+The sync finds its own scope. It looks up the token's owner (`GET /v3/me`), lists every channel they own (`GET /v3/users/{id}/contents?type=Channel`), and syncs each one. There is no channel list to keep up to date.
+
+The cost is that nobody reviews the scope on each run. Are.na's Acceptable Use policy warns against "systematic downloading", and a full sync is close to that. So the sync is gentle:
+
+- It only runs by hand, and only now and then.
+- It waits 300 ms between requests and between channels.
+- It waits for the limit to reset when `X-RateLimit-Remaining` is 1 or lower.
+- On a 429 it waits as long as Are.na asks, and retries up to 5 times per page.
+
+Pages hold 50 blocks (the maximum is 100). Channels nested inside a channel are counted as skipped. They are not followed. The code is in `src/lib/server/arena/client.ts`.
+
+After discovery, `src/lib/server/indexing/channel-filter.ts` drops some channels:
+
+- A `private` channel is skipped unless its slug is in `ARENA_ALLOW_PRIVATE_CHANNELS`.
+- A slug in `ARENA_IGNORE_CHANNELS` is always skipped. The ignore list wins.
+- A `closed` channel is public on Are.na, so it is treated as public.
+
+Both variables are comma-separated and live in `.env`, so private slugs stay out of the repo. Skipped channels are left out of the channel manifest.
 
 ## Turbopuffer namespace
 
-Namespace: `arena-blocks-v1` by default, configurable with `TURBOPUFFER_NAMESPACE`. The schema lives in `src/lib/server/search/turbopuffer-schema.ts` and is sent with every write, so the namespace is created and extended by the first sync.
+The namespace is `arena-blocks-v1` by default. Set `TURBOPUFFER_NAMESPACE` to change it. The schema is in `src/lib/server/search/turbopuffer-schema.ts`. It is sent with every write, so the first sync creates the namespace.
 
-Turbopuffer requires stable types per attribute and does not permit in-place type changes. A breaking schema change therefore needs a new versioned namespace (`arena-blocks-v2`): change the default in `src/lib/server/search/namespace.ts`, re-run the sync to populate it, and document the migration in an ADR in [`docs/decisions/`](./decisions/).
+Turbopuffer cannot change an attribute's type in place. A breaking change needs a new namespace, such as `arena-blocks-v2`. Change the default in `src/lib/server/search/namespace.ts`, re-run the sync, and record the move in an ADR in [`docs/decisions/`](./decisions/). Changing the embedding model or its size is also a breaking change.
 
-| Attribute            | Type / index                                                        | Purpose                                          |
-| -------------------- | ------------------------------------------------------------------- | ------------------------------------------------ |
-| `id`                 | string, `block:<Are.na id>`                                         | deterministic document key                       |
-| `search_text`        | string, full-text (English, stemmed, stopwords out), native `embed` | single canonical lexical + semantic corpus       |
-| `block_type`         | string, filterable                                                  | type filter                                      |
-| `channel_slugs`      | `[]string`, filterable                                              | membership filter                                |
-| `connection_count`   | uint, filterable                                                    | browse ordering (most connected first)           |
-| `connected_at`       | datetime, filterable                                                | browse tiebreak and date filter                  |
-| `created_at`         | datetime, unindexed                                                 | stored, not currently read                       |
-| `title`              | string, unindexed                                                   | card copy                                        |
-| `description`        | string, unindexed                                                   | card copy                                        |
-| `source_url`         | string, unindexed                                                   | original source link                             |
-| `arena_url`          | string, unindexed                                                   | canonical result link                            |
-| `image_url`          | string, unindexed                                                   | gallery image, and the poster for a video        |
-| `image_alt`          | string, unindexed                                                   | Are.na's alt text, when it has any               |
-| `image_width`        | uint, unindexed                                                     | intrinsic size, so cards reserve their space     |
-| `image_height`       | uint, unindexed                                                     | intrinsic size                                   |
-| `video_url`          | string, unindexed                                                   | playable file for a video attachment             |
-| `video_content_type` | string, unindexed                                                   | `<source type>` for the video                    |
-| `source_title`       | string, unindexed                                                   | attribution                                      |
-| `vision_title`       | string, unindexed                                                   | generated short title (indexed, never displayed) |
-| `vision_description` | string, unindexed                                                   | generated visual description (never displayed)   |
-| `vision_ocr`         | string, unindexed                                                   | text read out of the image (never displayed)     |
-| `vision_medium`      | string, filterable                                                  | generated medium; unreliable, nothing reads it   |
-| `vision_tags`        | `[]string`, filterable                                              | generated tags; nothing reads it back yet        |
+| Attribute            | Type / index                                         | Purpose                                    |
+| -------------------- | ---------------------------------------------------- | ------------------------------------------ |
+| `id`                 | string, `block:<Are.na id>`                          | document key                               |
+| `search_text`        | string, full-text (English, stemmed), native `embed` | the one text field for keyword and meaning |
+| `block_type`         | string, filterable                                   | type filter                                |
+| `channel_slugs`      | `[]string`, filterable                               | channel filter                             |
+| `connection_count`   | uint, filterable                                     | browse order (most connected first)        |
+| `connected_at`       | datetime, filterable                                 | browse tiebreak and date filter            |
+| `created_at`         | datetime, unindexed                                  | stored, not read                           |
+| `title`              | string, unindexed                                    | card text                                  |
+| `description`        | string, unindexed                                    | card text                                  |
+| `source_url`         | string, unindexed                                    | link to the original source                |
+| `arena_url`          | string, unindexed                                    | link to the block on Are.na                |
+| `image_url`          | string, unindexed                                    | gallery image, and a video's poster        |
+| `image_alt`          | string, unindexed                                    | Are.na's alt text, if any                  |
+| `image_width`        | uint, unindexed                                      | image size, so cards hold their space      |
+| `image_height`       | uint, unindexed                                      | image size                                 |
+| `video_url`          | string, unindexed                                    | playable file for a video attachment       |
+| `video_content_type` | string, unindexed                                    | the video's MIME type                      |
+| `source_title`       | string, unindexed                                    | where the block came from                  |
+| `vision_title`       | string, unindexed                                    | generated title (never shown)              |
+| `vision_description` | string, unindexed                                    | generated description (never shown)        |
+| `vision_ocr`         | string, unindexed                                    | text read from the image (never shown)     |
+| `vision_medium`      | string, filterable                                   | generated medium; unreliable, not read     |
+| `vision_tags`        | `[]string`, filterable                               | generated tags; not read back yet          |
 
-`connection_count` is the number of distinct synced channels a block is in. `connected_at` is a per-channel connection timestamp, so a block in several channels keeps the most recent one.
+`connection_count` is how many synced channels hold the block. `connected_at` is set per channel, so a block in several channels keeps the newest one.
 
-`search_text` is the deterministic, whitespace-normalized concatenation (newline-joined, empties dropped) of, in order: `title`, `description`, plain text content (only if supplied by Are.na), `source_title`, the titles of every channel the block is in, then — when a generated description exists — `vision_description`, `vision_ocr`, and the tags joined with `, `. Generated text goes last so a block that already describes itself keeps leading the corpus. Display fields are retained separately; never scrape a source URL.
+`search_text` joins these parts in order, with new lines. Empty parts are dropped and spaces are tidied:
 
-Generated text is bounded before it is indexed (`src/lib/domain/archive.ts`, `vision/client.ts`):
+1. title
+2. description
+3. text content, if Are.na gives any
+4. source title
+5. titles of the block's channels
+6. generated description
+7. generated OCR
+8. generated tags, joined with `, `
 
-- Descriptions are clamped to 500 characters at a sentence boundary.
-- OCR is clamped to 6,000 characters, and discarded entirely when it is degenerate repetition (at least 100 words with fewer than 10% distinct). The clamp runs at index time too, because a cache hit never regenerates.
-- Tags are lowercased, hyphens collapsed to spaces, deduplicated and sorted, in the attribute as well as in the text, so a future facet cannot filter on a value the index never wrote.
+Generated text goes last. A block that already describes itself keeps leading. Display fields are stored apart from `search_text`. Never scrape a source URL.
 
-A presentation attribute is not additive the way a written attribute is: Turbopuffer rejects an entire query with a 400 when `include_attributes` names an attribute the namespace has never been written, so shipping a read before the sync that creates it takes search down rather than degrading it. `repository.ts` therefore treats such attributes as optional. It asks for them, drops them for the life of the process once the namespace says it has never heard of them, and asks again after a restart (a fresh Worker isolate) following a sync that has written them. `video_url` and `video_content_type` are handled this way. `vision_tags` is the same hazard and is deliberately not requested at all.
+Generated text has limits. They run when a block is indexed, because a cache hit never regenerates it:
 
-The `vision_*` attributes are populated from `src/lib/server/indexing/vision-cache.jsonl`, which is committed. They are written on every sync, not only when the vision stage runs, so a sync with `--no-vision` still indexes what earlier runs generated rather than stripping it back out.
+- A description is cut to 500 characters at a sentence end.
+- OCR is cut to 6,000 characters. It is dropped entirely if it is a loop of repeats: 100 or more words with under 10% distinct.
+- Tags are lowercase, with hyphens turned into spaces, no repeats, and sorted. This holds in the attribute and in the text.
 
-The embedding model is `nvidia/nemotron-3-embed-8b` with 1024 dimensions and cosine distance, set in the schema file and not in the query route. A model or dimension change is a namespace migration.
+Turbopuffer fails a whole query with a 400 if it asks for an attribute that was never written. A new field can therefore take search down if the code ships before the sync. `repository.ts` treats these fields as optional. It asks for them, and if Turbopuffer rejects the query, it stops asking until the process restarts. `video_url` and `video_content_type` work this way. `vision_tags` has the same risk, so it is never requested.
+
+The `vision_*` fields come from `src/lib/server/indexing/vision-cache.jsonl`, which is committed. Every sync writes them, even with `--no-vision`. Otherwise a sync would wipe text that earlier runs made.
+
+The embedding model is `nvidia/nemotron-3-embed-8b` with 1024 dimensions and cosine distance. It is set in the schema file, not in the query route.
 
 ## Retrieval behavior
 
-`mode=hybrid` makes one Turbopuffer `multiQuery` request:
+Hybrid mode sends one Turbopuffer `multiQuery`:
 
 ```ts
 {
@@ -104,29 +134,32 @@ The embedding model is `nvidia/nemotron-3-embed-8b` with 1024 dimensions and cos
 }
 ```
 
-`shared` includes a result limit, the presentation attributes, and an `And` filter built from the optional filters. Lexical and semantic modes issue their respective single query. Browse does no text query: it orders matching records by `connection_count` descending, then `connected_at` descending.
+`shared` holds the result limit, the fields to return, and the filters. Lexical and semantic modes send one query each. Browse sends no text query. It sorts by `connection_count`, then `connected_at`, both newest or highest first.
 
-The only filterable attributes the query path uses are `block_type` (`In`), `channel_slugs` (`ContainsAny`) and `connected_at` (`Gte` / `Lte`). Repeated `channel` or `type` parameters are ORed within their category, and categories compose with AND. Date-only `from` and `to` parameters cover their full UTC day.
+RRF runs inside Turbopuffer, never in our code. It merges two ranked lists without comparing their raw scores.
 
-Paging is offset-based. The API accepts a bounded `offset` (at most `ARCHIVE_MAX_OFFSET`, 2000), each query asks Turbopuffer for `offset + limit + 1` rows, the server drops the first `offset` after de-duplication, and `hasMore` reports whether a row remained past the page. The page size is server-owned (`ARCHIVE_RESULT_LIMIT`, 24); there is no public knob for it. The home page appends the next page as the reader scrolls, via `/api/search`.
+**Filters.** Only three fields are filtered: `block_type` (`In`), `channel_slugs` (`ContainsAny`) and `connected_at` (`Gte` and `Lte`). Repeated `channel` or `type` values are ORed. Different filters are ANDed. A date covers its whole UTC day.
 
-The endpoint selects hybrid when `q` is non-empty and `mode` is omitted; an empty request selects browse. The UI offers three ranking choices (Best match = hybrid, Exact words = lexical, Related ideas = semantic) and reaches browse by leaving the query empty.
+**Mode.** With no `mode` and a non-empty `q`, the request is hybrid. With nothing at all, it is browse. The UI offers three choices: Best match (hybrid), Exact words (lexical) and Related ideas (semantic). Browse is an empty query.
 
-Request validation (`src/lib/server/search/request.ts`):
+**Paging.** `offset` is capped at `ARCHIVE_MAX_OFFSET` (2000). The page size is 24 (`ARCHIVE_RESULT_LIMIT`) and is set by the server. Visitors cannot change it. The server asks Turbopuffer for `offset + limit + 1` rows and drops the first `offset` after de-duplication. If a row is left over, `hasMore` is true. The home page loads the next page through `/api/search` as the reader scrolls.
 
-- `q` is at most 400 characters and is required unless `mode` is `browse`.
+**Validation** (`src/lib/server/search/request.ts`):
+
+- `q` is at most 400 characters. It is required unless `mode` is `browse`.
 - At most 20 `channel` values and 20 `type` values.
-- `type` must be one of the five Are.na block types (`Image`, `Link`, `Text`, `Attachment`, `Embed`); `mode` must be one of the four modes; `from` and `to` must be `YYYY-MM-DD`, and `to` must not precede `from`.
-- Blank parameters are treated as omitted (`?q=&mode=&from=&to=` is the same request as `/`), because an HTML form submits every field whether or not it was filled in. A blank value still counts toward the "at most once" rule for `q`, `mode`, `from`, `to` and `offset`, so `?from=&from=2024-01-02` is a 400.
-- Malformed non-blank values fail with 400 rather than silently returning nothing.
+- `type` must be `Image`, `Link`, `Text`, `Attachment` or `Embed`.
+- `mode` must be one of the four modes.
+- `from` and `to` must look like `YYYY-MM-DD`. `to` cannot be before `from`.
+- A blank value counts as missing. A form sends every field, so `?q=&from=` is the same as `/`.
+- A blank value still counts toward "at most once" for `q`, `mode`, `from`, `to` and `offset`. `?from=&from=2024-01-02` is a 400.
+- Any other bad value is a 400. It never silently returns nothing.
 
-Results are deduplicated by block id before they leave the seam, so a block returned by both halves of a hybrid query appears once, keeping its higher-ranked position. Both surfaces share that guarantee (`executeArchiveSearch`).
+**Results.** Results are de-duplicated by block id in `executeArchiveSearch`. If both halves of a hybrid query return a block, it appears once, at its better rank.
 
-`/api/search` answers `{ results, hasMore }`, or 400 `{ error }`, or 503 `{ error, correlationId }`. The gallery page renders a search failure as page content at HTTP 200 rather than a 4xx/5xx, so the form and its values survive and the visitor can correct or retry. Non-`ok` page responses are sent `cache-control: no-store` so a transient outage is not cached as the archive's content.
+`/api/search` returns `{ results, hasMore }`, or 400 `{ error }`, or 503 `{ error, correlationId }`. The gallery page shows a search failure as page content with HTTP 200. That keeps the form and its values on screen. Any page that is not `ok` is sent with `cache-control: no-store`, so an outage is never cached.
 
-Turbopuffer offers no facet we rely on over the `channel_slugs` array attribute, and a public request may never call Are.na, so the UI cannot enumerate channels at request time. Instead `bun run sync` writes the channels it syncs to `src/lib/server/indexing/channel-manifest.json`, sorted by slug. That file is committed and bundled into the app at build time (a plain JSON import), so the Channel filter lists every channel in the archive, not just the ones the current result page carries, at no request-time cost. The manifest lists every channel that passed the ignore/private filter, regardless of that run's per-channel sync outcome, since a channel that fails one run may still have blocks indexed from a prior one. It is written only when a sync completes.
-
-RRF belongs in Turbopuffer, not in client code. It combines independently ranked lists without assuming BM25 and vector distance are numerically comparable.
+**Channel filter list.** The UI cannot list channels by querying Turbopuffer, and a visitor's request may never call Are.na. So `bun run sync` writes the channels it synced to `src/lib/server/indexing/channel-manifest.json`, sorted by slug. The file is committed and bundled at build time. The Channel filter lists every channel in the archive, at no cost per request. The list includes channels that failed in that run, since they may have blocks from an earlier run. It is only written when a sync finishes.
 
 ## Reliability and security
 
@@ -140,36 +173,98 @@ RRF belongs in Turbopuffer, not in client code. It combines independently ranked
 
 ## Sync lifecycle
 
-`bun run sync` (`scripts/sync.ts` driving `syncArchive`):
+`bun run sync` runs `scripts/sync.ts`, which calls `syncArchive`.
 
-1. The script requires `ARENA_ACCESS_TOKEN`, `TURBOPUFFER_API_KEY` and `TURBOPUFFER_REGION`, plus `OPENROUTER_API_KEY` unless `--no-vision` is given, and exits with an explanation otherwise. Unknown flags are rejected, since the default run writes to Are.na.
-2. Resolve the token owner's user id and discover every channel they own, then drop ignored and (by default) private channels. Fetch each remaining channel's pages in turn. If the first three channels all fail, abort: that is a token problem, not three broken channels. Any other failed Are.na request for a channel is recorded and the sync continues; a response that does not match the expected schema aborts the run.
-3. Normalize blocks into stable documents and deduplicate by Are.na block ID while unioning channel membership. When the same block is in several channels, keep the most recent `connected_at`; every other field comes from the block resource itself.
-4. Unless `--no-vision` is given, the vision stage runs over the deduplicated blocks (`--vision-dry-run` plans without calling the model). See [Vision indexing](#vision-indexing). With `--no-vision` this step is skipped and the existing cache is indexed as-is.
-5. Unless `--no-push-arena` is given, write generated titles and descriptions back to Are.na (from the cache, so with `--no-vision` it writes whatever earlier runs generated). This runs before the upsert so that a failure here does not cost the upsert.
-6. Upsert documents in batches of 200, folding generated text into `search_text`. Re-running the same sync is idempotent.
-7. Prune: page through every document id in the namespace (id-only, `rank_by id asc`, advancing `id Gt` filter, 10,000 ids per page) and delete in batches of 1,000 the ids not in this sync's deduplicated set. This runs after the upsert, so a failure leaves a superset of the truth, never a partial index. It also removes blocks from channels that are now ignored or private. Because ids are deduplicated across channels before the diff, a block still in any synced channel is never pruned.
-8. The script writes the merged vision cache (only when the vision stage actually ran), writes the channel manifest, and prints a summary: channels discovered/ignored/private-skipped/synced/failed, blocks fetched, nested items skipped, unique blocks, documents upserted and pruned, plus vision and write-back counts when those stages ran.
+1. **Check settings.** The script needs `ARENA_ACCESS_TOKEN`, `TURBOPUFFER_API_KEY` and `TURBOPUFFER_REGION`. It also needs `OPENROUTER_API_KEY`, unless `--no-vision` is set. It rejects unknown flags, because a default run writes to Are.na.
+2. **Find and fetch channels.** Look up the token's owner and list their channels. Drop ignored and private ones. Fetch each remaining channel's pages in turn. If the first 3 channels all fail, stop: that is a token problem. Any other failed channel is logged and skipped. A reply that does not match the expected schema stops the run.
+3. **Normalize and merge.** Turn blocks into documents. Merge duplicates by Are.na block ID and combine their channels. A block in several channels keeps its newest `connected_at`. Every other field comes from the block itself.
+4. **Describe.** Unless `--no-vision` is set, the vision stage describes the blocks. See [Vision indexing](#vision-indexing). With `--no-vision`, the existing cache is used as is.
+5. **Write back.** Unless `--no-push-arena` is set, send generated titles and descriptions to Are.na. This uses the cache, so with `--no-vision` it sends what earlier runs made. It runs before the upsert, so a failure here does not cost the upsert.
+6. **Upsert.** Write documents in batches of 200, with generated text folded into `search_text`. Running it again is safe.
+7. **Prune.** List every document id in the namespace. That is ids only, ordered by `id`, 10,000 per page. Delete ids that are not in this sync, in batches of 1,000. Pruning runs after the upsert. A failure leaves extra documents, never a half-built index. It also removes blocks from channels that are now ignored or private. A block still in any synced channel is never pruned.
+8. **Save and report.** Write the merged vision cache, but only if the vision stage ran. Write the channel manifest. Print a summary of channels, blocks, upserts, prunes, and vision and write-back counts.
 
-Pruning is skipped, with the reason in the summary, when a channel failed, the sync was aborted, no blocks were fetched, or the delete would remove more than half the namespace. There is no override flag. The alternative of wiping and reloading the namespace was rejected: native embeddings would be recomputed for every document, and search would be empty or partial during the reload.
+Pruning is skipped, with the reason shown, in these cases:
 
-Every stage reports through two channels: a human-readable `log` callback for detail worth keeping in the scroll-back, and a structured event stream (`src/lib/server/indexing/progress/events.ts`) carrying phase, position, and the lifecycle of each vision block. `scripts/sync.ts` folds the events into a snapshot and draws a status region that is redrawn in place, so the screen can answer what is running right now, including how long the oldest in-flight block has been waiting, which is the only way a stalled request is distinguishable from slow work. Presentation lives entirely on the reporter's side of that seam; the pipeline knows nothing about terminals, and degrades to line-based progress when stdout is not a TTY or `NO_COLOR` is set.
+- A channel failed.
+- The sync was aborted.
+- No blocks were fetched.
+- The delete would remove more than half the namespace. There is no override.
+
+We chose pruning over wiping and reloading. A reload would recompute every embedding, and search would be empty or partial meanwhile.
+
+**Progress output.** Each stage reports in two ways. A `log` callback prints details. A structured event stream (`src/lib/server/indexing/progress/events.ts`) reports the phase, the position and each vision block's life cycle. `scripts/sync.ts` turns the events into a status area that redraws in place. It shows what is running now and how long the oldest block has waited. That is how you tell a stalled request from slow work. The pipeline knows nothing about terminals. Without a TTY, or with `NO_COLOR` set, output falls back to plain lines.
 
 ## Vision indexing
 
-Image blocks usually arrive titled with a filename and no description, which makes them unfindable by text. The vision stage (`src/lib/server/indexing/vision/`) has a model describe each block that has an image, and that text is indexed for retrieval. It is a sync-time stage only: query time stays LLM-free, and a result is always the original Are.na block. Generated text is never displayed by the gallery; the one way it reaches a reader is write-back, which puts it on the Are.na block itself.
+Many image blocks have a filename for a title and no description. Text search cannot find them. The vision stage (`src/lib/server/indexing/vision/`) has a model describe each block that has an image. That text is indexed for search.
 
-**Model and routing.** `xiaomi/mimo-v2.5` through OpenRouter, called with plain `fetch` and validated with Zod, no SDK. The request pins a provider order (`deepinfra`, `streamlake`, `venice`) with `require_parameters: true`, because OpenRouter's cheapest route for this model supports neither structured outputs nor `response_format` and would return prose intermittently. Reasoning is disabled and `max_tokens` is capped at 2,048, the only thing that reliably stops a runaway decode. Requests time out at 240s; 408, 429 and 5xx retry up to 4 times with exponential backoff (honouring `Retry-After`), but a timeout gets only 2 attempts in total, since a request that stalls tends to stall every time.
+It runs only during sync. Search itself uses no model, and a result is always the original Are.na block. The gallery never shows generated text. It reaches a reader in one way: write-back puts it on the Are.na block.
 
-**Input.** Stills are not downloaded. Are.na serves images through a resizer whose request is a base64 JSON payload in the URL path, so `rendition.ts` rewrites the resize width to 768 and the provider fetches the smaller image itself. A non-resizable image over 5 MB is skipped, as is any content type other than JPEG, PNG, WebP or GIF (an unknown type is let through). Animated blocks (`image/gif`) are read as motion by default: `video.ts` downloads the source (at most 64 MB), transcodes it with ffmpeg to a silent MP4 (at most 512px wide, 6 fps, CRF 32, 60s timeout), rejects it above 4 MB, and sends it inline as a data URL. The scratch directory is removed on every exit path; directories left by a killed run are swept at the start of the next one once they are an hour old. ffmpeg must be on PATH. A missing binary is reported as a failure of each animated block, naming ffmpeg, and does not stop the run; `--no-vision-video` falls back to a single frame.
+**Model.** `xiaomi/mimo-v2.5` through OpenRouter. The code uses plain `fetch` and Zod, with no SDK.
 
-**Prompt and output.** `prompt.ts` holds `PROMPT_VERSION`, the system prompt and a strict JSON schema: `title` (at most 70 characters, never the supplied title), `description` (200 to 500 characters), `ocr` (every legible word), `palette` (3 to 5 hex colours, cached and not otherwise used), `medium` (one of nine values) and `tags` (3 to 8). The block's existing title, description and source title ride along as context, fenced and labelled as untrusted scraped text that must not be obeyed. A title that echoes the supplied one is rejected, and outputs that are not valid JSON or fail validation are retried and never cached.
+- It pins the providers `deepinfra`, `streamlake` and `venice`, and sets `require_parameters: true`. OpenRouter's cheapest route for this model cannot return structured output, so it would sometimes return plain prose.
+- Reasoning is off. `max_tokens` is 2,048, which stops a runaway reply.
+- A request times out after 240 seconds.
+- A 408, 429 or 5xx is retried up to 4 times, with growing waits. `Retry-After` is honoured.
+- A timeout gets 2 attempts in all. A request that stalls usually stalls again.
 
-**Cache.** `vision-cache.jsonl` is the system of record, committed so a fresh clone or a namespace migration costs nothing. One entry per block, serialized with fixed key order and sorted by block id so an unchanged run produces an empty diff. An entry is a hit only when block id, `image_src_hash` (a hash of the resizer payload's bucket and key, not of the URL, so retuning the rendition width invalidates nothing), `prompt_version`, `model` and `input_mode` all match, and that decision is made before any network call. To force one block to regenerate, delete its line from the file. The merge drops entries for blocks no longer in the archive and keeps the previous entry for a block that failed this run. Bumping `PROMPT_VERSION` or changing the model regenerates every block, so check the cost first.
+**Input.**
 
-**Running it.** Concurrency is fixed at 32, measured: one description takes 20 to 160 seconds and per-slot throughput is roughly flat as slots are added. Per-block failures are collected, not fatal, and leave no cache entry, so the next run retries them. The script checkpoints the cache to disk every 25 entries, so an interrupted run loses at most that many. `--vision-dry-run` reports the plan and makes no model calls; the rest of the sync still runs.
+- Stills are not downloaded. Are.na resizes images with a URL that holds a base64 JSON payload. `rendition.ts` sets the width to 768 and the provider fetches that smaller image.
+- Skipped: a non-resizable image over 5 MB, and any type except JPEG, PNG, WebP or GIF. An unknown type is let through.
+- Animated blocks (`image/gif`) are read as motion. `video.ts` downloads the source (64 MB at most) and uses ffmpeg to make a silent MP4: at most 512 px wide, 6 fps, CRF 32, 60 s limit. A result over 4 MB is rejected. The MP4 is sent inline as a data URL.
+- The scratch folder is deleted on every exit. A killed run can leave one behind. The next run deletes any that are over an hour old.
+- ffmpeg must be on `PATH`. Without it, each animated block fails with a message that names ffmpeg. The run goes on. Use `--no-vision` to skip the stage.
 
-**Write-back** (`writeback.ts`, `titles.ts`; on by default, `--no-push-arena` skips it). The one part of the project that writes to the maintainer's archive. Only blocks the token's owner authored are touched, since Are.na rejects updates to anyone else's. A title is replaced only when it carries no information: an upload filename, an opaque hash or bare URL, platform boilerplate (`… on X: "…"`, `- YouTube`, Instagram), or a long title that merely restates the description. A missing title is filled in. A description is written only when the block has none. Each write also stamps `metadata.vision_v`, `vision_at` and `vision_src`. Writes are paced at 500ms (Are.na's free tier is 120 per minute), a rate-limited block waits out `Retry-After` up to 3 times, and the sync aborts before indexing if the first 5 writes all fail, which almost always means a read-only token. There is no preview mode and no cap on how many blocks a run writes.
+**Prompt and output.** `prompt.ts` holds `PROMPT_VERSION`, the system prompt and a strict JSON schema:
+
+- `title`: at most 70 characters, and never the title we supplied.
+- `description`: 200 to 500 characters.
+- `ocr`: every readable word.
+- `palette`: 3 to 5 hex colours. It is cached but not used.
+- `medium`: one of nine values.
+- `tags`: 3 to 8.
+
+The block's own title, description and source title go along as context. They are fenced and labelled as untrusted text that must not be obeyed. A reply that copies the supplied title is rejected. A reply that is not valid JSON, or fails the schema, is retried. It is never cached.
+
+**Cache.** `vision-cache.jsonl` is the record of every description. It is committed, so a fresh clone or a namespace move costs nothing. It has one entry per block, in a fixed key order and sorted by block id, so an unchanged run leaves no diff.
+
+An entry is reused only when all of these match: block id, `image_src_hash`, `prompt_version`, `model` and `input_mode`. The check happens before any network call. `image_src_hash` hashes the resizer payload's bucket and key, not the URL, so changing the width invalidates nothing. To redo one block, delete its line. Changing `PROMPT_VERSION` or the model redoes every block, so check the cost first.
+
+When the cache is merged, entries for blocks that left the archive are dropped. A block that failed this run keeps its old entry.
+
+**Running it.** Concurrency is fixed at 32. A description takes 20 to 160 seconds, and speed per worker stays about flat as workers are added. A failed block is logged and gets no cache entry, so the next run retries it. The script saves the cache every 25 entries, so an interrupted run loses at most that many.
+
+**Write-back** (`writeback.ts`, `titles.ts`). This is the only code that writes to the maintainer's archive. It is on by default. `--no-push-arena` skips it.
+
+- It only touches blocks the token's owner made. Are.na rejects edits to anyone else's.
+- A title is replaced only if it has no information: a filename, a hash, a bare URL, platform boilerplate (`… on X: "…"`, `- YouTube`, Instagram), or a long title that repeats the description.
+- A missing title is filled in. A description is written only if the block has none.
+- Each write also sets `metadata.vision_v`, `vision_at` and `vision_src`.
+- Writes are paced at 500 ms, because the free tier allows 120 a minute. A rate-limited block waits as long as `Retry-After` says, up to 3 times.
+- If the first 5 writes all fail, the sync stops before indexing. This almost always means a read-only token.
+- There is no preview and no cap on how many blocks one run writes.
+
+## Changelog and TODO format
+
+`docs/CHANGELOG.md` and `docs/TODOS.md` must keep one consistent format. When you change either file, match the entries already there. Do not invent a new shape.
+
+**`CHANGELOG.md`**
+
+- Everything sits under `## Unreleased`, in `###` groups in this order: `Added`, `Changed`, `Removed`, `Fixed`. Leave out empty groups.
+- Newest entries first within a group.
+- One bullet per change, on one line, with no blank lines between bullets.
+- Write one or two sentences in the past tense. Start with a verb and say what the user sees or does differently.
+- Put commands, flags, files and values in backticks.
+- If a change needs a re-sync to show up, end with ``Takes effect after `bun run sync`.``
+
+**`TODOS.md`**
+
+- Keep the sections in this order: In Progress, Up Next, Needs Input, Backlog, Done. Write `_(none)_` under an empty one.
+- Write each item as `- [ ] **Title.** One sentence.` Use `[~]` and `[x]` as the header describes.
+- Link a spec or worksheet at the end of the line when one exists.
+- Done items go newest first, and end with the short commit hash in parentheses.
 
 ## Sources checked
 
