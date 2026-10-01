@@ -233,7 +233,7 @@ The block's type, title, description and source title go along as context, each 
 
 An entry is reused only when all of these match: block id, `image_src_hash`, `prompt_version`, `model` and `input_mode`. The check happens before any network call. `image_src_hash` hashes the resizer payload's bucket and key, not the URL, so changing the width invalidates nothing. To redo one block, delete its line. Changing `PROMPT_VERSION` or the model redoes every block, so check the cost first.
 
-When the cache is merged, entries for blocks this run did not fetch are dropped. That includes blocks whose only channel failed this run, so check the cache diff after a run with a failed channel. A block whose description failed this run keeps its old entry.
+When the cache is merged, entries for blocks that left the archive are dropped. If a channel failed or the sync was aborted, nothing is dropped, since a block in that channel only looks gone. A block whose description failed this run keeps its old entry.
 
 **Running it.** Concurrency is fixed at 32. A description takes 20 to 160 seconds, and speed per worker stays about flat as workers are added. A failed or skipped block is logged and gets no cache entry, so the next run tries it again. The summary counts a failed animation download under "media too large", with the real size skips. The script saves the cache every 25 entries, so an interrupted run loses at most that many.
 
