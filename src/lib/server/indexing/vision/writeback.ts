@@ -40,7 +40,7 @@ function metadataFor(entry: VisionCacheEntry, now: Date): ArenaBlockUpdate['meta
 }
 
 /**
- * What write-back would do, without doing any of it. `--push-arena-apply` acts on it.
+ * What write-back would do, without doing any of it; `applyWriteBack` acts on the plan.
  */
 export function planWriteBack(
 	blocks: ArchiveBlock[],
@@ -195,7 +195,7 @@ export async function applyWriteBack(
 
 			if (summary.blocksUpdated === 0 && summary.failed.length >= MAX_LEADING_FAILURES) {
 				throw new Error(
-					`Aborting Are.na write-back: the first ${summary.failed.length} writes all failed (most recently block ${plan.blockId}: ${message}). This usually means ARENA_ACCESS_TOKEN is read-only — writing titles and descriptions needs write scope — not that these blocks are individually broken.`,
+					`Aborting Are.na write-back: the first ${summary.failed.length} writes all failed (most recently block ${plan.blockId}: ${message}). This usually means ARENA_ACCESS_TOKEN is read-only — writing titles and descriptions needs write scope (use a read + write token, or pass --no-push-arena) — not that these blocks are individually broken.`,
 					{ cause: lastError }
 				);
 			}

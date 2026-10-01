@@ -16,6 +16,22 @@ import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 
 const VISION_CACHE_URL = new URL('../src/lib/server/indexing/vision-cache.jsonl', import.meta.url);
 
+/**
+ * Vision and Are.na write-back are on by default, so a mistyped opt-out (`--no-vison`) must not be
+ * ignored: it would run the stage, and write to the maintainer's archive, anyway.
+ */
+const KNOWN_FLAGS = new Set(['no-vision', 'no-push-arena', 'vision-dry-run', 'no-vision-video']);
+
+const unknownFlags = process.argv
+	.slice(2)
+	.filter((arg) => !(arg.startsWith('--') && KNOWN_FLAGS.has(arg.slice(2))));
+if (unknownFlags.length > 0) {
+	console.error(
+		`Unknown argument(s): ${unknownFlags.join(' ')}. Known flags: ${[...KNOWN_FLAGS].map((flag) => `--${flag}`).join(', ')}.`
+	);
+	process.exit(1);
+}
+
 function hasFlag(name: string): boolean {
 	return process.argv.includes(`--${name}`);
 }
@@ -31,12 +47,18 @@ async function readVisionCache(): Promise<Map<string, VisionCacheEntry>> {
 
 function resolveVisionOptions(): Omit<VisionSyncOptions, 'onEntry'> | undefined {
 	const dryRun = hasFlag('vision-dry-run');
-	if (!hasFlag('vision') && !dryRun) return undefined;
+	if (hasFlag('no-vision')) {
+		if (dryRun) {
+			console.error('--vision-dry-run and --no-vision contradict each other; pass one.');
+			process.exit(1);
+		}
+		return undefined;
+	}
 
 	const apiKey = process.env.OPENROUTER_API_KEY;
 	if (!apiKey) {
 		console.error(
-			'OPENROUTER_API_KEY must be set to run the vision stage. Copy .env.example to .env and fill it in.'
+			'OPENROUTER_API_KEY must be set to run the vision stage. Copy .env.example to .env and fill it in, or pass --no-vision.'
 		);
 		process.exit(1);
 	}
@@ -66,7 +88,7 @@ if (!apiKey || !region) {
 const namespace = process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE;
 
 const vision = resolveVisionOptions();
-const pushArena = hasFlag('push-arena-apply');
+const pushArena = !hasFlag('no-push-arena');
 const visionCache = await readVisionCache();
 const reporter = createSyncReporter();
 
