@@ -16,7 +16,7 @@ import { EMPTY_CHANNEL_FILTER, exclusionReason, type ChannelFilter } from './cha
 import type { SyncEventSink } from './progress/events';
 import type { ChannelManifestEntry } from './channel-manifest';
 import { toArchiveBlock } from './normalize';
-import { describeBlocks, planVisionWork, type VisionStageSummary } from './vision';
+import { describeBlocks, type VisionStageSummary } from './vision';
 import { mergeVisionCache, type VisionCache, type VisionCacheEntry } from './vision/cache';
 import type { VisionClient } from './vision/client';
 import { applyWriteBack, planWriteBack, type WriteBackSummary } from './vision/writeback';
@@ -49,10 +49,6 @@ export interface SyncOptions {
 
 export interface VisionSyncOptions {
 	client: VisionClient;
-	/** Read animated blocks as motion by transcoding them locally first. Needs ffmpeg on PATH. */
-	video?: boolean;
-	/** Report what would be generated and what it would cost, then write nothing. */
-	dryRun?: boolean;
 	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
 	onEntry?: (entry: VisionCacheEntry) => void;
 }
@@ -249,37 +245,21 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	let visionCache: VisionCacheEntry[] | null = null;
 	let visionText: VisionCache = existingVisionCache;
 	if (vision) {
-		if (vision.dryRun) {
-			const plan = planVisionWork(blocks, { ...vision, cache: existingVisionCache });
-			summary.vision = {
-				blocksWithImage: plan.withImage.length,
-				cacheHits: plan.cached,
-				generated: 0,
-				generatedFromVideo: 0,
-				skippedTooLarge: 0,
-				skippedUnsupported: 0,
-				failed: []
-			};
-			log(
-				`Vision (dry run): ${plan.withImage.length} block(s) with an image, ${plan.cached} cached, ${plan.pending.length} would be described`
-			);
-		} else {
-			onEvent({ kind: 'phase', phase: 'describing' });
-			const { entries, summary: visionSummary } = await describeBlocks(blocks, {
-				...vision,
-				cache: existingVisionCache,
-				log,
-				onEvent,
-				signal
-			});
-			summary.vision = visionSummary;
-			visionCache = mergeVisionCache(
-				existingVisionCache,
-				entries,
-				new Set(blocks.map((block) => block.id))
-			);
-			visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
-		}
+		onEvent({ kind: 'phase', phase: 'describing' });
+		const { entries, summary: visionSummary } = await describeBlocks(blocks, {
+			...vision,
+			cache: existingVisionCache,
+			log,
+			onEvent,
+			signal
+		});
+		summary.vision = visionSummary;
+		visionCache = mergeVisionCache(
+			existingVisionCache,
+			entries,
+			new Set(blocks.map((block) => block.id))
+		);
+		visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
 	}
 
 	// Before indexing, because a failure here should not cost the upsert.

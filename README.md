@@ -87,14 +87,8 @@ Are.na requests.
 
 ## Vision descriptions
 
-On by default, and the most useful thing this project does. Preview the cost first:
-
-```bash
-bun run sync --vision-dry-run     # reports how many blocks would be described; no model calls
-```
-
-`--vision-dry-run` only skips the model calls. The rest of the sync still runs: it indexes, prunes
-and — unless you add `--no-push-arena` — writes back to Are.na from whatever the cache holds.
+On by default, and the most useful thing this project does. There is no cost preview, so work out
+the bill before the first run: roughly one model call per block with an image.
 
 For a ~2,600-block archive expect **about $0.50** and a few hours. It is safe to interrupt: results
 are checkpointed every 25 descriptions, and re-running skips everything already done **before
@@ -110,13 +104,12 @@ line from the cache file.
 
 #### Animations are read as motion, not as one frame
 
-Are.na keeps animated GIFs on a CDN that publishes no smaller version, so the image path had to skip
-anything over the provider's 5 MB limit and describe the rest from a single still. Neither is a
-useful reading of an animation.
+Are.na keeps animated GIFs on a CDN that publishes no smaller version. Many are over the
+provider's 5 MB limit, and a single still is not a useful reading of an animation anyway.
 
-With **ffmpeg on PATH**, animated blocks are transcoded locally to a small MP4 first and sent as
-video. A 24.2 MB GIF becomes a 145 KB clip in about half a second, which both fits comfortably and
-lets the model see what actually happens:
+So animated blocks are transcoded locally with **ffmpeg** to a small MP4 first and sent as video.
+A 24.2 MB GIF becomes a 145 KB clip in about half a second, which both fits comfortably and lets
+the model see what actually happens:
 
 > "A side-view depiction of a male runner… Overlaid on the scene is a semi-transparent, dark-themed
 > user interface simulating a heads-up display."
@@ -127,10 +120,10 @@ for size, or fails. A run that is killed outright cannot clean up after itself, 
 sweeps anything it left behind (once it is an hour old) before it starts. Nothing is written to the
 repository.
 
-This is on by default. Without ffmpeg every animated block is reported as failed, with a message
-naming ffmpeg, while the rest of the run carries on; pass `--no-vision-video` to fall back to
-single-frame stills instead. Animations cost roughly twice an image (~$0.0005 each) and take longer,
-since the source is downloaded before it is transcoded.
+ffmpeg must be on PATH. Without it every animated block is reported as failed, with a message
+naming ffmpeg, while the rest of the run carries on; pass `--no-vision` to skip the stage.
+Animations cost roughly twice an image (~$0.0005 each) and take longer, since the source is
+downloaded before it is transcoded.
 
 ### Writing the descriptions back to Are.na
 
@@ -196,21 +189,19 @@ blocks already written are simply "already fine" and skipped, and only the failu
 
 ## Commands
 
-| Command                          | What it does                                              |
-| -------------------------------- | --------------------------------------------------------- |
-| `bun run dev`                    | local dev server                                          |
-| `bun run preview`                | run the built Worker locally with wrangler                |
-| `bun run sync`                   | fetch Are.na, describe images, write titles back, index   |
-| `bun run sync --no-vision`       | skip the vision stage; index the existing cache as-is     |
-| `bun run sync --no-push-arena`   | do not write generated titles back to Are.na              |
-| `bun run sync --vision-dry-run`  | report what vision would cost; makes no model calls       |
-| `bun run sync --no-vision-video` | describe animations from one frame instead of transcoding |
-| `bun run evaluate:search`        | run the search evaluation against your index              |
-| `bun run check`                  | generate types, then typecheck                            |
-| `bun run lint`                   | prettier + eslint                                         |
-| `bun run format`                 | prettier, writing changes                                 |
-| `bun run test`                   | vitest                                                    |
-| `bun run build`                  | production build                                          |
+| Command                        | What it does                                            |
+| ------------------------------ | ------------------------------------------------------- |
+| `bun run dev`                  | local dev server                                        |
+| `bun run preview`              | run the built Worker locally with wrangler              |
+| `bun run sync`                 | fetch Are.na, describe images, write titles back, index |
+| `bun run sync --no-vision`     | skip the vision stage; index the existing cache as-is   |
+| `bun run sync --no-push-arena` | do not write generated titles back to Are.na            |
+| `bun run evaluate:search`      | run the search evaluation against your index            |
+| `bun run check`                | generate types, then typecheck                          |
+| `bun run lint`                 | prettier + eslint                                       |
+| `bun run format`               | prettier, writing changes                               |
+| `bun run test`                 | vitest                                                  |
+| `bun run build`                | production build                                        |
 
 Run `check`, `lint`, `test` and `build` before opening a pull request.
 
@@ -265,8 +256,8 @@ Are.na V3  ──►  sync (manual, local)  ──►  Turbopuffer  ──►  S
 
 ## Known limits
 
-- **Animated blocks need ffmpeg.** Without it, pass `--no-vision-video` and they fall back to a
-  single frame — and any over 5 MB are skipped entirely, since Are.na publishes no smaller version.
+- **Animated blocks need ffmpeg.** Without it they fail to be described, and are retried on the next
+  run once it is installed. An animation that still comes out over 4 MB after transcoding is skipped.
 - **`vision_medium` is unreliable.** A grainy photograph came back labelled `painting`. It is
   stored but nothing depends on it — don't build a facet on it without measuring first.
 - **Generated descriptions are capped at 500 characters** so they cannot drown out a block's own

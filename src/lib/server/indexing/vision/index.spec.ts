@@ -23,7 +23,7 @@ function block(overrides: Partial<ArchiveBlock> = {}): ArchiveBlock {
 		imageWidth: null,
 		imageHeight: null,
 		imageBytes: 1000,
-		imageContentType: 'image/gif',
+		imageContentType: 'image/png',
 		channels: [{ slug: 'alpha', title: 'Alpha' }],
 		...overrides
 	} as ArchiveBlock;
@@ -277,20 +277,12 @@ describe('describeBlocks — animated blocks', () => {
 		return block({ imageContentType: 'image/gif', ...overrides });
 	}
 
-	it('leaves animations on the image path unless video is asked for', async () => {
-		const client = stubClient();
-		await describeBlocks([gif()], { client, cache: new Map(), now });
-
-		expect(client.describe.mock.calls[0][0].media.kind).toBe('image');
-	});
-
 	it('regenerates an animation previously described as a still', async () => {
 		const client = stubClient();
 		const asStill = entryFor('1'); // input_mode: 'image'
 		const { summary } = await describeBlocks([gif()], {
 			client,
 			cache: new Map([['1', asStill]]),
-			video: true,
 			now,
 			transcodeOptions: { fetchFn: async () => new Response('x') }
 		});
@@ -298,12 +290,11 @@ describe('describeBlocks — animated blocks', () => {
 		expect(summary.cacheHits).toBe(0);
 	});
 
-	it('leaves a still alone when video is enabled — only animations change mode', async () => {
+	it('leaves a still alone — only animations change mode', async () => {
 		const client = stubClient();
 		const { summary } = await describeBlocks([block({ imageContentType: 'image/png' })], {
 			client,
 			cache: new Map([['1', entryFor('1')]]),
-			video: true,
 			now
 		});
 
@@ -326,7 +317,6 @@ describe('describeBlocks — animated blocks', () => {
 		const { summary } = await describeBlocks([gif()], {
 			client,
 			cache: new Map(),
-			video: true,
 			now,
 			// A 404 makes the transcode return a skip rather than throwing.
 			transcodeOptions: { fetchFn: async () => new Response('', { status: 404 }) }
