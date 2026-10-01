@@ -33,7 +33,7 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 export class FfmpegMissingError extends Error {
 	constructor(command: string, options?: ErrorOptions) {
 		super(
-			`Could not run "${command}". Animated blocks are transcoded locally before being described, which needs ffmpeg on PATH — install it (brew install ffmpeg) or pass --no-vision-video to describe them from a single frame instead.`,
+			`Could not run "${command}". Animated blocks are transcoded locally before being described, which needs ffmpeg on PATH — install it (brew install ffmpeg) or pass --no-vision to skip the vision stage.`,
 			options
 		);
 		this.name = 'FfmpegMissingError';
