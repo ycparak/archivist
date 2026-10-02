@@ -6,6 +6,11 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Added
 
+- Added the number of blocks in the archive to the footer, beside the number of channels. It replaces the results sentence and Turbopuffer timings, which screen readers still hear.
+- Added a Sort by filter for browsing: most connected (the default), newest or oldest, as `?sort=`. A search term still ranks by relevance.
+- Added colour swatches and a connected-date slider to the filters, so the colour filter finally has a control.
+- Added `docs/design.md`, which records the visual system for anyone working on the UI.
+
 - Added a colour filter to search. `?colour=blue` lists blocks with enough blue, and browsing with a colour puts the most strongly coloured first; repeat `colour` for blocks with every colour named. The colours are red, orange, yellow, green, blue, purple, pink, brown, grey, black, white and `mono` for black and white. There is no control for it in the gallery yet. Takes effect after `bun run sync`.
 - Added a colour stage to `bun run sync`, which measures how much of each image is each colour with ffmpeg, in memory, and caches the result in `colour-cache.jsonl`. Skip it with `--no-colour`.
 - Added `bun run calibrate:colour`, which writes a read-only contact sheet of measured colours for checking the colour boundaries by eye.
@@ -29,6 +34,11 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 - Added `bun run sync`, which finds every channel your account owns, merges duplicate blocks and upserts them into Turbopuffer. It needs `ARENA_ACCESS_TOKEN`, `TURBOPUFFER_API_KEY` and `TURBOPUFFER_REGION`.
 
 ### Changed
+
+- Changed the whole UI to a horizontal library modelled on Seth Thompson's: one sideways-scrolling sheet with the filters as columns of links on the left, and results on a grey shelf, grouped by channel behind a channel cover, captioned above and below with the date and the matched words. Shelves slide in as they scroll into view, a search glides the sheet to the shelf, and dark mode follows the system.
+- Changed the shelf to a pale grey band with pages a fifth shorter than their row, closer in height to the reference. Channel names lose their leading symbols, black and white are no longer offered as colours, all filters sit in the first column, and captions use one weight with black headings over grey text.
+- Changed all text to trim to cap height and baseline, on a 14px line height, with spacing set to keep a baseline grid.
+- Changed the type to ABC Areal at 14–15px for the app, with Newsreader for the search box, the wordmark and channel covers.
 
 - Changed the sync rules so agents may run `bun run sync` with `--no-vision`, `--no-push-arena` or both. A plain `bun run sync` is still the maintainer's alone.
 - Changed `bun run sync` to run the vision stage and the Are.na write-back by default. Opt out with `--no-vision` and `--no-push-arena`. It now needs `OPENROUTER_API_KEY` and a read + write Are.na token unless opted out, and it rejects unknown flags.

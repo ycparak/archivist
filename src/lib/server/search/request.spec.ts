@@ -31,6 +31,17 @@ describe('every href the UI can build is a request the server accepts', () => {
 			{ mode: 'browse', query: 'felt' }
 		],
 		['ranking dropped without a query', state({ mode: 'semantic' }), { mode: 'browse', query: '' }],
+		['a browse order', state({ sort: 'newest' }), { mode: 'browse', sort: 'newest' }],
+		[
+			'a browse order dropped once a query ranks',
+			state({ query: 'felt', mode: 'hybrid', sort: 'oldest' }),
+			{ mode: 'hybrid', sort: 'connections' }
+		],
+		[
+			'a browse order kept for an explicit browse with a query',
+			state({ query: 'felt', mode: 'browse', sort: 'oldest' }),
+			{ mode: 'browse', sort: 'oldest' }
+		],
 		[
 			'filters only',
 			state({ channelSlugs: ['materials'], blockTypes: ['Image'] }),
@@ -73,6 +84,7 @@ describe('parseArchiveSearchRequest', () => {
 			channelSlugs: [],
 			blockTypes: [],
 			colours: [],
+			sort: 'connections',
 			offset: 0,
 			limit: 24
 		});
@@ -119,6 +131,7 @@ describe('parseArchiveSearchRequest', () => {
 			channelSlugs: [],
 			blockTypes: [],
 			colours: [],
+			sort: 'connections',
 			offset: 0,
 			limit: 24
 		});
@@ -179,6 +192,15 @@ describe('parseArchiveSearchRequest', () => {
 
 	it('counts blank values when rejecting repeated single-value parameters', () => {
 		expect(() => parseArchiveSearchRequest(new URLSearchParams('from=&from=2024-01-02'))).toThrow(
+			SearchRequestValidationError
+		);
+	});
+
+	it('rejects a browse order alongside a ranking it cannot apply to', () => {
+		expect(() => parseArchiveSearchRequest(new URLSearchParams('q=felt&sort=newest'))).toThrow(
+			SearchRequestValidationError
+		);
+		expect(() => parseArchiveSearchRequest(new URLSearchParams('sort=random'))).toThrow(
 			SearchRequestValidationError
 		);
 	});

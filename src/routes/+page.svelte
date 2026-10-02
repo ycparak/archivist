@@ -1,17 +1,23 @@
 <script lang="ts">
+	import type { Attachment } from 'svelte/attachments';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { navigating, page } from '$app/state';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
+	import ArchiveIndex from '$lib/components/ArchiveIndex.svelte';
 	import ArchiveMessage from '$lib/components/ArchiveMessage.svelte';
-	import ResultCard from '$lib/components/ResultCard.svelte';
-	import SearchForm from '$lib/components/SearchForm.svelte';
-	import { formatSearchTimings, mediaRatio, resultsStatus } from '$lib/components/format';
+	import SearchField from '$lib/components/SearchField.svelte';
+	import Shelf from '$lib/components/Shelf.svelte';
+	import { hrefWith, toggled } from '$lib/components/filters';
+	import { channelLabel, resultsStatus } from '$lib/components/format';
+	import { layoutShelves } from '$lib/components/shelf';
 	import {
 		ARCHIVE_PAGE_PARAM,
 		hasActiveFilters,
 		readArchiveSearchState,
+		toArchiveSearchHref,
 		type ArchiveSearchHref,
+		type ChannelManifestEntry,
 		type SearchResult
 	} from '$lib/domain/search';
 	import type { PageData } from './$types';
@@ -19,17 +25,25 @@
 	let { data }: { data: PageData } = $props();
 
 	const searchState = $derived(data.state);
-	type Loaded = { source: PageData; results: SearchResult[]; offset: number; hasMore: boolean };
+	type Loaded = { source: PageData; pages: SearchResult[][]; offset: number; hasMore: boolean };
 
 	let loaded = $state.raw<Loaded>();
 	let loadingMore = $state(false);
 	let loadFailed = $state(false);
+	let scroller = $state<HTMLElement>();
+	let shelf = $state<HTMLElement>();
 
 	const loadedHere = $derived(loaded?.source === data ? loaded : undefined);
 	const firstPage = $derived(data.kind === 'ok' ? data.results : []);
-	const results = $derived([...firstPage, ...(loadedHere?.results ?? [])]);
+	const pages = $derived([firstPage, ...(loadedHere?.pages ?? [])]);
+	const resultCount = $derived(pages.reduce((count, results) => count + results.length, 0));
 	const hasMore = $derived(loadedHere ? loadedHere.hasMore : data.kind === 'ok' && data.hasMore);
-	const channels = $derived(data.channels);
+	const channels = $derived(
+		data.channels.map((channel) => ({ ...channel, title: channelLabel(channel.title) }))
+	);
+	const channelsBySlug = $derived(new Map(channels.map((channel) => [channel.slug, channel])));
+	const layout = $derived(layoutShelves(pages, channelsBySlug, searchState.channelSlugs));
+	const requestKey = $derived(toArchiveSearchHref(searchState));
 	const searching = $derived(navigating.to?.route.id === '/');
 
 	const announced = $derived(
@@ -38,16 +52,7 @@
 			: searchState
 	);
 	const status = $derived(
-		resultsStatus({
-			kind: data.kind,
-			state: announced,
-			resultCount: results.length,
-			searching
-		})
-	);
-
-	const timings = $derived(
-		data.kind === 'ok' && !searching ? formatSearchTimings(data.timings) : ''
+		resultsStatus({ kind: data.kind, state: announced, resultCount, searching })
 	);
 
 	async function loadMore() {
@@ -63,15 +68,13 @@
 			if (!response.ok) throw new Error(`Search returned ${response.status}`);
 			const body: { results: SearchResult[]; hasMore: boolean } = await response.json();
 			if (source !== data) return;
-			const seen = new Set(results.map((result) => result.id));
+			const seen = new Set(pages.flat().map((result) => result.id));
+			const fresh = body.results.filter((result) => !seen.has(result.id));
 			loaded = {
 				source,
 				offset: offset + body.results.length,
 				hasMore: body.hasMore && body.results.length > 0,
-				results: [
-					...(loadedHere?.results ?? []),
-					...body.results.filter((result) => !seen.has(result.id))
-				]
+				pages: fresh.length ? [...(loadedHere?.pages ?? []), fresh] : (loadedHere?.pages ?? [])
 			};
 		} catch {
 			if (source === data) loadFailed = true;
@@ -80,23 +83,69 @@
 		}
 	}
 
-	function watchEnd(node: HTMLElement) {
-		void results.length;
-		void loadFailed;
-		if (!hasMore || loadFailed) return;
-		const observer = new IntersectionObserver(
-			(entries) => {
-				if (entries.some((entry) => entry.isIntersecting)) void loadMore();
-			},
-			{ rootMargin: '800px 0px' }
-		);
-		observer.observe(node);
-		return () => observer.disconnect();
-	}
-
 	function navigate(href: ArchiveSearchHref) {
 		void goto(resolve(href), { keepFocus: true, noScroll: true });
 	}
+
+	function coverHref(channel: ChannelManifestEntry): ArchiveSearchHref {
+		return hrefWith(searchState, {
+			channelSlugs: toggled(searchState.channelSlugs, channel.slug)
+		});
+	}
+
+	function remToPx(rem: number): number {
+		return rem * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+	}
+
+	let scrolledFor: string | undefined;
+	let parkedAt: number | undefined;
+
+	function shelfStart(): number {
+		return shelf ? shelf.offsetLeft - remToPx(2) : 0;
+	}
+
+	/** A new query slides the shelf in from the right; clearing it slides back to the filters. */
+	$effect(() => {
+		const query = searchState.query;
+		if (!scroller || !shelf) return;
+		const first = scrolledFor === undefined;
+		if (!first && query === scrolledFor) return;
+		scrolledFor = query;
+		if (first && !query) return;
+		const instant = first || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		parkedAt = query ? shelfStart() : undefined;
+		scroller.scrollTo({ left: parkedAt ?? 0, behavior: instant ? 'instant' : 'smooth' });
+	});
+
+	/**
+	 * The filters settle their channel columns only after fonts load, which moves the shelf. A
+	 * reader still parked at the start of the shelf stays there; one who has scrolled is left alone.
+	 */
+	const keepParked: Attachment<HTMLElement> = (index) => {
+		const observer = new ResizeObserver(() => {
+			if (!scroller || parkedAt === undefined) return;
+			if (Math.abs(scroller.scrollLeft - parkedAt) > 2) {
+				parkedAt = undefined;
+				return;
+			}
+			parkedAt = shelfStart();
+			scroller.scrollTo({ left: parkedAt, behavior: 'instant' });
+		});
+		observer.observe(index);
+		return () => observer.disconnect();
+	};
+
+	/** A mouse wheel only scrolls vertically, and this page only scrolls sideways. */
+	const wheelSideways: Attachment<HTMLElement> = (element) => {
+		const onWheel = (event: WheelEvent) => {
+			if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+			if (element.scrollWidth <= element.clientWidth) return;
+			event.preventDefault();
+			element.scrollLeft += event.deltaY;
+		};
+		element.addEventListener('wheel', onWheel, { passive: false });
+		return () => element.removeEventListener('wheel', onWheel);
+	};
 </script>
 
 <svelte:head>
@@ -104,13 +153,47 @@
 	<meta name="description" content="Search and browse an Are.na archive of original blocks." />
 </svelte:head>
 
-<main class="mb-16 flex flex-col gap-12 [--row-height:10rem] md:[--row-height:16rem]">
-	<header class="rule">
-		<h1>Search</h1>
-	</header>
+<div class="fixed inset-0 flex flex-col sm:block">
+	<SearchField search={searchState} onnavigate={navigate} />
 
-	<SearchForm state={searchState} {channels} {status} {timings} onnavigate={navigate} />
+	<main
+		class="[container-type:size] relative min-h-0 flex-1 overflow-x-auto overflow-y-hidden sm:h-full"
+		data-shelf-scroller
+		bind:this={scroller}
+		{@attach wheelSideways}
+	>
+		<h1 class="sr-only">Archivist</h1>
+		<div class="flex h-full w-max">
+			<div class="h-full" {@attach keepParked}>
+				<ArchiveIndex
+					search={searchState}
+					{channels}
+					blockCount={data.blockCount}
+					onnavigate={navigate}
+				/>
+			</div>
+			<div class="ml-(--column-gap) h-full" bind:this={shelf}>
+				<Shelf
+					{layout}
+					{requestKey}
+					query={searchState.query}
+					busy={searching}
+					{hasMore}
+					{loadingMore}
+					{loadFailed}
+					{coverHref}
+					isActiveChannel={(channel) => searchState.channelSlugs.includes(channel.slug)}
+					onloadmore={loadMore}
+					message={data.kind !== 'ok' || !resultCount ? message : undefined}
+				/>
+			</div>
+		</div>
+	</main>
 
+	<p class="sr-only" role="status" aria-live="polite">{status}</p>
+</div>
+
+{#snippet message()}
 	{#if data.kind === 'unavailable'}
 		<ArchiveMessage heading="Search is unavailable">
 			<p>
@@ -122,53 +205,22 @@
 	{:else if data.kind === 'invalid'}
 		<ArchiveMessage heading="That search could not be read">
 			<p>
-				Check the ranking mode and the connected-date range, then search again. Exact-words and
-				related-ideas ranking both need a search term.
+				Check the ranking and the connected dates, then search again. Exact words and related ideas
+				both need a search term.
 			</p>
 		</ArchiveMessage>
-	{:else if !results.length}
+	{:else}
 		<ArchiveMessage heading="No blocks match">
 			<p>
 				Nothing in the synced archive matches {searchState.query
 					? `“${searchState.query}”`
 					: 'these filters'}.
 				{#if hasActiveFilters(searchState)}
-					Clearing a filter above widens the search.
+					Clearing a filter widens the search.
 				{:else}
-					Try a broader phrase, or switch ranking to related ideas.
+					Try a broader phrase, or switch the search type to related ideas.
 				{/if}
 			</p>
 		</ArchiveMessage>
-	{:else}
-		<h2 class="visually-hidden">Results</h2>
-		<ul
-			class={[
-				'ease-standard) m-0 flex list-none flex-wrap gap-x-5 gap-y-6 p-0 transition-opacity duration-(--duration-standard) after:grow-1000000 motion-reduce:transition-none',
-				searching && 'opacity-50'
-			]}
-			aria-busy={searching}
-		>
-			{#each results as result, index (result.id)}
-				<li
-					class="min-w-0 flex-[calc(var(--ratio)*100)_1_calc(var(--ratio)*var(--row-height))]"
-					style:--ratio={mediaRatio(result)}
-				>
-					<ResultCard {result} eager={index < 4} />
-				</li>
-			{/each}
-		</ul>
-		{#if hasMore}
-			<div class="min-h-(--control-sm)" {@attach watchEnd}>
-				{#if loadFailed}
-					<button
-						type="button"
-						class="bg-transparent text-text-secondary underline"
-						onclick={loadMore}>Couldn’t load more. Try again</button
-					>
-				{:else if loadingMore}
-					<p class="m-0 meta">Loading more…</p>
-				{/if}
-			</div>
-		{/if}
 	{/if}
-</main>
+{/snippet}

@@ -4,9 +4,9 @@
 	let { heading, children }: { heading: string; children?: Snippet } = $props();
 </script>
 
-<div class="flex max-w-(--reading-width) flex-col gap-3 border-t border-border-subtle py-8">
-	<h2>{heading}</h2>
+<div class="flex flex-col gap-(--gap-paragraph)">
+	<h2 class="text-foreground-strong">{heading}</h2>
 	{#if children}
-		<div class="text-text-secondary [&_code]:text-text">{@render children()}</div>
+		<div class="text-balance text-foreground [&_code]:wrap-anywhere">{@render children()}</div>
 	{/if}
 </div>

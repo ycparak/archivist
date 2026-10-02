@@ -7,6 +7,7 @@ import {
 	ARCHIVE_PAGE_PARAM,
 	ARCHIVE_RESULT_LIMIT,
 	ARCHIVE_SEARCH_PARAM,
+	ARCHIVE_SORTS,
 	defaultSearchMode
 } from '$lib/domain/search';
 import { archiveSearchInputSchema, searchModeSchema, type ArchiveSearchInput } from './contracts';
@@ -23,6 +24,7 @@ const searchRequestSchema = z
 		colours: z.array(z.enum(ARCHIVE_COLOURS)).max(ARCHIVE_MAX_COLOURS),
 		from: z.iso.date().optional(),
 		to: z.iso.date().optional(),
+		sort: z.enum(ARCHIVE_SORTS).optional(),
 		offset: z
 			.string()
 			.regex(/^\d+$/)
@@ -35,6 +37,13 @@ const searchRequestSchema = z
 				code: 'custom',
 				path: ['query'],
 				message: 'q is required unless mode is browse'
+			});
+		}
+		if (input.sort && input.mode !== 'browse') {
+			context.addIssue({
+				code: 'custom',
+				path: ['sort'],
+				message: 'sort applies only to browse; a query ranks by relevance'
 			});
 		}
 		if (input.from && input.to && input.from > input.to) {
@@ -89,6 +98,7 @@ export function parseArchiveSearchRequest(searchParams: URLSearchParams): Archiv
 		colours: [...new Set(repeatedParams(searchParams, ARCHIVE_SEARCH_PARAM.colour))],
 		from: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.from),
 		to: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.to),
+		sort: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.sort),
 		offset: optionalParam(searchParams, ARCHIVE_PAGE_PARAM.offset)
 	};
 	const parsed = searchRequestSchema.safeParse(raw);

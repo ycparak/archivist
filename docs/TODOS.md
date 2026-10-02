@@ -38,6 +38,7 @@ _(none)_
 
 _Newest first._
 
+- [x] **Redesign the gallery as a horizontal library.** The UI now follows Seth Thompson's Library: a sideways sheet of filter columns fitted with pretext, results shelved by channel with captions and reveal motion, and a browse `sort`. Design: [design.md](./design.md); worksheet: [library redesign](./history/worksheets/worksheet-library-redesign.md).
 - [x] **Index and filter by colour.** Colour weights are indexed as `colour_*` attributes and filtered with `?colour=` (ANDed), browse ranks by weight; synced with `bun run sync --no-vision --no-push-arena` and checked against the live index. Worksheet: [colour filter](./history/worksheets/worksheet-colour-filter.md).
 - [x] **Measure colour weights and calibrate them.** Pixel colour weights are measured in memory with ffmpeg and calibrated on 400 blocks with `bun run calibrate:colour`; findings are in [the colour filter spec](./specs/colour-filter.md#calibration).
 - [x] **Check Turbopuffer's colour ranking behaviour.** Answered in [the colour filter spec](./specs/colour-filter.md#turbopuffer-spike-answered): attribute sums work but tie order is undefined, so browse with colours uses a plain attribute sort.
