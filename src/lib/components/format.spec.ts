@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyArchiveSearchState, type ArchiveSearchState } from '$lib/domain/search';
-import { blockDisplayTitle, formatSearchTimings, resultsStatus } from './format';
+import { archiveCount, blockDisplayTitle, channelLabel, resultsStatus } from './format';
 
 describe('blockDisplayTitle', () => {
 	it('prefers the block’s own title', () => {
@@ -14,11 +14,25 @@ describe('blockDisplayTitle', () => {
 	});
 });
 
-describe('formatSearchTimings', () => {
-	it('shows total, query, and rerank time in seconds', () => {
-		expect(formatSearchTimings({ totalMs: 963, queryMs: 412.6, rerankMs: 0 })).toBe(
-			'time: 0.96s (query: 0.41s, rerank: 0.00s)'
+describe('channelLabel', () => {
+	it('drops the symbols a channel title starts with', () => {
+		expect(channelLabel('✦ AI + HCI + OS — Prototype Bricolage')).toBe(
+			'AI + HCI + OS — Prototype Bricolage'
 		);
+		expect(channelLabel('\uf8ff Data Viz')).toBe('Data Viz');
+		expect(channelLabel('𖤛 Applied Aesthetics')).toBe('Applied Aesthetics');
+		expect(channelLabel('3D Type')).toBe('3D Type');
+	});
+
+	it('keeps a title that is nothing but symbols', () => {
+		expect(channelLabel('✦ ✦')).toBe('✦ ✦');
+	});
+});
+
+describe('archiveCount', () => {
+	it('groups thousands and pluralises', () => {
+		expect(archiveCount(2546, 'block')).toBe('2,546 blocks');
+		expect(archiveCount(1, 'channel')).toBe('1 channel');
 	});
 });
 

@@ -2,8 +2,7 @@ import {
 	ARCHIVE_RESULT_LIMIT,
 	type ArchiveBlockType,
 	type ArchiveSearchState,
-	type SearchResult,
-	type SearchTimings
+	type SearchResult
 } from '$lib/domain/search';
 
 const FALLBACK_MEDIA_RATIO = 4 / 3;
@@ -29,10 +28,19 @@ export function blockDisplayTitle(title: string | null, blockType: string): stri
 	return UNTITLED_LABELS[blockType as ArchiveBlockType] ?? 'Untitled block';
 }
 
-const seconds = (ms: number) => `${(ms / 1000).toFixed(2)}s`;
+/**
+ * A channel title as the gallery shows it: without the symbols the maintainer prefixes titles with
+ * on Are.na (`✦ `, `❋ `, ``). Some of those are letters of other scripts (`𖤛` is Bamum), so
+ * everything before the first Latin letter or digit goes. A title with neither is kept whole.
+ */
+export function channelLabel(title: string): string {
+	return title.replace(/^[^\p{Script=Latin}\p{N}]+/u, '') || title;
+}
 
-export function formatSearchTimings({ totalMs, queryMs, rerankMs }: SearchTimings): string {
-	return `time: ${seconds(totalMs)} (query: ${seconds(queryMs)}, rerank: ${seconds(rerankMs)})`;
+const count = new Intl.NumberFormat('en');
+
+export function archiveCount(value: number, noun: string): string {
+	return `${count.format(value)} ${noun}${value === 1 ? '' : 's'}`;
 }
 
 export type ResultsStatusInput = {

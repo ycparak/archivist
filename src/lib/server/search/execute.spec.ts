@@ -51,7 +51,8 @@ describe('executeArchiveSearch', () => {
 				blockTypes: [],
 				colours: [],
 				from: '',
-				to: ''
+				to: '',
+				sort: 'connections'
 			},
 			results: [result()],
 			hasMore: false,
@@ -146,7 +147,8 @@ describe('executeArchiveSearch', () => {
 				blockTypes: [],
 				colours: [],
 				from: '',
-				to: ''
+				to: '',
+				sort: 'connections'
 			}
 		});
 		expect(createRepository).not.toHaveBeenCalled();

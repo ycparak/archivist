@@ -1,0 +1,276 @@
+# Design
+
+The visual system for Archivist's UI. Read this before any UI work and keep it current: if a change
+alters a token, a measurement, a motion or a layout rule below, update this file in the same task.
+
+The design is modelled closely on Seth Thompson's [Library](https://library.seththompson.com/): a
+single horizontally scrolling sheet, a quiet grey index of filters on the left, and a grey shelf
+on the right where results sit like books with their pages laid out beside them. Archivist departs
+from it in a few places: the type is ABC Areal and Newsreader, books become Are.na channels, the
+index lists our filters instead of subject headings, the band is a pale grey, every text box is
+trimmed to cap height and baseline, and captions use one weight.
+
+## Principles
+
+- **One sheet, scrolled sideways.** The page never scrolls vertically. Everything lives on one
+  horizontal strip inside `[data-shelf-scroller]`: the filter index first, then the shelf. A vertical
+  mouse wheel scrolls it sideways.
+- **The archive is the colour.** Chrome is white, grey and black. Colour comes from the blocks and,
+  sparingly, from the colour swatches and the keyword highlight.
+- **Grey until it matters.** Text is grey (`foreground`) by default and turns black
+  (`foreground-strong`) when it is chosen, hovered or heads something: active filters, caption
+  headings, the query. Nothing else signals state: no fills, no pills, no underlines.
+- **Measured, not guessed.** Layout lengths derive from the shelf height or the column grid, never
+  from one-off pixel values. Text that has to fit is measured with pretext before it is laid out.
+- **Everything works without JavaScript.** Filters are links, the search is a GET form, and the
+  reveal animation's hidden state only applies once the document is flagged `data-js`.
+
+## Type
+
+| Role            | Family     | Size                      | Line height | Use                                        |
+| --------------- | ---------- | ------------------------- | ----------- | ------------------------------------------ |
+| Body / app      | ABC Areal  | `text-body` (0.888888rem) | 14px        | Filters, captions, footer counts, messages |
+| Search          | Newsreader | `text-2xl` (1.5rem)       | 2rem        | The search field only                      |
+| Wordmark        | Newsreader | `text-3xl` (1.875rem)     | 1.2         | "Archivist" in the footer                  |
+| Channel cover   | Newsreader | `11cqw` of the cover      | 1.1         | Channel title on a shelf cover             |
+| Text block page | Newsreader | `6.5cqw` of the page      | 1.35        | The body of a Text block set as a page     |
+
+- The root size is **14px**, and **15px** from 40rem up. Every rem in the app follows it, so the
+  body is 12.4px on phones and 13.3px elsewhere.
+- All sans text sits on a **14px** line height.
+- Weight is 400, with **bold (700)** only for filter headings in the index. Captions use one weight, 400. There is no medium, no italic in the chrome, no letter-spacing.
+- Serif means Newsreader (`font-serif`), and only for the roles above. Everything else is Areal
+  (`font-app`, which is also `font-sans`).
+- Fonts are self-hosted in `static/fonts/` and declared in `src/styles/fonts.css`.
+
+### Trimmed text
+
+Every element has `text-box: trim-both cap alphabetic` (a base rule on `:where(*)`), so a text
+box runs from the cap height of its first line to the baseline of its last. Spacing is therefore
+measured from ink, and has to be set to keep a baseline grid:
+
+- **Stacked lines** (a heading over its options, a list of links, footer counts) go in a `lines`
+  container: a block whose children keep whole 14px line boxes (`text-box-trim: none`) while the
+  container trims its outer edges. Lines then fall exactly 14px apart. Flex and grid containers do
+  not trim, so a stack must be a block.
+- **Separate boxes** in a flex column are spaced with `gap-(--gap-line)` (`1lh − 1cap`) to read as
+  the next line, or `gap-(--gap-paragraph)` (`2lh − 1cap`) for one blank line between.
+- **Clamped text** uses `clamp-<n>`, not `line-clamp-<n>`: it clips with `overflow: clip` and a 0.2em
+  `overflow-clip-margin`, so ascenders and descenders outside the trimmed box are not cut. Any
+  other clipped text box uses `clip-trimmed` for the same reason.
+- `mark`, the search form and its textarea keep `text-box: normal`: a highlight paints its whole
+  line, and trimming the line that holds a field only shifts the field.
+
+## Colour
+
+All colours are tokens in `src/styles/globals.css`. Components use the **semantic roles**, never the
+raw ramp, except for the fixed swatch and page colours noted below.
+
+| Role                          | Light    | Dark     | Use                                                            |
+| ----------------------------- | -------- | -------- | -------------------------------------------------------------- |
+| `background`                  | white    | black    | Page                                                           |
+| `backdrop`                    | gray-100 | gray-900 | Reserved for raised surfaces                                   |
+| `foreground-secondary-detail` | gray-300 | gray-800 | Hairlines: cover-caption rule, search-field edge, slider track |
+| `foreground-secondary`        | gray-400 | gray-750 | Unavailable options, placeholder                               |
+| `foreground-detail`           | gray-500 | gray-650 | Column rules, swatch outlines                                  |
+| `foreground`                  | gray-550 | gray-600 | Default text: filters, caption text, messages                  |
+| `foreground-elevated`         | gray-600 | gray-550 | Icons (the clear button)                                       |
+| `foreground-strong`           | black    | white    | Active filters, hover, caption headings, query, wordmark       |
+| `band`                        | gray-100 | gray-100 | The shelf band, in both schemes                                |
+
+- Dark mode follows `prefers-color-scheme` by swapping the role variables on `:root`. The band stays
+  pale grey and pages stay white in dark mode.
+- Pages, covers and text blocks are always `bg-white` with black text: they are objects on the
+  shelf, not chrome.
+- The keyword highlight is `mark`: yellow at 30% under black text.
+- Selection is blue with white text.
+- Swatches use the palette tokens: `red`, `paprika` (orange), `yellow`, `green`, `blue`, `lilac`
+  (purple), `pink`, `brown`, `gray-500` (grey) and a black-and-white diagonal with a
+  `foreground-detail` outline for mono. Black and white are not offered; a URL that already asks for
+  one shows its swatch so it can be removed.
+
+## Layout
+
+### The sheet
+
+```
+┌ search field (fixed, top-left, one column wide) ─┐
+│ Search...                                        │      top-row captions ──────────▶
+├──────────────────────────────────────────────────┼─────────────────────────────────────
+│ ─────────  ─────────  ─────────                  │ ▇▇▇▇▇▇ shelf band (grey) ▇▇▇▇▇▇▇▇▇
+│ Search type Channel    Channel                   │  ▬ ▬ ▬ ▬ ▬      [cover][p][p][p]   …
+│ Sort by    …          …                          │  [cover][p][p]        [cover][p] …
+│ Connected                                        │ ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇
+│ Block type                                       │      bottom-row captions ───────▶
+│ Colours                                          │
+│ Archivist   74 channels / 2,546 blocks           │
+└──────────────────────────────────────────────────┴─────────────────────────────────────
+```
+
+- The page is `fixed inset-0`. Below 40rem it is a column: the search field (`h-12`) on top, the
+  scroller below. From 40rem the search field floats over the scroller's top-left.
+- The scroller is a `container-type: size` element, so `cqi` and `cqh` inside it mean the viewport
+  of the sheet. It holds `flex h-full w-max`: the index, then the shelf after `--column-gap`.
+- Both the index and the shelf are three rows: `--annotation-area-height` (10rem), the rest, and
+  `--annotation-area-height` again. The top row of the index is under the search field; the bottom
+  row holds the footer.
+
+### The column grid
+
+| Token                      | Value                                                                     |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `--column-count`           | 2; 3 from 52rem; 4 from 70rem; 5 from 88rem; 6 from 106rem; 7 from 124rem |
+| `--page-gutter`            | 2rem (left padding of the sheet, padding of the search field)             |
+| `--column-gap`             | 4rem                                                                      |
+| `--column-width`           | `(100cqi − 2 × gutter − (count − 1) × gap) ÷ count`                       |
+| `--annotation-area-height` | 10rem                                                                     |
+| `--annotation-padding`     | 12px                                                                      |
+
+Breakpoint rems in media queries resolve against the browser's 16px, not the root size.
+
+### The index
+
+- Each column is `w-(--column-width)`, topped with the `rule` utility (a `foreground-detail`
+  border, `pt-3 mt-1`), and stacks lists `gap-(--gap-paragraph)` apart, one blank line.
+- A list is a bold `foreground` heading over its options. An option is a link: `foreground`, black
+  on hover, black and `aria-current="true"` when active. An option that cannot apply to the
+  current search (ranking with no query, browse order with one, a sixth colour) is a non-link span
+  in `foreground-secondary` with `aria-disabled`.
+- **Arrangement.** Search type, Sort by, Connected, Block type and Colours share the first column.
+  The `spread:` variant (viewports under 46rem tall) splits Block type and Colours into a second
+  column, so nothing is clipped.
+- **Channels** flow sideways into as many columns as the viewport height needs, each headed
+  "Channel". The split is computed with pretext (below), so no title is ever cut mid-entry.
+- **Channel names** drop the symbols the maintainer prefixes them with on Are.na (`✦`, `❋`, `𖤛`,
+  ``): everything before the first Latin letter or digit goes (`channelLabel` in `format.ts`).
+- **Footer.** "Archivist" in the wordmark style, one column wide; then the number of channels and
+  the number of blocks in the archive, baselines aligned. The block count is one Turbopuffer
+  `Count` aggregate, cached for ten minutes per isolate; if it fails the line is left out. The
+  results status is only announced to screen readers.
+
+### The shelf
+
+Every shelf length is a fraction of the band height `h`, held in the registered `--shelf-h`
+property (`100cqh − 2 × annotation height`), so the layout scales with the window and renders on
+the server. The constants live in `SHELF` in `src/lib/components/shelf.ts`.
+
+| Measure     | Value                     | Meaning                                            |
+| ----------- | ------------------------- | -------------------------------------------------- |
+| padding     | 0.05h                     | Band edge to the first row, the scale bar, the end |
+| row height  | 0.425h                    | Two rows: `(1 − 2 × 0.05 − 0.05) ÷ 2`              |
+| page height | 0.34h                     | Pages and covers, top-aligned in their row         |
+| row gap     | 0.05h                     | Between the two rows                               |
+| item gap    | h ÷ 60                    | Between pages on one shelf                         |
+| group gap   | h ÷ 3                     | Between shelves on one row                         |
+| cover       | 0.7 : 1                   | A channel cover's shape                            |
+| text page   | 0.75 : 1                  | A block with no image                              |
+| scale bar   | 10 segments, 0.283h × 6px | Alternating black and white, top-left of the band  |
+
+- **Shelves.** A page of results is grouped by channel in order of first appearance; inside a
+  channel, rank order holds. A block's channel is the first one the reader filtered by, else the
+  first in the manifest. A channel with more than 12 blocks is split. Every shelf opens with its
+  channel's cover, which links to that channel's filter.
+- **Rows.** Each shelf goes onto whichever row is shorter. Later pages are grouped on their own and
+  appended, so loading more never moves a shelf already on screen.
+- **Insets.** The top row starts one column (`100cqi ÷ column-count`) in, clear of the search field.
+  The bottom row starts `(column − 4rem) ÷ 2` in. The band is at least the sheet's width.
+- **Pages** are `bg-white` with `shadow-page` (2px 2px 2px rgb(0 0 0 / 0.25)). Images and video
+  fill the page with `object-cover`; ratios clamp to 0.5–3.
+
+### Captions
+
+Captions sit outside the band, in the annotation rows: above it for the top row, below it for the
+bottom row. Each is as wide as its page (at most `max-w-56` for blocks) and `annotation height − 2 ×
+annotation padding` tall. Captions have one weight, 400, and two colours: `foreground-strong` for
+the heading, `foreground` for the text.
+
+- **Cover caption.** A `foreground-secondary-detail` left rule with `pl-2`, then one paragraph of
+  lines: the channel title as the heading, the block count, the years connected. Bottom-row
+  captions align to the bottom.
+- **Block caption.** The connection date as the heading, one blank line (`--gap-paragraph`), then
+  the block's words clamped to three lines with the query marked. The words are the first of title, description and source
+  title that names the query, passing over titles that are only filenames or hashes.
+- **Lead-in.** When the first keyword would fall past the clamp, the caption starts at the latest
+  word boundary that leaves most of a line of context, prefixed with "… ". The widths come from
+  pretext.
+- Top-row captions carry `data-top-annotation`. While one straddles the search field's right edge,
+  the field shows a one-pixel `foreground-secondary-detail` hairline there.
+
+## Motion
+
+| Token                | Value                            |
+| -------------------- | -------------------------------- |
+| `--ease-out-expo`    | `cubic-bezier(0.22, 1, 0.36, 1)` |
+| `--duration-reveal`  | 400ms                            |
+| `--duration-caption` | 250ms                            |
+| `--delay-caption`    | 480ms                            |
+| `--delay-row`        | 60ms per row                     |
+| `--duration-fast`    | 150ms                            |
+
+- **Shelf reveal.** A shelf starts at opacity 0, shifted right by the band padding. The first time
+  it enters the scroller it fades and slides in over `--duration-reveal` on `--ease-out-expo`,
+  delayed by `row × --delay-row`. It never animates again for the same search; a new search keys
+  new shelves, so they reveal again.
+- **Caption reveal.** Captions fade in linearly over `--duration-caption` after
+  `--delay-caption + row × --delay-row`, once their shelf is revealed.
+- **Search.** A new query smooth-scrolls the sheet so the shelf starts at the gutter; clearing it
+  scrolls back to the filters. On first load the scroll is instant.
+- **Busy.** While a search is in flight the shelves drop to 50% opacity over `--duration-fast`.
+- **Hover.** Colour changes only, over the default 150ms. The clear button fades in on hover of the
+  search field, and is always visible on coarse pointers.
+- **Reduced motion.** Shelves and captions appear without movement, scrolls are instant and video
+  keeps its poster frame.
+
+## Pretext
+
+[pretext](https://github.com/chenglou/pretext) (`@chenglou/pretext`) measures and wraps text with
+canvas metrics, without touching the DOM. The helpers are in `src/lib/components/index-layout.ts`:
+
+- `createLabelMeasure(style, width)` returns a label's wrapped height at a width (`prepare` +
+  `layout`), cached per label. `packIntoColumns` fills each column with whole entries and starts the
+  next one when the next entry would not fit. The index uses both to split the channel list.
+- `createWidthMeasure(style)` returns a string's natural width (`prepareWithSegments` +
+  `measureNaturalWidth`). Captions use it for the lead-in.
+- `readTextStyle(element)` turns computed style into the canvas font string, line height and
+  letter spacing pretext needs. Measure after `document.fonts.ready` and again on resize; shave a
+  pixel off the width to absorb rounding between canvas and DOM line breaking.
+
+Use pretext whenever a layout decision depends on how text will wrap. Do not reach for it when CSS
+already does the job (`clamp-<n>`, `text-balance`). A label's measured height is whole lines; a
+trimmed stack is a little shorter, so packing by it errs on the safe side.
+
+## Components
+
+| Component                  | Role                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------ |
+| `SearchField.svelte`       | The serif search box: debounced live search, Enter submits, clear button, overlap hairline |
+| `ArchiveIndex.svelte`      | Filter columns, colour swatches, channel fitting, footer                                   |
+| `ConnectedAtSlider.svelte` | Two native range inputs over whole months from June 2024 to now                            |
+| `Shelf.svelte`             | The band, scale bar, shelves, captions, reveal and infinite load                           |
+| `ShelfCover.svelte`        | A channel cover                                                                            |
+| `ShelfBlock.svelte`        | One block as a page: image, muted looping video, or a page of text                         |
+| `CaptionText.svelte`       | Clamped caption words with marks and the pretext lead-in                                   |
+| `ArchiveMessage.svelte`    | Empty, invalid and unavailable states, set inside the band                                 |
+
+Copy that depends on state lives in tested functions (`filters.ts`, `caption.ts`, `format.ts`), not
+in markup.
+
+## Accessibility
+
+- Filters are links with `aria-current`, swatches have `aria-label` and `title`, the slider thumbs
+  are labelled "Connected from" and "Connected until" with month `aria-valuetext`.
+- Focus is a 2px `foreground-strong` outline offset 2px; pages offset it 4px.
+- A `role="status"` live region outside the busy subtree announces each result.
+- Every block page is a link to Are.na named by its title; every cover is a link named "Show only
+  …" or "Stop filtering by …".
+
+## Do and don't
+
+- Do use the semantic colour roles and the spacing tokens; don't add raw hex or grey steps in
+  components.
+- Do express shelf geometry in `--shelf-h` units and grid geometry in `--column-width`; don't hard
+  code pixels.
+- Do keep chrome flat: no borders around controls, no radii except swatches and slider thumbs, no
+  shadows except `shadow-page` on shelf objects.
+- Don't introduce a new typeface, weight or size; extend the table above first if one is needed.
+- Don't animate layout properties other than the reveal translate and the scale bar's width.
