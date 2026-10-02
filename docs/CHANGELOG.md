@@ -39,6 +39,8 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Changed
 
+- Changed the default browse order to newest created first. Most connected is still a Sort by option, as `?sort=most-connected`.
+- Changed the colour filter to show every image with any of the first colour chosen when browsing in the default order, strongest first, so weaker matches appear further down the scroll instead of not at all. Elsewhere a colour now needs 1% of the image, down from 5%; black and white is unchanged.
 - Changed Search type so it can be chosen before typing a query; the choice stays in the URL and ranks the next search. A request without a query now browses whatever `mode` says, instead of being rejected.
 - Changed channel covers to show the channel's symbol, or "Are.na" when it has none, and the search placeholder to `foreground-elevated`. Page padding is 16px.
 

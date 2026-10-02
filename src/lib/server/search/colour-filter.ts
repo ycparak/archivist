@@ -6,16 +6,25 @@ import type { ArchiveColour } from '$lib/domain/search';
  * when there is almost no colour at all.
  */
 export const COLOUR_THRESHOLDS: Readonly<Record<ArchiveColour, number>> = {
-	red: 50,
-	orange: 50,
-	yellow: 50,
-	green: 50,
-	blue: 50,
-	purple: 50,
-	pink: 50,
-	brown: 50,
+	red: 10,
+	orange: 10,
+	yellow: 10,
+	green: 10,
+	blue: 10,
+	purple: 10,
+	pink: 10,
+	brown: 10,
 	grey: 150,
 	black: 150,
 	white: 150,
 	mono: 995
 };
+
+/**
+ * When a colour leads the browse order, weaker matches sink to the end of the scroll instead of
+ * being cut, so any of the colour at all is enough. `mono` keeps its threshold, because near 1000 is
+ * what black and white means, and almost every image has some.
+ */
+export function colourThreshold(colour: ArchiveColour, leadsOrder: boolean): number {
+	return leadsOrder && colour !== 'mono' ? 1 : COLOUR_THRESHOLDS[colour];
+}
