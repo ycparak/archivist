@@ -12,13 +12,13 @@ do · `[x]` finished.
 
 ## In Progress
 
-_(none)_
+- [ ] **Measure colour weights and calibrate them.** Build the in-memory ffmpeg extraction, the colour cache and the contact-sheet script from [the colour filter spec](./specs/colour-filter.md), and settle boundaries and thresholds on a sample.
 
 ---
 
 ## Up Next
 
-_(none)_
+- [ ] **Index and filter by colour.** Add the sync stage, the `colour_*` attributes, the `colour` grammar, AND filters and browse ranking by weight per [the colour filter spec](./specs/colour-filter.md), then run `bun run sync --no-vision --no-push-arena`.
 
 ---
 
@@ -38,4 +38,4 @@ _(none)_
 
 _Newest first._
 
-_(none)_
+- [x] **Check Turbopuffer's colour ranking behaviour.** Answered in [the colour filter spec](./specs/colour-filter.md#turbopuffer-spike-answered): attribute sums work but tie order is undefined, so browse with colours uses a plain attribute sort.
