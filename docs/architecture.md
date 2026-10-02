@@ -137,7 +137,7 @@ Hybrid mode sends one Turbopuffer `multiQuery`:
 }
 ```
 
-`shared` holds the result limit, the fields to return, and the filters. Lexical and semantic modes send one query each. Browse sends no text query. It sorts by `connection_count`, then `connected_at`, both newest or highest first.
+`shared` holds the result limit, the fields to return, and the filters. Lexical and semantic modes send one query each. Browse sends no text query. It sorts by `connection_count`, then `connected_at`, both newest or highest first, then `id`. Turbopuffer leaves the order of rows tied on every sort key undefined, and it shifts with `limit`, which paging re-fetches with every page; the archive has 104 blocks in 33 groups tied on both of the first two keys, so without `id` one could repeat or vanish at a page edge.
 
 RRF runs inside Turbopuffer, never in our code. It merges two ranked lists without comparing their raw scores.
 
