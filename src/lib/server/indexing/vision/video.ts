@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runFfmpeg, type RunFfmpegOptions } from '../ffmpeg';
 
 /**
  * Are.na stores animated GIFs on a CDN that publishes no smaller rendition — `thumb`, `square`,
@@ -27,51 +27,6 @@ const TARGET_CRF = 32;
 export const MAX_TRANSCODED_BYTES = 4 * 1024 * 1024;
 /** A GIF this large is a download problem before it is a transcode problem. */
 export const MAX_SOURCE_BYTES = 64 * 1024 * 1024;
-
-const DEFAULT_TIMEOUT_MS = 60_000;
-
-export class FfmpegMissingError extends Error {
-	constructor(command: string, options?: ErrorOptions) {
-		super(
-			`Could not run "${command}". Animated blocks are transcoded locally before being described, which needs ffmpeg on PATH — install it (brew install ffmpeg) or pass --no-vision to skip the vision stage.`,
-			options
-		);
-		this.name = 'FfmpegMissingError';
-	}
-}
-
-export interface RunFfmpegOptions {
-	command?: string;
-	timeoutMs?: number;
-	signal?: AbortSignal;
-}
-
-function runFfmpeg(args: string[], options: RunFfmpegOptions = {}): Promise<void> {
-	const { command = 'ffmpeg', timeoutMs = DEFAULT_TIMEOUT_MS, signal } = options;
-
-	return new Promise((resolve, reject) => {
-		const child = spawn(command, args, { signal });
-		let stderr = '';
-
-		child.stderr?.on('data', (chunk: Buffer) => {
-			// Keep only the tail: ffmpeg is verbose and only the last lines explain a failure.
-			stderr = (stderr + chunk.toString()).slice(-2000);
-		});
-
-		const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
-
-		child.on('error', (error: NodeJS.ErrnoException) => {
-			clearTimeout(timer);
-			reject(error.code === 'ENOENT' ? new FfmpegMissingError(command, { cause: error }) : error);
-		});
-
-		child.on('close', (code) => {
-			clearTimeout(timer);
-			if (code === 0) resolve();
-			else reject(new Error(`ffmpeg exited with code ${code}: ${stderr.trim() || 'no output'}`));
-		});
-	});
-}
 
 export type TranscodeResult =
 	| { kind: 'video'; dataUrl: string; bytes: number }
