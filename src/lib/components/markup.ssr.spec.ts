@@ -161,8 +161,8 @@ describe('ArchiveIndex markup', () => {
 		const browsing = index(state());
 		expect(linkTo(browsing, 'Best match').current).toBe(true);
 		expect(stateAt(linkTo(browsing, 'Exact words')).mode).toBe('lexical');
-		expect(stateAt(linkTo(browsing, 'Newest created')).sort).toBe('newest-created');
-		expect(linkTo(browsing, 'Most connected').current).toBe(true);
+		expect(stateAt(linkTo(browsing, 'Most connected')).sort).toBe('most-connected');
+		expect(linkTo(browsing, 'Newest created').current).toBe(true);
 
 		const querying = index(state({ query: 'felt', mode: 'hybrid' }));
 		expect(linkTo(querying, 'Best match').current).toBe(true);

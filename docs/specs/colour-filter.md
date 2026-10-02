@@ -98,11 +98,13 @@ descriptions already name the palette in prose.
 - **Validation** (`request.ts`): `z.enum(ARCHIVE_COLOURS)`, deduplicated, at most
   `ARCHIVE_MAX_COLOURS` (5).
 - **Filter** (`buildSearchFilters`): one `['colour_<name>', 'Gte', threshold]` per selected
-  colour, inside the existing `And`. Thresholds live in query code, so they are tuned without a
+  colour, inside the existing `And`. The colour that leads a default browse uses a threshold of
+  1 instead (any of it at all), because ranking already sinks weak matches to the end of the
+  scroll; `mono` is the exception and keeps its own. Thresholds live in query code, so they are tuned without a
   re-sync. `mono` has its own strict threshold (near 1000), which is what "no meaningful colour"
   means.
 - **Browse ranking**: with colours selected, a plain attribute sort:
-  `[['colour_<first>', 'desc'], …the other selected colours, ['connection_count', 'desc'], ['connected_at', 'desc'], ['id', 'asc']]`.
+  `[['colour_<first>', 'desc'], …the other selected colours, ['created_at', 'desc'], ['id', 'asc']]`.
   Turbopuffer allows 8 sort attributes, which is where the cap of 5 colours comes from.
 - **Text queries**: lexical, semantic and hybrid keep their current `rank_by`; colours only add
   filters. Fusing a colour ranking into RRF is deferred until relevance-only ordering is shown to
@@ -163,6 +165,11 @@ What the sheet showed:
 - Dark yellow first read as brown and put yellow bottles in brown; brown's hues now stop at 85°.
 - White and black are dominated by UI screenshots, as predicted. Whether to show them is a UI
   decision.
+
+Retuned the same day: the chromatic thresholds dropped from 50‰ to 10‰, and the colour that
+leads a default browse is no longer thresholded at all (see [Query](#query)). Across all 2,542
+measured blocks, 10‰ matches 5% (pink) to 30% (brown) of the archive; any amount at all would
+match 19% (orange) to 46% (brown), which is why the floor stays where colour only filters.
 
 ## Rule and doc changes
 

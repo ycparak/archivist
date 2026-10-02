@@ -49,11 +49,11 @@ describe('sortOptions', () => {
 				option.active
 			])
 		).toEqual([
-			['Newest created', '/?sort=newest-created', false],
+			['Newest created', '/', false],
 			['Newest connected', '/?sort=newest-connected', false],
 			['Oldest created', '/?sort=oldest-created', true],
 			['Oldest connected', '/?sort=oldest-connected', false],
-			['Most connected', '/', false],
+			['Most connected', '/?sort=most-connected', false],
 			['Least connected', '/?sort=least-connected', false]
 		]);
 		expect(

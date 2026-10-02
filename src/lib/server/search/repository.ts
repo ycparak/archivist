@@ -8,8 +8,8 @@ import Turbopuffer, {
 } from '@turbopuffer/turbopuffer';
 import { z } from 'zod';
 import { colourAttribute } from '$lib/domain/archive';
-import type { SearchTimings } from '$lib/domain/search';
-import { COLOUR_THRESHOLDS } from './colour-filter';
+import { ARCHIVE_DEFAULT_SORT, type SearchTimings } from '$lib/domain/search';
+import { colourThreshold } from './colour-filter';
 import type {
 	ArchiveSearchInput,
 	ArchiveSizeSource,
@@ -94,8 +94,9 @@ export function buildSearchFilters(input: ArchiveSearchInput): Filter | undefine
 	const filters: Filter[] = [];
 	if (input.blockTypes.length) filters.push(['kind', 'In', input.blockTypes]);
 	if (input.channelSlugs.length) filters.push(['channel_slugs', 'ContainsAny', input.channelSlugs]);
+	const leading = coloursLeadOrder(input) ? input.colours[0] : undefined;
 	for (const colour of input.colours) {
-		filters.push([colourAttribute(colour), 'Gte', COLOUR_THRESHOLDS[colour]]);
+		filters.push([colourAttribute(colour), 'Gte', colourThreshold(colour, colour === leading)]);
 	}
 	if (input.from) filters.push(['connected_at', 'Gte', input.from.toISOString()]);
 	if (input.to) filters.push(['connected_at', 'Lte', input.to.toISOString()]);
@@ -115,6 +116,33 @@ function sharedQuery(input: ArchiveSearchInput, optional: boolean) {
 	};
 }
 
+function coloursLeadOrder(input: ArchiveSearchInput): boolean {
+	return input.mode === 'browse' && input.sort === ARCHIVE_DEFAULT_SORT;
+}
+
+function sortKeys(sort: ArchiveSearchInput['sort']): RankByAttribute[] {
+	switch (sort) {
+		case 'newest-created':
+			return [['created_at', 'desc']];
+		case 'newest-connected':
+			return [['connected_at', 'desc']];
+		case 'oldest-created':
+			return [['created_at', 'asc']];
+		case 'oldest-connected':
+			return [['connected_at', 'asc']];
+		case 'most-connected':
+			return [
+				['connection_count', 'desc'],
+				['connected_at', 'desc']
+			];
+		case 'least-connected':
+			return [
+				['connection_count', 'asc'],
+				['connected_at', 'desc']
+			];
+	}
+}
+
 /**
  * Turbopuffer leaves the order of rows tied on every sort key undefined, and it shifts with `limit`,
  * which this paging re-fetches with every page; ending on `id` makes the sort a total order, so a
@@ -124,26 +152,10 @@ function sharedQuery(input: ArchiveSearchInput, optional: boolean) {
  * key, and colours then only filter.
  */
 function browseOrder(input: ArchiveSearchInput): RankByAttribute[] {
-	const byId: RankByAttribute = ['id', 'asc'];
-	switch (input.sort) {
-		case 'newest-created':
-			return [['created_at', 'desc'], byId];
-		case 'newest-connected':
-			return [['connected_at', 'desc'], byId];
-		case 'oldest-created':
-			return [['created_at', 'asc'], byId];
-		case 'oldest-connected':
-			return [['connected_at', 'asc'], byId];
-		case 'least-connected':
-			return [['connection_count', 'asc'], ['connected_at', 'desc'], byId];
-		case 'most-connected':
-			return [
-				...input.colours.map((colour): RankByAttribute => [colourAttribute(colour), 'desc']),
-				['connection_count', 'desc'],
-				['connected_at', 'desc'],
-				byId
-			];
-	}
+	const byColour = coloursLeadOrder(input)
+		? input.colours.map((colour): RankByAttribute => [colourAttribute(colour), 'desc'])
+		: [];
+	return [...byColour, ...sortKeys(input.sort), ['id', 'asc']];
 }
 
 function singleQuery(input: ArchiveSearchInput, optional: boolean): NamespaceQueryParams {

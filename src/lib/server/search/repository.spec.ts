@@ -15,7 +15,7 @@ function input(overrides: Partial<ArchiveSearchInput> = {}): ArchiveSearchInput 
 		channelSlugs: [],
 		blockTypes: [],
 		colours: [],
-		sort: 'most-connected',
+		sort: 'newest-created',
 		limit: 24,
 		offset: 0,
 		...overrides
@@ -163,13 +163,39 @@ describe('buildSearchFilters', () => {
 		expect(buildSearchFilters(input())).toBeUndefined();
 	});
 
-	it('requires every chosen colour, each at its own threshold', () => {
-		expect(buildSearchFilters(input({ colours: ['blue', 'mono'] }))).toEqual([
+	it('requires every chosen colour, each at its own threshold, when colour does not lead', () => {
+		expect(
+			buildSearchFilters(input({ sort: 'most-connected', colours: ['blue', 'mono'] }))
+		).toEqual([
 			'And',
 			[
 				['colour_blue', 'Gte', COLOUR_THRESHOLDS.blue],
 				['colour_mono', 'Gte', COLOUR_THRESHOLDS.mono]
 			]
+		]);
+	});
+
+	it('takes any amount of the colour that leads the default browse, and thresholds the rest', () => {
+		expect(buildSearchFilters(input({ colours: ['orange', 'blue'] }))).toEqual([
+			'And',
+			[
+				['colour_orange', 'Gte', 1],
+				['colour_blue', 'Gte', COLOUR_THRESHOLDS.blue]
+			]
+		]);
+	});
+
+	it('keeps the black and white threshold even when it leads', () => {
+		expect(buildSearchFilters(input({ colours: ['mono'] }))).toEqual([
+			'And',
+			[['colour_mono', 'Gte', COLOUR_THRESHOLDS.mono]]
+		]);
+	});
+
+	it('thresholds every colour in a text query, where relevance leads', () => {
+		expect(buildSearchFilters(input({ mode: 'hybrid', query: 'felt', colours: ['red'] }))).toEqual([
+			'And',
+			[['colour_red', 'Gte', COLOUR_THRESHOLDS.red]]
 		]);
 	});
 
@@ -295,13 +321,12 @@ describe('TurbopufferSearchRepository', () => {
 		expect(requestedBody(fetchFn).limit).toBe(73);
 	});
 
-	it('orders browse results by connection count, then recency, then id, without a text rank', async () => {
+	it('orders a default browse newest created first, then by id, without a text rank', async () => {
 		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
 		await repository(fetchFn).search(input());
 		const body = requestedBody(fetchFn);
 		expect(body.rank_by).toEqual([
-			['connection_count', 'desc'],
-			['connected_at', 'desc'],
+			['created_at', 'desc'],
 			['id', 'asc']
 		]);
 		expect(body.limit).toBe(25);
@@ -314,8 +339,7 @@ describe('TurbopufferSearchRepository', () => {
 		expect(requestedBody(fetchFn).rank_by).toEqual([
 			['colour_orange', 'desc'],
 			['colour_blue', 'desc'],
-			['connection_count', 'desc'],
-			['connected_at', 'desc'],
+			['created_at', 'desc'],
 			['id', 'asc']
 		]);
 	});
@@ -340,9 +364,10 @@ describe('TurbopufferSearchRepository', () => {
 
 	it.each([
 		[
-			'newest-created',
+			'most-connected',
 			[
-				['created_at', 'desc'],
+				['connection_count', 'desc'],
+				['connected_at', 'desc'],
 				['id', 'asc']
 			]
 		],

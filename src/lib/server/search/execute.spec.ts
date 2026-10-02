@@ -54,7 +54,7 @@ describe('executeArchiveSearch', () => {
 				to: '',
 				createdFrom: '',
 				createdTo: '',
-				sort: 'most-connected'
+				sort: 'newest-created'
 			},
 			results: [result()],
 			hasMore: false,
@@ -152,7 +152,7 @@ describe('executeArchiveSearch', () => {
 				to: '2024-01-31',
 				createdFrom: '',
 				createdTo: '',
-				sort: 'most-connected'
+				sort: 'newest-created'
 			}
 		});
 		expect(createRepository).not.toHaveBeenCalled();
