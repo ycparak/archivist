@@ -8,7 +8,8 @@ import {
 	ARCHIVE_RESULT_LIMIT,
 	ARCHIVE_SEARCH_PARAM,
 	ARCHIVE_SORTS,
-	defaultSearchMode
+	defaultSearchMode,
+	effectiveSearchMode
 } from '$lib/domain/search';
 import { archiveSearchInputSchema, searchModeSchema, type ArchiveSearchInput } from './contracts';
 
@@ -24,6 +25,8 @@ const searchRequestSchema = z
 		colours: z.array(z.enum(ARCHIVE_COLOURS)).max(ARCHIVE_MAX_COLOURS),
 		from: z.iso.date().optional(),
 		to: z.iso.date().optional(),
+		createdFrom: z.iso.date().optional(),
+		createdTo: z.iso.date().optional(),
 		sort: z.enum(ARCHIVE_SORTS).optional(),
 		offset: z
 			.string()
@@ -32,14 +35,7 @@ const searchRequestSchema = z
 			.optional()
 	})
 	.superRefine((input, context) => {
-		if (input.mode !== 'browse' && !input.query) {
-			context.addIssue({
-				code: 'custom',
-				path: ['query'],
-				message: 'q is required unless mode is browse'
-			});
-		}
-		if (input.sort && input.mode !== 'browse') {
+		if (input.sort && effectiveSearchMode(input.query, input.mode) !== 'browse') {
 			context.addIssue({
 				code: 'custom',
 				path: ['sort'],
@@ -51,6 +47,13 @@ const searchRequestSchema = z
 				code: 'custom',
 				path: ['to'],
 				message: 'to must not be before from'
+			});
+		}
+		if (input.createdFrom && input.createdTo && input.createdFrom > input.createdTo) {
+			context.addIssue({
+				code: 'custom',
+				path: ['createdTo'],
+				message: 'created_to must not be before created_from'
 			});
 		}
 	});
@@ -91,6 +94,8 @@ export function parseArchiveSearchRequest(searchParams: URLSearchParams): Archiv
 	const explicitMode = optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.mode);
 	const raw = {
 		mode: explicitMode ?? defaultSearchMode(query),
+		createdFrom: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.createdFrom),
+		createdTo: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.createdTo),
 		query,
 		channelSlugs: repeatedParams(searchParams, ARCHIVE_SEARCH_PARAM.channel),
 		blockTypes: repeatedParams(searchParams, ARCHIVE_SEARCH_PARAM.type),
@@ -106,6 +111,13 @@ export function parseArchiveSearchRequest(searchParams: URLSearchParams): Archiv
 
 	return archiveSearchInputSchema.parse({
 		...parsed.data,
+		mode: effectiveSearchMode(parsed.data.query, parsed.data.mode),
+		createdFrom: parsed.data.createdFrom
+			? new Date(`${parsed.data.createdFrom}${DATE_START_TIME}`)
+			: undefined,
+		createdTo: parsed.data.createdTo
+			? new Date(`${parsed.data.createdTo}${DATE_END_TIME}`)
+			: undefined,
 		from: parsed.data.from ? new Date(`${parsed.data.from}${DATE_START_TIME}`) : undefined,
 		to: parsed.data.to ? new Date(`${parsed.data.to}${DATE_END_TIME}`) : undefined,
 		offset: parsed.data.offset ? Number(parsed.data.offset) : 0,

@@ -1,37 +1,43 @@
 <script lang="ts">
-	import type { ArchiveSearchHref, ArchiveSearchState } from '$lib/domain/search';
 	import {
-		CONNECTED_AT_FIRST_MONTH,
 		datesToMonthRange,
 		formatMonth,
-		hrefWith,
 		monthAt,
 		monthRangeToDates,
-		monthsBetween
+		monthsBetween,
+		type Month
 	} from './filters';
 
 	let {
-		search,
-		onnavigate
-	}: { search: ArchiveSearchState; onnavigate: (href: ArchiveSearchHref) => void } = $props();
+		heading,
+		from,
+		to,
+		first,
+		onchange
+	}: {
+		heading: string;
+		from: string;
+		to: string;
+		/** The earliest month the slider reaches; the latest is the current month. */
+		first: Month;
+		onchange: (range: { from: string; to: string }) => void;
+	} = $props();
 
-	const first = CONNECTED_AT_FIRST_MONTH;
 	const today = new Date();
-	const count = monthsBetween(first, {
-		year: today.getUTCFullYear(),
-		month: today.getUTCMonth() + 1
-	});
+	const count = $derived(
+		monthsBetween(first, { year: today.getUTCFullYear(), month: today.getUTCMonth() + 1 })
+	);
 
-	const committed = $derived(datesToMonthRange(search.from, search.to, first, count));
+	const committed = $derived(datesToMonthRange(from, to, first, count));
 	/** Where the thumbs sit mid-drag; a new committed range from the URL resets it. */
 	let dragging: [number, number] | undefined = $derived.by(() => {
 		void committed;
 		return undefined;
 	});
 	const range = $derived(dragging ?? committed);
-	const active = $derived(Boolean(search.from || search.to));
+	const active = $derived(Boolean(from || to));
 	const label = $derived(
-		`${formatMonth(monthAt(first, range[0]))} – ${formatMonth(monthAt(first, range[1]))}`
+		`${formatMonth(monthAt(first, range[0]))} \u2013 ${formatMonth(monthAt(first, range[1]))}`
 	);
 
 	function move(thumb: 0 | 1, value: number) {
@@ -41,7 +47,7 @@
 
 	function commit() {
 		if (!dragging) return;
-		onnavigate(hrefWith(search, monthRangeToDates(dragging[0], dragging[1], first, count)));
+		onchange(monthRangeToDates(dragging[0], dragging[1], first, count));
 	}
 
 	const percent = (index: number) => (count > 1 ? (index / (count - 1)) * 100 : 0);
@@ -49,7 +55,7 @@
 
 <div class="flex shrink-0 flex-col gap-2.5">
 	<div class="lines">
-		<h2 class="font-bold">Connected</h2>
+		<h2 class="font-bold">{heading}</h2>
 		<p class={active ? 'text-foreground-strong' : undefined} aria-hidden="true">{label}</p>
 	</div>
 	<div class="relative h-4">
@@ -69,7 +75,7 @@
 			step="1"
 			value={range[0]}
 			style:z-index={range[0] === count - 1 ? 1 : undefined}
-			aria-label="Connected from"
+			aria-label="{heading} from"
 			aria-valuetext={formatMonth(monthAt(first, range[0]))}
 			oninput={(event) => move(0, event.currentTarget.valueAsNumber)}
 			onchange={commit}
@@ -81,7 +87,7 @@
 			max={count - 1}
 			step="1"
 			value={range[1]}
-			aria-label="Connected until"
+			aria-label="{heading} until"
 			aria-valuetext={formatMonth(monthAt(first, range[1]))}
 			oninput={(event) => move(1, event.currentTarget.valueAsNumber)}
 			onchange={commit}

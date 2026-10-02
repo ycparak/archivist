@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { emptyArchiveSearchState, type ArchiveSearchState } from '$lib/domain/search';
-import { archiveCount, blockDisplayTitle, channelLabel, resultsStatus } from './format';
+import {
+	archiveCount,
+	blockDisplayTitle,
+	channelLabel,
+	channelSymbol,
+	resultsStatus
+} from './format';
 
 describe('blockDisplayTitle', () => {
 	it('prefers the block’s own title', () => {
@@ -26,6 +32,15 @@ describe('channelLabel', () => {
 
 	it('keeps a title that is nothing but symbols', () => {
 		expect(channelLabel('✦ ✦')).toBe('✦ ✦');
+	});
+});
+
+describe('channelSymbol', () => {
+	it('returns the symbol a channel title starts with, and null without one', () => {
+		expect(channelSymbol('✦ Tools for Thought')).toBe('✦');
+		expect(channelSymbol('𖤛 Applied Aesthetics')).toBe('𖤛');
+		expect(channelSymbol('Map')).toBeNull();
+		expect(channelSymbol('✦ ✦')).toBeNull();
 	});
 });
 

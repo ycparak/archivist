@@ -147,10 +147,7 @@
 								{/if}
 							</div>
 
-							<div
-								class="[container-type:size] w-full"
-								style:height="calc({SHELF.pageHeight} * {h})"
-							>
+							<div class="@container-size w-full" style:height="calc({SHELF.pageHeight} * {h})">
 								{#if item.kind === 'cover' && group.channel}
 									<ShelfCover
 										channel={group.channel}

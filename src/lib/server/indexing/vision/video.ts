@@ -2,6 +2,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runFfmpeg, type RunFfmpegOptions } from '../ffmpeg';
+import { isAnimatedImage } from '$lib/domain/archive';
 
 /**
  * Are.na stores animated GIFs on a CDN that publishes no smaller rendition — `thumb`, `square`,
@@ -174,5 +175,5 @@ export async function cleanupStaleTranscodes(
  * the URL, since the CDN path carries no reliable extension.
  */
 export function isAnimated(contentType: string | null | undefined): boolean {
-	return contentType?.toLowerCase().trim() === 'image/gif';
+	return isAnimatedImage(contentType);
 }

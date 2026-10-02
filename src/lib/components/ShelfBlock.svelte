@@ -74,7 +74,7 @@
 		/>
 	{:else}
 		<span
-			class="block size-full overflow-hidden [mask-image:linear-gradient(to_bottom,black_80%,transparent)] p-[7cqw] font-serif text-[6.5cqw] leading-[1.35] wrap-anywhere text-black"
+			class="block size-full overflow-hidden mask-[linear-gradient(to_bottom,black_80%,transparent)] p-[7cqw] font-serif text-[6.5cqw] leading-[1.35] wrap-anywhere text-black"
 			>{body}</span
 		>
 	{/if}

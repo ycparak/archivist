@@ -17,7 +17,7 @@ Maintainer CLI (bun run sync, manual)
   -> channel-manifest.json, vision-cache.jsonl, colour-cache.jsonl (committed)
 
 Public SvelteKit app on Cloudflare Workers
-  -> GET /?q=&mode=&channel=&type=&colour=&from=&to=&sort= (SSR gallery)
+  -> GET /?q=&mode=&channel=&type=&colour=&from=&to=&created_from=&created_to=&sort= (SSR gallery)
   -> GET /api/search?...&offset=                     (JSON, used for infinite scroll)
   -> executeArchiveSearch -> SearchRepository -> Turbopuffer multiQuery / query
   -> original blocks shelved by channel (see docs/design.md)
@@ -67,17 +67,20 @@ Both variables are comma-separated and live in `.env`, so private slugs stay out
 
 The namespace is `arena-blocks-v1` by default. Set `TURBOPUFFER_NAMESPACE` to change it. The schema is in `src/lib/server/search/turbopuffer-schema.ts`. It is sent with every write, so the first sync creates the namespace.
 
+`kind` is what a block is to a reader, set at sync by `blockKind` in `src/lib/domain/archive.ts`: `Video` for a block with a playable file, `GIF` for an Image or Attachment whose image is `image/gif`, and otherwise Are.na's type with `Link` called `Web`. `created_at` was made filterable in place with a schema update on the next upsert; that changes indexing, not the type, so it needed no new namespace.
+
 Turbopuffer cannot change an attribute's type in place. A breaking change needs a new namespace, such as `arena-blocks-v2`. Change the default in `src/lib/server/search/namespace.ts`, re-run the sync, and record the move in an ADR in [`docs/decisions/`](./decisions/). Changing the embedding model or its size is also a breaking change.
 
 | Attribute            | Type / index                                                       | Purpose                                    |
 | -------------------- | ------------------------------------------------------------------ | ------------------------------------------ |
 | `id`                 | string, `block:<Are.na id>`                                        | document key                               |
 | `search_text`        | string, full-text (English, stemmed, no stopwords), native `embed` | the one text field for keyword and meaning |
-| `block_type`         | string, filterable                                                 | type filter                                |
+| `block_type`         | string, filterable                                                 | Are.na's type; untitled labels             |
+| `kind`               | string, filterable                                                 | Block type filter (`blockKind`)            |
 | `channel_slugs`      | `[]string`, filterable                                             | channel filter                             |
-| `connection_count`   | uint, filterable                                                   | browse order (most connected first)        |
-| `connected_at`       | datetime, filterable                                               | browse tiebreak and date filter            |
-| `created_at`         | datetime, unindexed                                                | stored, not read                           |
+| `connection_count`   | uint, filterable                                                   | most and least connected sorts             |
+| `connected_at`       | datetime, filterable                                               | Connected filter, sorts and tiebreak       |
+| `created_at`         | datetime, filterable                                               | Created filter and sorts                   |
 | `title`              | string, unindexed                                                  | card text                                  |
 | `description`        | string, unindexed                                                  | card text when the block has no image      |
 | `source_url`         | string, unindexed                                                  | returned with results, not shown           |
@@ -137,29 +140,29 @@ Hybrid mode sends one Turbopuffer `multiQuery`:
 }
 ```
 
-`shared` holds the result limit, the fields to return, and the filters. Lexical and semantic modes send one query each. Browse sends no text query. It sorts by `connection_count`, then `connected_at`, both newest or highest first, then `id`. Turbopuffer leaves the order of rows tied on every sort key undefined, and it shifts with `limit`, which paging re-fetches with every page; the archive has 104 blocks in 33 groups tied on both of the first two keys, so without `id` one could repeat or vanish at a page edge.
+`shared` holds the result limit, the fields to return, and the filters. Lexical and semantic modes send one query each. Browse sends no text query. By default it sorts by `connection_count`, then `connected_at`, both newest or highest first, then `id`. Turbopuffer leaves the order of rows tied on every sort key undefined, and it shifts with `limit`, which paging re-fetches with every page; the archive has 104 blocks in 33 groups tied on both of the first two keys, so without `id` one could repeat or vanish at a page edge.
 
 RRF runs inside Turbopuffer, never in our code. It merges two ranked lists without comparing their raw scores.
 
-**Filters.** Only these fields are filtered: `block_type` (`In`), `channel_slugs` (`ContainsAny`), `connected_at` (`Gte` and `Lte`) and the `colour_*` weights (`Gte` a per-colour threshold in `src/lib/server/search/colour-filter.ts`). Repeated `channel` or `type` values are ORed. Repeated `colour` values are ANDed: `?colour=blue&colour=orange` is blocks with both. Different filters are ANDed. A date covers its whole UTC day.
+**Filters.** Only these fields are filtered: `kind` (`In`, from `type`), `channel_slugs` (`ContainsAny`), `connected_at` (`Gte` and `Lte`, from `from` and `to`), `created_at` (`Gte` and `Lte`, from `created_from` and `created_to`) and the `colour_*` weights (`Gte` a per-colour threshold in `src/lib/server/search/colour-filter.ts`). Repeated `channel` or `type` values are ORed. Repeated `colour` values are ANDed: `?colour=blue&colour=orange` is blocks with both. Different filters are ANDed. A date covers its whole UTC day.
 
-**Sort.** `sort` sets the browse order: `connections` (the default, never written to a URL), `newest` or `oldest`. `newest` and `oldest` sort by `connected_at`, then `id`; colours then only filter. A text query ranks by relevance, so `sort` beside a ranking mode is a 400, and the UI drops it from any URL with a query.
+**Sort.** `sort` sets the browse order: `newest-created`, `newest-connected`, `oldest-created`, `oldest-connected`, `most-connected` (the default, never written to a URL) or `least-connected`. Each sorts on its own attribute (`created_at`, `connected_at` or `connection_count`; least connected then breaks ties newest connected first) and ends on `id`; colours lead only the default and otherwise only filter. A text query ranks by relevance, so `sort` beside a ranking with a query is a 400, and the UI drops it from any URL with a query.
 
 **Colour order.** Browse with colours and the default sort sorts by the first colour's weight, then each further colour's, then `connection_count`, `connected_at` and `id`. With a text query, relevance keeps the order and colours only filter. A `Sum` of the weights would rank several colours better, but Turbopuffer leaves the order of equal scores undefined and it shifts with `limit`, which paging re-fetches with every page; ending a plain sort on `id` makes it a total order. Turbopuffer sorts on at most 8 attributes, so a request carries at most 5 colours.
 
-**Mode.** With no `mode` and a non-empty `q`, the request is hybrid. With nothing at all, it is browse. The UI offers three choices: Best match (hybrid), Exact words (lexical) and Related ideas (semantic). Browse is an empty query.
+**Mode.** With no `mode` and a non-empty `q`, the request is hybrid. With no `q` it is browse whatever `mode` says: a ranking chosen before a query is kept in the URL and applies once a query arrives. The UI offers three choices: Best match (hybrid), Exact words (lexical) and Related ideas (semantic), and writes `mode` without a query only for the latter two.
 
 **Paging.** `offset` must be a whole number no larger than `ARCHIVE_MAX_OFFSET` (2000); anything else is a 400. The page size is 24 (`ARCHIVE_RESULT_LIMIT`) and is set by the server. Visitors cannot change it. The server asks Turbopuffer for `offset + limit + 1` rows and drops the first `offset` after de-duplication. If a row is left over, `hasMore` is true, unless `offset + limit` is past 2000. The home page loads the next page through `/api/search` as the reader scrolls. `/` reads `offset` too, but the UI never sends it there.
 
 **Validation** (`src/lib/server/search/request.ts`):
 
-- `q` is at most 400 characters. It is required unless `mode` is `browse`.
+- `q` is at most 400 characters.
 - At most 20 `channel` values and 20 `type` values.
-- `type` must be `Image`, `Link`, `Text`, `Attachment` or `Embed`.
+- `type` must be `Image`, `Video`, `GIF`, `Web`, `Text`, `Attachment` or `Embed`.
 - `colour` must be one of the twelve colours, at most 5 of them. A repeated colour counts once.
 - `mode` must be one of the four modes.
-- `sort` must be `connections`, `newest` or `oldest`, and only with browse.
-- `from` and `to` must look like `YYYY-MM-DD`. `to` cannot be before `from`.
+- `sort` must be one of the six orders, and only when the request browses.
+- `from`, `to`, `created_from` and `created_to` must look like `YYYY-MM-DD`. Neither range may end before it starts.
 - A blank value counts as missing. A form sends every field, so `?q=&from=` is the same as `/`.
 - A blank value still counts toward "at most once" for `q`, `mode`, `from`, `to`, `sort` and `offset`. `?from=&from=2024-01-02` is a 400.
 - Any other bad value is a 400. It never silently returns nothing.

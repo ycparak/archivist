@@ -40,7 +40,9 @@ export const archiveSearchInputSchema = z.object({
 	colours: z.array(z.enum(ARCHIVE_COLOURS)).max(ARCHIVE_MAX_COLOURS).default([]),
 	from: z.coerce.date().optional(),
 	to: z.coerce.date().optional(),
-	sort: z.enum(ARCHIVE_SORTS).default('connections'),
+	createdFrom: z.coerce.date().optional(),
+	createdTo: z.coerce.date().optional(),
+	sort: z.enum(ARCHIVE_SORTS).default('most-connected'),
 	limit: z.number().int().min(1).max(48).default(24),
 	offset: z.number().int().min(0).max(ARCHIVE_MAX_OFFSET).default(0)
 });

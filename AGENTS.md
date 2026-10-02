@@ -80,7 +80,7 @@ Archivist is a public gallery and search surface for one maintainer's Are.na arc
 - Use the `search_text` schema in `docs/architecture.md` for both BM25 and native embeddings.
 - `src/lib/domain/search.ts` owns the URL search grammar (parameter names, the implicit-mode rule, the date format). The server parser and the UI both consume it; do not restate a parameter name anywhere else.
 - Hybrid means one Turbopuffer `multiQuery` with BM25 + native ANN and `rerank_by: ['RRF']`; do not implement ad-hoc score arithmetic in the UI.
-- Filter only `block_type`, `channel_slugs`, `connected_at`, and the `colour_*` weights. `sort` changes the browse order only; a text query always ranks by relevance. Colour browse sorts on the weights with an `id` tiebreak, never on a `Sum` expression, because expression ties have no stable order across pages. See [Retrieval behavior](./docs/architecture.md#retrieval-behavior).
+- Filter only `kind`, `channel_slugs`, `connected_at`, `created_at`, and the `colour_*` weights. `kind` is the gallery's Block type, derived at sync by `blockKind`; `block_type` is Are.na's own type and is not a filter. `sort` changes the browse order only; a text query always ranks by relevance, and without a query every request browses. Colour browse sorts on the weights with an `id` tiebreak, never on a `Sum` expression, because expression ties have no stable order across pages. See [Retrieval behavior](./docs/architecture.md#retrieval-behavior).
 - Schema changes that alter an existing Turbopuffer attribute's type require a new versioned namespace. Record that migration as an ADR in `docs/decisions/`.
 
 ## Engineering Guardrails
@@ -98,6 +98,7 @@ Archivist is a public gallery and search surface for one maintainer's Are.na arc
 - Keep code comments exceptionally rare. Add one only when it records non-obvious reasoning, an external constraint, or a deliberate tradeoff that cannot be made clear through names and structure; never narrate what the code already says.
 - Add a focused unit test for every normalizer, filter builder, and search-result mapper. Test behavior, not private implementation details.
 - Use accessible native controls, URL-backed browse/search state, server-side data access, and responsive image dimensions.
+- Write every Tailwind class in its canonical form: `@container-size`, not `[container-type:size]`; `max-h-lh`, not `max-h-[1lh]`. This is Tailwind IntelliSense's `suggestCanonicalClasses` rule, and `bun run lint` enforces it through `bun run check:classes`, which prints the canonical spelling for each offender. Never silence it with a raw arbitrary property when a utility exists. Follow [docs/design.md](./docs/design.md) for every other UI decision.
 - Keep secrets server-only; do not log tokens, full raw API payloads, or user search queries.
 - When changing `docs/CHANGELOG.md` or `docs/TODOS.md`, keep one consistent format by matching the existing entries: the changelog sits under `## Unreleased` in `Added` / `Changed` / `Removed` / `Fixed` groups, newest first, one past-tense line per change; TODOs keep their fixed sections, with items written as `- [ ] **Title.** One sentence.`
 - Prefer the existing official SDKs. Add a dependency only when it removes meaningful production code; document why in an ADR if it changes the architecture.
@@ -116,7 +117,7 @@ Run after a meaningful change and fix failures before handoff:
 
 ```sh
 bun run check   # wrangler types, svelte-kit sync, svelte-check, tsc on scripts/
-bun run lint    # prettier --check, eslint
+bun run lint    # prettier --check, eslint, canonical Tailwind classes
 bun run test    # vitest
 bun run build   # wrangler types, vite build
 ```

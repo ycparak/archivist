@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	archiveBlockSchema,
 	clampOcr,
+	blockKind,
 	isDegenerateText,
 	MAX_OCR_CHARS,
 	toSearchDocument
@@ -320,8 +321,8 @@ describe('toSearchDocument — a runaway already in the cache', () => {
 });
 
 describe('block type indexing', () => {
-	it('indexes every filterable block type verbatim', () => {
-		for (const blockType of ARCHIVE_BLOCK_TYPES) {
+	it("indexes Are.na's block type verbatim beside the kind the gallery filters by", () => {
+		for (const blockType of ['Image', 'Link', 'Text', 'Attachment', 'Embed']) {
 			const document = toSearchDocument(
 				archiveBlockSchema.parse({
 					id: 1,
@@ -331,6 +332,30 @@ describe('block type indexing', () => {
 				})
 			);
 			expect(document.block_type).toBe(blockType);
+			expect(ARCHIVE_BLOCK_TYPES).toContain(document.kind);
 		}
+	});
+});
+
+describe('blockKind', () => {
+	it('names a block by what it is to a reader', () => {
+		expect(blockKind({ type: 'Image', imageContentType: 'image/jpeg' })).toBe('Image');
+		expect(blockKind({ type: 'Link' })).toBe('Web');
+		expect(blockKind({ type: 'Text' })).toBe('Text');
+		expect(blockKind({ type: 'Embed' })).toBe('Embed');
+		expect(blockKind({ type: 'Attachment' })).toBe('Attachment');
+		expect(blockKind({ type: 'Channel' })).toBeNull();
+	});
+
+	it('pulls videos and animated GIFs out of whichever block holds them', () => {
+		expect(blockKind({ type: 'Attachment', videoUrl: 'https://attachments.are.na/1/a.mp4' })).toBe(
+			'Video'
+		);
+		expect(blockKind({ type: 'Image', imageContentType: 'image/GIF' })).toBe('GIF');
+		expect(blockKind({ type: 'Attachment', imageContentType: 'image/gif' })).toBe('GIF');
+	});
+
+	it('keeps a link a web page even when its preview is a GIF', () => {
+		expect(blockKind({ type: 'Link', imageContentType: 'image/gif' })).toBe('Web');
 	});
 });

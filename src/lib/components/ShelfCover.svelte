@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { ArchiveSearchHref, ChannelManifestEntry } from '$lib/domain/search';
+	import type { ArchiveSearchHref } from '$lib/domain/search';
+	import type { ShelfChannel } from './shelf';
 	import { resolve } from '$app/paths';
 
 	let {
@@ -7,8 +8,7 @@
 		count,
 		href,
 		active
-	}: { channel: ChannelManifestEntry; count: number; href: ArchiveSearchHref; active: boolean } =
-		$props();
+	}: { channel: ShelfChannel; count: number; href: ArchiveSearchHref; active: boolean } = $props();
 </script>
 
 <a
@@ -20,7 +20,7 @@
 >
 	<span class="clamp-6 font-serif text-[11cqw] leading-[1.1] text-balance">{channel.title}</span>
 	<span class="flex items-end justify-between text-[6cqw] leading-none">
-		<span>Are.na</span>
+		<span>{channel.symbol ?? 'Are.na'}</span>
 		<span>{count}</span>
 	</span>
 </a>

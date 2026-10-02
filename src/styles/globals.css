@@ -101,7 +101,7 @@
 	--foreground-strong: var(--color-black);
 
 	--annotation-area-height: 10rem;
-	--annotation-padding: 12px;
+	--annotation-padding: 16px;
 	--page-gutter: 2rem;
 	--column-gap: 4rem;
 	--column-count: 2;
@@ -110,8 +110,11 @@
 	--gap-line: calc(1lh - 1cap);
 	--gap-paragraph: calc(2lh - 1cap);
 	/* Where a line box ends below its baseline: half the leading plus the font's descent, from the
-	   fonts' own metrics (Areal ascends 0.88em and descends 0.21em; Newsreader 0.74em and 0.26em). */
+	   fonts' metrics (Areal ascends 0.88em and descends 0.21em; Newsreader, as overridden in
+	   fonts.css, 0.98em and 0.26em). And where clipped text is cut: below the deepest descender
+	   (0.21em, 0.23em) and above the next line's tallest letters at the line heights in use. */
 	--line-below-baseline: calc(0.5lh - 0.335em);
+	--clip-below-baseline: 0.27em;
 	--column-width: calc(
 		(100cqi - 2 * var(--page-gutter) - (var(--column-count) - 1) * var(--column-gap)) /
 			var(--column-count)
@@ -150,7 +153,7 @@
 
 /* The filters spread over two columns when the viewport is too short to stack them in one. */
 @custom-variant spread {
-	@media (max-height: 46rem) {
+	@media (max-height: 56rem) {
 		@slot;
 	}
 }
@@ -252,7 +255,7 @@
 	}
 
 	::placeholder {
-		color: var(--foreground-secondary);
+		color: var(--foreground-elevated);
 		opacity: 1;
 	}
 }
@@ -266,7 +269,8 @@
 @utility font-serif {
 	font-family: var(--font-serif);
 	font-optical-sizing: auto;
-	--line-below-baseline: calc(0.5lh - 0.24em);
+	--line-below-baseline: calc(0.5lh - 0.36em);
+	--clip-below-baseline: 0.3em;
 }
 
 /* Children keep whole line boxes so lines stack exactly a line height apart; only the outer edges of
@@ -290,11 +294,11 @@
 	-webkit-line-clamp: --value(integer);
 	overflow: visible;
 	text-box-trim: trim-start;
-	clip-path: inset(-1em 0 -0.03em 0);
+	clip-path: inset(-1em 0 calc(var(--line-below-baseline) - var(--clip-below-baseline)) 0);
 	margin-block-end: calc(-1 * var(--line-below-baseline));
 }
 
 /* Clips trimmed text that overflows its box, at the same place a clamp does. */
 @utility clip-trimmed {
-	clip-path: inset(-1em 0 calc(-1 * var(--line-below-baseline) - 0.03em) 0);
+	clip-path: inset(-1em 0 calc(-1 * var(--clip-below-baseline)) 0);
 }
