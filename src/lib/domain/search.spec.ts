@@ -32,6 +32,12 @@ describe('toArchiveSearchHref', () => {
 		expect(toArchiveSearchHref(state({ query: '', mode: 'semantic' }))).toBe('/');
 	});
 
+	it('repeats colours in the order they were chosen', () => {
+		expect(toArchiveSearchHref(state({ colours: ['orange', 'blue'] }))).toBe(
+			'/?colour=orange&colour=blue'
+		);
+	});
+
 	it('repeats channel and type filters and keeps date bounds', () => {
 		expect(
 			toArchiveSearchHref(
@@ -54,6 +60,7 @@ describe('readArchiveSearchState', () => {
 			state({ query: 'felt', mode: 'lexical' }),
 			state({ query: 'felt', mode: 'semantic', channelSlugs: ['materials'] }),
 			state({ blockTypes: ['Image'], from: '2024-01-02', to: '2024-01-31' }),
+			state({ colours: ['blue', 'mono'] }),
 			state({
 				query: 'archival',
 				mode: 'lexical',
@@ -82,6 +89,16 @@ describe('readArchiveSearchState', () => {
 				new URLSearchParams('channel=materials&channel=materials&type=Image&type=Image')
 			)
 		).toMatchObject({ channelSlugs: ['materials'], blockTypes: ['Image'] });
+	});
+
+	it('drops unknown colours and keeps at most as many as a request may carry', () => {
+		expect(
+			readArchiveSearchState(
+				new URLSearchParams(
+					'colour=teal&colour=red&colour=orange&colour=yellow&colour=green&colour=blue&colour=purple'
+				)
+			).colours
+		).toEqual(['red', 'orange', 'yellow', 'green', 'blue']);
 	});
 
 	it('drops a date that is not a real calendar day', () => {
@@ -114,6 +131,7 @@ describe('search state transitions', () => {
 	it('reports whether any filter is active', () => {
 		expect(hasActiveFilters(state({ query: 'felt' }))).toBe(false);
 		expect(hasActiveFilters(state({ to: '2024-01-31' }))).toBe(true);
+		expect(hasActiveFilters(state({ colours: ['mono'] }))).toBe(true);
 		expect(hasActiveFilters(active)).toBe(true);
 	});
 });

@@ -6,7 +6,7 @@ import {
 	MAX_OCR_CHARS,
 	toSearchDocument
 } from './archive';
-import { ARCHIVE_BLOCK_TYPES } from './search';
+import { ARCHIVE_BLOCK_TYPES, ARCHIVE_COLOURS } from './search';
 
 describe('toSearchDocument', () => {
 	it('builds stable searchable text without inventing image content', () => {
@@ -74,6 +74,39 @@ describe('toSearchDocument', () => {
 		expect(document.image_alt).toBeNull();
 		expect(document.image_width).toBeNull();
 		expect(document.image_height).toBeNull();
+	});
+});
+
+describe('toSearchDocument — colour weights', () => {
+	const block = () =>
+		archiveBlockSchema.parse({
+			id: 9,
+			type: 'Image',
+			title: 'Brutalist window',
+			arenaUrl: 'https://www.are.na/block/9',
+			channels: [{ slug: 'architecture', title: 'Architecture' }]
+		});
+
+	const weights = Object.fromEntries(
+		ARCHIVE_COLOURS.map((colour) => [colour, colour === 'grey' ? 640 : colour === 'mono' ? 980 : 0])
+	) as Record<(typeof ARCHIVE_COLOURS)[number], number>;
+
+	it('writes one attribute per colour from the measured weights', () => {
+		const document = toSearchDocument(block(), null, weights);
+		expect(document.colour_grey).toBe(640);
+		expect(document.colour_mono).toBe(980);
+		expect(document.colour_red).toBe(0);
+	});
+
+	it('weighs zero in every colour for a block that was never measured', () => {
+		const document = toSearchDocument(block());
+		for (const colour of ARCHIVE_COLOURS) expect(document[`colour_${colour}`]).toBe(0);
+	});
+
+	it('keeps colour out of the searchable text', () => {
+		expect(toSearchDocument(block(), null, weights).search_text).toBe(
+			toSearchDocument(block()).search_text
+		);
 	});
 });
 

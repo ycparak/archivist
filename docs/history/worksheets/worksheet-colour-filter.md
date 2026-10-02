@@ -1,7 +1,7 @@
 # Worksheet: colour filter
 
-Spec: [colour-filter.md](./colour-filter.md). TODO entries: the three colour tasks in
-[TODOS.md](../TODOS.md).
+Spec: [colour-filter.md](../../specs/colour-filter.md). TODO entries: the three colour tasks in
+[TODOS.md](../../TODOS.md).
 
 Started on branch `colour-filter` from a clean `main` (`0251f98`).
 
@@ -53,4 +53,28 @@ Tests: classifier, weights, cache, stage (with an injected `measure`), extractio
 
 ## Task 3: Index and filter
 
-_(in progress)_
+- Grammar (`domain/search.ts`): `colour` parameter, `ArchiveSearchState.colours`,
+  `ARCHIVE_MAX_COLOURS` (5, so browse stays within Turbopuffer's 8 sort keys). Unknown colours
+  are dropped from UI state; the server rejects them with a 400, like an unknown `type`.
+- Documents (`domain/archive.ts`): `colour_<name>` attributes, 0 when unmeasured; never in
+  `search_text`. Schema: twelve filterable `uint`s.
+- Query (`search/repository.ts`): one `Gte` threshold filter per colour inside the existing `And`;
+  browse with colours sorts colours…, `connection_count`, `connected_at`, `id`. Text modes keep
+  their ranking. Colour attributes are never requested back.
+- Sync: the colour stage runs before vision; cache merge shares the vision stage's "a failed or
+  aborted fetch drops nothing" rule. The CLI gains `--no-colour` and the colour cache file. The
+  checkpoint writer now queues writes, so a slow checkpoint cannot land after the final write.
+- `components/format.ts` counts colours in the results status, so `?colour=` reads as a filter.
+- Docs: architecture (schema, filters, colour order, validation, sync lifecycle, new "Colour
+  indexing"), AGENTS (layout, search invariant), README, CHANGELOG, ADR 0001.
+
+Ran `bun run sync --no-vision --no-push-arena` on 2 October 2026: 2,542 images measured, 1 SVG
+skipped, 0 failures; 2,546 documents upserted, nothing pruned. Checked against the live index
+afterwards (read-only): colour browse paged to the end with no repeats for mono (954), white
+(1,418) and blue (316); `blue`+`orange` returns 10; five colours return none; a text query with a
+colour keeps relevance order; `colour=teal` is a 400. `bun run evaluate:search` passes every case.
+`/?colour=blue` in the dev server leads with fully blue pages.
+
+Not done, deliberately: no gallery control for colour (UI is out of scope). `SearchForm` rebuilds
+the URL from its own fields, so typing a query on a `?colour=` page drops the colour until the UI
+adds a field for it.

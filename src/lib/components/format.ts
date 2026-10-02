@@ -45,7 +45,10 @@ export type ResultsStatusInput = {
 export function resultsStatus({ kind, state, resultCount, searching }: ResultsStatusInput): string {
 	const subject = state.query ? `for \u201c${state.query}\u201d` : 'in the archive';
 	const filterCount =
-		state.channelSlugs.length + state.blockTypes.length + (state.from || state.to ? 1 : 0);
+		state.channelSlugs.length +
+		state.blockTypes.length +
+		state.colours.length +
+		(state.from || state.to ? 1 : 0);
 	const filters = filterCount ? ` with ${filterCount} filter${filterCount === 1 ? '' : 's'}` : '';
 
 	if (searching) return `Searching ${subject}${filters}\u2026`;

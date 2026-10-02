@@ -72,6 +72,7 @@ describe('parseArchiveSearchRequest', () => {
 			query: '',
 			channelSlugs: [],
 			blockTypes: [],
+			colours: [],
 			offset: 0,
 			limit: 24
 		});
@@ -117,6 +118,7 @@ describe('parseArchiveSearchRequest', () => {
 			query: '',
 			channelSlugs: [],
 			blockTypes: [],
+			colours: [],
 			offset: 0,
 			limit: 24
 		});
@@ -150,6 +152,27 @@ describe('parseArchiveSearchRequest', () => {
 			SearchRequestValidationError
 		);
 		expect(() => parseArchiveSearchRequest(new URLSearchParams('type=Photo'))).toThrow(
+			SearchRequestValidationError
+		);
+	});
+
+	it('accepts colours, in the order chosen, without repeats', () => {
+		expect(
+			parseArchiveSearchRequest(new URLSearchParams('colour=blue&colour=mono&colour=blue')).colours
+		).toEqual(['blue', 'mono']);
+	});
+
+	it('rejects a colour outside the vocabulary rather than ignoring it', () => {
+		expect(() => parseArchiveSearchRequest(new URLSearchParams('colour=teal'))).toThrow(
+			SearchRequestValidationError
+		);
+	});
+
+	it('rejects more colours than browse can sort on', () => {
+		const six = ['red', 'orange', 'yellow', 'green', 'blue', 'purple']
+			.map((colour) => `colour=${colour}`)
+			.join('&');
+		expect(() => parseArchiveSearchRequest(new URLSearchParams(six))).toThrow(
 			SearchRequestValidationError
 		);
 	});

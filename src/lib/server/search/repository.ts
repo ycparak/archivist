@@ -3,10 +3,13 @@ import Turbopuffer, {
 	type NamespaceMultiQueryParams,
 	type NamespaceQueryParams,
 	type QueryPerformance,
+	type RankByAttribute,
 	type Row
 } from '@turbopuffer/turbopuffer';
 import { z } from 'zod';
+import { colourAttribute } from '$lib/domain/archive';
 import type { SearchTimings } from '$lib/domain/search';
+import { COLOUR_THRESHOLDS } from './colour-filter';
 import type {
 	ArchiveSearchInput,
 	SearchRepository,
@@ -90,6 +93,9 @@ export function buildSearchFilters(input: ArchiveSearchInput): Filter | undefine
 	const filters: Filter[] = [];
 	if (input.blockTypes.length) filters.push(['block_type', 'In', input.blockTypes]);
 	if (input.channelSlugs.length) filters.push(['channel_slugs', 'ContainsAny', input.channelSlugs]);
+	for (const colour of input.colours) {
+		filters.push([colourAttribute(colour), 'Gte', COLOUR_THRESHOLDS[colour]]);
+	}
 	if (input.from) filters.push(['connected_at', 'Gte', input.from.toISOString()]);
 	if (input.to) filters.push(['connected_at', 'Lte', input.to.toISOString()]);
 	return filters.length ? ['And', filters] : undefined;
@@ -106,17 +112,32 @@ function sharedQuery(input: ArchiveSearchInput, optional: boolean) {
 	};
 }
 
+/**
+ * With colours chosen, browse sorts by the first colour's weight and breaks ties on the rest. A
+ * `Sum` of the weights would rank better, but Turbopuffer leaves the order of equal scores undefined
+ * and it shifts with `limit`, which this paging re-fetches with every page; ending the sort on `id`
+ * makes it a total order.
+ */
+function browseOrder(input: ArchiveSearchInput): RankByAttribute[] {
+	if (!input.colours.length) {
+		return [
+			['connection_count', 'desc'],
+			['connected_at', 'desc']
+		];
+	}
+	return [
+		...input.colours.map((colour): RankByAttribute => [colourAttribute(colour), 'desc']),
+		['connection_count', 'desc'],
+		['connected_at', 'desc'],
+		['id', 'asc']
+	];
+}
+
 function singleQuery(input: ArchiveSearchInput, optional: boolean): NamespaceQueryParams {
 	const shared = sharedQuery(input, optional);
 	switch (input.mode) {
 		case 'browse':
-			return {
-				...shared,
-				rank_by: [
-					['connection_count', 'desc'],
-					['connected_at', 'desc']
-				]
-			};
+			return { ...shared, rank_by: browseOrder(input) };
 		case 'lexical':
 			return { ...shared, rank_by: ['search_text', 'BM25', input.query] };
 		case 'semantic':

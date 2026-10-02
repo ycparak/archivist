@@ -22,14 +22,14 @@ syncs every channel that user owns. Run it and you get your archive, not anyone 
 |                                                  | Why                                                 | Cost                                |
 | ------------------------------------------------ | --------------------------------------------------- | ----------------------------------- |
 | [Bun](https://bun.sh) 1.4+                       | runtime and package manager                         | free                                |
-| [ffmpeg](https://ffmpeg.org) on PATH             | transcodes animated blocks before describing them   | free                                |
+| [ffmpeg](https://ffmpeg.org) on PATH             | reads animations and measures colour                | free                                |
 | An Are.na account                                | the source of truth (read + write token; see below) | free tier is fine                   |
 | A [Turbopuffer](https://turbopuffer.com) account | search index + embeddings                           | free tier covers a personal archive |
 | An [OpenRouter](https://openrouter.ai) account   | vision descriptions — skip with `--no-vision`       | ~$0.50 for 2,600 images             |
 | A [Cloudflare](https://cloudflare.com) account   | deploying the public site — **optional**            | free tier is fine                   |
 
-You can run everything locally without Cloudflare. `bun run sync --no-vision --no-push-arena` is
-the metadata-only sync: no OpenRouter account, no ffmpeg, and a read-only Are.na token is enough.
+You can run everything locally without Cloudflare. `bun run sync --no-vision --no-push-arena --no-colour`
+is the metadata-only sync: no OpenRouter account, no ffmpeg, and a read-only Are.na token is enough.
 
 ## Setup
 
@@ -70,12 +70,13 @@ bun run dev           # http://localhost:5173
 
 A plain `bun run sync` does everything: it describes every block with an image, writes generated
 titles and descriptions back to Are.na where they are missing, and indexes the result. Read the
-sections below before the first run — vision costs money and write-back changes your archive. Two
+sections below before the first run — vision costs money and write-back changes your archive. Three
 opt-outs:
 
 ```bash
 bun run sync --no-vision          # skip the vision stage; index whatever the cache already holds
 bun run sync --no-push-arena      # never write to Are.na
+bun run sync --no-colour          # skip measuring colour; index whatever the colour cache holds
 ```
 
 Unknown flags are rejected rather than ignored, because a mistyped opt-out would otherwise run the
@@ -187,6 +188,21 @@ that gets rate limited waits out the delay Are.na asks for before being recorded
 still fail, just run the command again — write-back re-plans from your archive's current state, so
 blocks already written are simply "already fine" and skipped, and only the failures are retried.
 
+## Colour
+
+The sync measures how much of each image is each colour, so the archive can be filtered by colour
+(`?colour=blue`, or several for blocks with all of them). It costs nothing but downloads: each
+image is fetched as a 128px copy (an animated GIF as its original, sampled once a second), piped
+through ffmpeg in memory and thrown away. Nothing is written to disk.
+
+The colours are red, orange, yellow, green, blue, purple, pink, brown, grey, black, white and
+`mono` (black and white: almost no colour at all). Browsing with a colour lists the most strongly
+coloured blocks first; with a search term, relevance keeps the order and colour only filters.
+
+Results land in `src/lib/server/indexing/colour-cache.jsonl`, committed like the vision cache, so
+only new or changed images are fetched again. `bun run calibrate:colour` writes a contact sheet of
+a sample, read-only, for judging the colour boundaries and thresholds by eye.
+
 ## Commands
 
 | Command                        | What it does                                            |
@@ -196,7 +212,9 @@ blocks already written are simply "already fine" and skipped, and only the failu
 | `bun run sync`                 | fetch Are.na, describe images, write titles back, index |
 | `bun run sync --no-vision`     | skip the vision stage; index the existing cache as-is   |
 | `bun run sync --no-push-arena` | do not write generated titles back to Are.na            |
+| `bun run sync --no-colour`     | skip measuring colour; index the existing cache as-is   |
 | `bun run evaluate:search`      | run the search evaluation against your index            |
+| `bun run calibrate:colour`     | write a contact sheet of measured colours, read-only    |
 | `bun run check`                | generate types, then typecheck `src/` and `scripts/`    |
 | `bun run lint`                 | prettier + eslint                                       |
 | `bun run format`               | prettier, writing changes                               |
@@ -242,6 +260,7 @@ query strings redacted.
 Are.na V3  ──►  sync (manual, local)  ──►  Turbopuffer  ──►  SvelteKit on Cloudflare
                       │
                       ├─ normalize + dedupe blocks across channels
+                      ├─ measure how much of each image is each colour
                       ├─ vision model describes each image
                       ├─ writes generated titles back to Are.na
                       └─ prune blocks that left the archive
@@ -261,6 +280,9 @@ Are.na V3  ──►  sync (manual, local)  ──►  Turbopuffer  ──►  S
 
 - **Animated blocks need ffmpeg.** Without it they fail to be described, and are retried on the next
   run once it is installed. An animation that still comes out over 4 MB after transcoding is skipped.
+- **Colour is share of the image, not prominence.** A small red logo on a white page scores low
+  for red, and skin in flash photographs counts towards red. Blocks without an image never match
+  a colour.
 - **`vision_medium` is unreliable.** A grainy photograph came back labelled `painting`. It is
   stored but nothing depends on it — don't build a facet on it without measuring first.
 - **Generated descriptions are capped at 500 characters** so they cannot drown out a block's own

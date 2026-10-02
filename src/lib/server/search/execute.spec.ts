@@ -49,6 +49,7 @@ describe('executeArchiveSearch', () => {
 				mode: 'lexical',
 				channelSlugs: ['materials'],
 				blockTypes: [],
+				colours: [],
 				from: '',
 				to: ''
 			},
@@ -143,6 +144,7 @@ describe('executeArchiveSearch', () => {
 				mode: 'lexical',
 				channelSlugs: ['materials'],
 				blockTypes: [],
+				colours: [],
 				from: '',
 				to: ''
 			}
