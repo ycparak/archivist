@@ -266,13 +266,14 @@ describe('TurbopufferSearchRepository', () => {
 		expect(requestedBody(fetchFn).limit).toBe(73);
 	});
 
-	it('orders browse results by connection count, then recency, without a text rank', async () => {
+	it('orders browse results by connection count, then recency, then id, without a text rank', async () => {
 		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
 		await repository(fetchFn).search(input());
 		const body = requestedBody(fetchFn);
 		expect(body.rank_by).toEqual([
 			['connection_count', 'desc'],
-			['connected_at', 'desc']
+			['connected_at', 'desc'],
+			['id', 'asc']
 		]);
 		expect(body.limit).toBe(25);
 		expect(body.rank_by).not.toContain('search_text');
