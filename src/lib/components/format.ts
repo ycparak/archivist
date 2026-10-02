@@ -1,9 +1,7 @@
 import {
 	ARCHIVE_RESULT_LIMIT,
-	type ArchiveBlockType,
 	type ArchiveSearchState,
-	type SearchResult,
-	type SearchTimings
+	type SearchResult
 } from '$lib/domain/search';
 
 const FALLBACK_MEDIA_RATIO = 4 / 3;
@@ -16,16 +14,8 @@ export function mediaRatio(result: Pick<SearchResult, 'imageWidth' | 'imageHeigh
 	return Math.min(MAX_MEDIA_RATIO, Math.max(MIN_MEDIA_RATIO, imageWidth / imageHeight));
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-export function formatArchiveDate(value: string | null): string | null {
-	if (!value) return null;
-	const parsed = new Date(value);
-	if (Number.isNaN(parsed.getTime())) return null;
-	return `${parsed.getUTCDate()} ${MONTHS[parsed.getUTCMonth()]} ${parsed.getUTCFullYear()}`;
-}
-
-const UNTITLED_LABELS: Record<ArchiveBlockType, string> = {
+/** Keyed by Are.na's own block type, which results carry, not the gallery's Block type. */
+const UNTITLED_LABELS: Record<string, string> = {
 	Image: 'Untitled image',
 	Link: 'Untitled link',
 	Text: 'Untitled text',
@@ -35,13 +25,29 @@ const UNTITLED_LABELS: Record<ArchiveBlockType, string> = {
 
 export function blockDisplayTitle(title: string | null, blockType: string): string {
 	if (title) return title;
-	return UNTITLED_LABELS[blockType as ArchiveBlockType] ?? 'Untitled block';
+	return UNTITLED_LABELS[blockType] ?? 'Untitled block';
 }
 
-const seconds = (ms: number) => `${(ms / 1000).toFixed(2)}s`;
+/**
+ * A channel title as the gallery shows it: without the symbols the maintainer prefixes titles with
+ * on Are.na (`✦ `, `❋ `, ``). Some of those are letters of other scripts (`𖤛` is Bamum), so
+ * everything before the first Latin letter or digit goes. A title with neither is kept whole.
+ */
+export function channelLabel(title: string): string {
+	return title.replace(/^[^\p{Script=Latin}\p{N}]+/u, '') || title;
+}
 
-export function formatSearchTimings({ totalMs, queryMs, rerankMs }: SearchTimings): string {
-	return `time: ${seconds(totalMs)} (query: ${seconds(queryMs)}, rerank: ${seconds(rerankMs)})`;
+/** The symbol `channelLabel` takes off a channel title, or null when the title has none. */
+export function channelSymbol(title: string): string | null {
+	const label = channelLabel(title);
+	if (label === title) return null;
+	return title.slice(0, title.length - label.length).trim() || null;
+}
+
+const count = new Intl.NumberFormat('en');
+
+export function archiveCount(value: number, noun: string): string {
+	return `${count.format(value)} ${noun}${value === 1 ? '' : 's'}`;
 }
 
 export type ResultsStatusInput = {
@@ -54,7 +60,11 @@ export type ResultsStatusInput = {
 export function resultsStatus({ kind, state, resultCount, searching }: ResultsStatusInput): string {
 	const subject = state.query ? `for \u201c${state.query}\u201d` : 'in the archive';
 	const filterCount =
-		state.channelSlugs.length + state.blockTypes.length + (state.from || state.to ? 1 : 0);
+		state.channelSlugs.length +
+		state.blockTypes.length +
+		state.colours.length +
+		(state.from || state.to ? 1 : 0) +
+		(state.createdFrom || state.createdTo ? 1 : 0);
 	const filters = filterCount ? ` with ${filterCount} filter${filterCount === 1 ? '' : 's'}` : '';
 
 	if (searching) return `Searching ${subject}${filters}\u2026`;

@@ -125,14 +125,6 @@ export function isCacheHit(entry: VisionCacheEntry | undefined, key: VisionCache
 	);
 }
 
-export function lookupVisionResult(
-	cache: VisionCache,
-	key: VisionCacheKey
-): VisionCacheEntry | undefined {
-	const entry = cache.get(key.blockId);
-	return isCacheHit(entry, key) ? entry : undefined;
-}
-
 /**
  * Entries for blocks that are no longer in the archive are dropped, so the committed file tracks
  * the archive rather than accumulating orphans. Blocks that failed this run keep their previous

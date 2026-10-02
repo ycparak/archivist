@@ -23,7 +23,7 @@ function block(overrides: Partial<ArchiveBlock> = {}): ArchiveBlock {
 		imageWidth: null,
 		imageHeight: null,
 		imageBytes: 1000,
-		imageContentType: 'image/gif',
+		imageContentType: 'image/png',
 		channels: [{ slug: 'alpha', title: 'Alpha' }],
 		...overrides
 	} as ArchiveBlock;
@@ -80,41 +80,6 @@ describe('planVisionWork', () => {
 		});
 		expect(plan.cached).toBe(1);
 		expect(plan.pending).toHaveLength(0);
-	});
-
-	it('caps pending work at the limit and reports the remainder', () => {
-		const blocks = ['1', '2', '3', '4'].map((id) => block({ id }));
-		const plan = planVisionWork(blocks, { client: stubClient(), cache: new Map(), limit: 2 });
-		expect(plan.pending).toHaveLength(2);
-		expect(plan.overLimit).toBe(2);
-	});
-
-	it('revises everything when asked', () => {
-		const plan = planVisionWork([block()], {
-			client: stubClient(),
-			cache: new Map([['1', entryFor('1')]]),
-			revise: true
-		});
-		expect(plan.pending).toHaveLength(1);
-		expect(plan.cached).toBe(0);
-	});
-
-	it('revises only blocks in the named channels', () => {
-		const blocks = [
-			block({ id: '1', channels: [{ slug: 'alpha', title: 'Alpha' }] }),
-			block({ id: '2', channels: [{ slug: 'beta', title: 'Beta' }] })
-		];
-		const cache = new Map([
-			['1', entryFor('1')],
-			['2', entryFor('2')]
-		]);
-		const plan = planVisionWork(blocks, {
-			client: stubClient(),
-			cache,
-			revise: new Set(['beta'])
-		});
-		expect(plan.pending.map((item) => item.id)).toEqual(['2']);
-		expect(plan.cached).toBe(1);
 	});
 });
 
@@ -204,20 +169,6 @@ describe('describeBlocks', () => {
 		});
 		const { entries } = await describeBlocks([block()], { client, cache: new Map(), now });
 		expect(entries).toEqual([]);
-	});
-
-	it('honours the limit so a run cannot overspend', async () => {
-		const client = stubClient();
-		const blocks = ['1', '2', '3'].map((id) => block({ id }));
-		const { summary } = await describeBlocks(blocks, {
-			client,
-			cache: new Map(),
-			limit: 1,
-			now
-		});
-
-		expect(client.describe).toHaveBeenCalledOnce();
-		expect(summary).toMatchObject({ generated: 1, skippedOverLimit: 2 });
 	});
 
 	/** Asserting only an upper bound would pass even if the pool ran everything one at a time. */
@@ -326,20 +277,12 @@ describe('describeBlocks — animated blocks', () => {
 		return block({ imageContentType: 'image/gif', ...overrides });
 	}
 
-	it('leaves animations on the image path unless video is asked for', async () => {
-		const client = stubClient();
-		await describeBlocks([gif()], { client, cache: new Map(), now });
-
-		expect(client.describe.mock.calls[0][0].media.kind).toBe('image');
-	});
-
 	it('regenerates an animation previously described as a still', async () => {
 		const client = stubClient();
 		const asStill = entryFor('1'); // input_mode: 'image'
 		const { summary } = await describeBlocks([gif()], {
 			client,
 			cache: new Map([['1', asStill]]),
-			video: true,
 			now,
 			transcodeOptions: { fetchFn: async () => new Response('x') }
 		});
@@ -347,12 +290,11 @@ describe('describeBlocks — animated blocks', () => {
 		expect(summary.cacheHits).toBe(0);
 	});
 
-	it('leaves a still alone when video is enabled — only animations change mode', async () => {
+	it('leaves a still alone — only animations change mode', async () => {
 		const client = stubClient();
 		const { summary } = await describeBlocks([block({ imageContentType: 'image/png' })], {
 			client,
 			cache: new Map([['1', entryFor('1')]]),
-			video: true,
 			now
 		});
 
@@ -375,13 +317,13 @@ describe('describeBlocks — animated blocks', () => {
 		const { summary } = await describeBlocks([gif()], {
 			client,
 			cache: new Map(),
-			video: true,
 			now,
 			// A 404 makes the transcode return a skip rather than throwing.
 			transcodeOptions: { fetchFn: async () => new Response('', { status: 404 }) }
 		});
 
-		expect(summary.skippedTooLarge).toBe(1);
+		expect(summary.skippedUnreachable).toBe(1);
+		expect(summary.skippedTooLarge).toBe(0);
 		expect(summary.failed).toEqual([]);
 		expect(client.describe).not.toHaveBeenCalled();
 	});

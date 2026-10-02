@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ARCHIVE_COLOURS, ARCHIVE_MAX_COLOURS } from '$lib/domain/search';
+import { COLOUR_THRESHOLDS } from './colour-filter';
 import type { ArchiveSearchInput } from './contracts';
 import {
 	buildSearchFilters,
@@ -12,6 +14,8 @@ function input(overrides: Partial<ArchiveSearchInput> = {}): ArchiveSearchInput 
 		query: '',
 		channelSlugs: [],
 		blockTypes: [],
+		colours: [],
+		sort: 'newest-created',
 		limit: 24,
 		offset: 0,
 		...overrides
@@ -159,11 +163,47 @@ describe('buildSearchFilters', () => {
 		expect(buildSearchFilters(input())).toBeUndefined();
 	});
 
-	it('uses only V1 attributes and composes categories with AND', () => {
+	it('requires every chosen colour, each at its own threshold, when colour does not lead', () => {
+		expect(
+			buildSearchFilters(input({ sort: 'most-connected', colours: ['blue', 'mono'] }))
+		).toEqual([
+			'And',
+			[
+				['colour_blue', 'Gte', COLOUR_THRESHOLDS.blue],
+				['colour_mono', 'Gte', COLOUR_THRESHOLDS.mono]
+			]
+		]);
+	});
+
+	it('takes any amount of the colour that leads the default browse, and thresholds the rest', () => {
+		expect(buildSearchFilters(input({ colours: ['orange', 'blue'] }))).toEqual([
+			'And',
+			[
+				['colour_orange', 'Gte', 1],
+				['colour_blue', 'Gte', COLOUR_THRESHOLDS.blue]
+			]
+		]);
+	});
+
+	it('keeps the black and white threshold even when it leads', () => {
+		expect(buildSearchFilters(input({ colours: ['mono'] }))).toEqual([
+			'And',
+			[['colour_mono', 'Gte', COLOUR_THRESHOLDS.mono]]
+		]);
+	});
+
+	it('thresholds every colour in a text query, where relevance leads', () => {
+		expect(buildSearchFilters(input({ mode: 'hybrid', query: 'felt', colours: ['red'] }))).toEqual([
+			'And',
+			[['colour_red', 'Gte', COLOUR_THRESHOLDS.red]]
+		]);
+	});
+
+	it('uses only the three filterable attributes and composes categories with AND', () => {
 		expect(
 			buildSearchFilters(
 				input({
-					blockTypes: ['Image', 'Link'],
+					blockTypes: ['Image', 'Web'],
 					channelSlugs: ['materials', 'photography'],
 					from: new Date('2024-01-01T00:00:00.000Z'),
 					to: new Date('2024-01-31T23:59:59.999Z')
@@ -172,7 +212,7 @@ describe('buildSearchFilters', () => {
 		).toEqual([
 			'And',
 			[
-				['block_type', 'In', ['Image', 'Link']],
+				['kind', 'In', ['Image', 'Web']],
 				['channel_slugs', 'ContainsAny', ['materials', 'photography']],
 				['connected_at', 'Gte', '2024-01-01T00:00:00.000Z'],
 				['connected_at', 'Lte', '2024-01-31T23:59:59.999Z']
@@ -247,22 +287,149 @@ describe('TurbopufferSearchRepository', () => {
 		expect(hybrid.timings).toMatchObject({ queryMs: 40, rerankMs: 15 });
 	});
 
+	it('counts the blocks in the namespace with one aggregate query', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					aggregations: { blocks: 2546 },
+					billing: { billable_logical_bytes_queried: 0, billable_logical_bytes_returned: 0 },
+					performance: {
+						cache_hit_ratio: 1,
+						cache_temperature: 'hot',
+						server_total_ms: 1,
+						query_execution_ms: 1,
+						exhaustive_search_count: 0,
+						approx_namespace_size: 2546
+					}
+				}),
+				{ status: 200, headers: { 'content-type': 'application/json' } }
+			)
+		);
+
+		expect(await repository(fetchFn).countBlocks()).toBe(2546);
+		expect(requestedBody(fetchFn)).toEqual({ aggregate_by: { blocks: ['Count'] } });
+	});
+
+	it('reports a count it cannot read as unavailable', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await expect(repository(fetchFn).countBlocks()).rejects.toBeInstanceOf(SearchUnavailableError);
+	});
+
 	it('over-fetches by one row past the requested page so the server can tell whether more exist', async () => {
 		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
 		await repository(fetchFn).search(input({ offset: 48 }));
 		expect(requestedBody(fetchFn).limit).toBe(73);
 	});
 
-	it('orders browse results by connection count, then recency, without a text rank', async () => {
+	it('orders a default browse newest created first, then by id, without a text rank', async () => {
 		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
 		await repository(fetchFn).search(input());
 		const body = requestedBody(fetchFn);
 		expect(body.rank_by).toEqual([
-			['connection_count', 'desc'],
-			['connected_at', 'desc']
+			['created_at', 'desc'],
+			['id', 'asc']
 		]);
 		expect(body.limit).toBe(25);
 		expect(body.rank_by).not.toContain('search_text');
+	});
+
+	it('orders colour browse by the first colour, then the rest, then a total tiebreak', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ colours: ['orange', 'blue'] }));
+		expect(requestedBody(fetchFn).rank_by).toEqual([
+			['colour_orange', 'desc'],
+			['colour_blue', 'desc'],
+			['created_at', 'desc'],
+			['id', 'asc']
+		]);
+	});
+
+	it('orders a date browse by the date alone, ending on id, with colours only filtering', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ sort: 'newest-connected', colours: ['blue'] }));
+		const body = requestedBody(fetchFn);
+		expect(body.rank_by).toEqual([
+			['connected_at', 'desc'],
+			['id', 'asc']
+		]);
+		expect(JSON.stringify(body.filters)).toContain('colour_blue');
+
+		const oldestFetch = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(oldestFetch).search(input({ sort: 'oldest-connected' }));
+		expect(requestedBody(oldestFetch).rank_by).toEqual([
+			['connected_at', 'asc'],
+			['id', 'asc']
+		]);
+	});
+
+	it.each([
+		[
+			'most-connected',
+			[
+				['connection_count', 'desc'],
+				['connected_at', 'desc'],
+				['id', 'asc']
+			]
+		],
+		[
+			'oldest-created',
+			[
+				['created_at', 'asc'],
+				['id', 'asc']
+			]
+		],
+		[
+			'least-connected',
+			[
+				['connection_count', 'asc'],
+				['connected_at', 'desc'],
+				['id', 'asc']
+			]
+		]
+	] as const)('orders a %s browse by its own key, ending on id', async (sort, order) => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ sort, colours: ['blue'] }));
+		expect(requestedBody(fetchFn).rank_by).toEqual(order);
+	});
+
+	it('filters the created date inclusively, beside the connected date', () => {
+		expect(
+			buildSearchFilters(
+				input({
+					createdFrom: new Date('2019-01-01T00:00:00.000Z'),
+					createdTo: new Date('2020-12-31T23:59:59.999Z')
+				})
+			)
+		).toEqual([
+			'And',
+			[
+				['created_at', 'Gte', '2019-01-01T00:00:00.000Z'],
+				['created_at', 'Lte', '2020-12-31T23:59:59.999Z']
+			]
+		]);
+	});
+
+	it('stays within the sort keys Turbopuffer allows at the most colours a request may choose', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		const colours = ARCHIVE_COLOURS.slice(0, ARCHIVE_MAX_COLOURS);
+		await repository(fetchFn).search(input({ colours: [...colours] }));
+		expect(requestedBody(fetchFn).rank_by.length).toBeLessThanOrEqual(8);
+	});
+
+	it('keeps relevance order for a text query and lets colour only filter', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ mode: 'lexical', query: 'felt', colours: ['red'] }));
+		const body = requestedBody(fetchFn);
+		expect(body.rank_by).toEqual(['search_text', 'BM25', 'felt']);
+		expect(body.filters).toEqual(['And', [['colour_red', 'Gte', COLOUR_THRESHOLDS.red]]]);
+	});
+
+	it('never asks for colour weights back, so results do not depend on them existing', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ colours: ['red'] }));
+		expect(
+			requestedBody(fetchFn).include_attributes.some((name: string) => name.startsWith('colour_'))
+		).toBe(false);
 	});
 
 	it('uses BM25 for lexical search', async () => {
@@ -306,8 +473,8 @@ describe('TurbopufferSearchRepository', () => {
 					? body.queries.map((query: { filters: unknown }) => query.filters)
 					: [body.filters];
 			expect(filters).toEqual(
-				[['And', [['block_type', 'In', ['Image']]]]].concat(
-					mode === 'hybrid' ? [['And', [['block_type', 'In', ['Image']]]]] : []
+				[['And', [['kind', 'In', ['Image']]]]].concat(
+					mode === 'hybrid' ? [['And', [['kind', 'In', ['Image']]]]] : []
 				)
 			);
 		}

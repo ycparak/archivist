@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ARCHIVE_COLOURS, type ArchiveColour } from '$lib/domain/search';
 import { syncArchive } from './sync';
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
@@ -557,7 +558,7 @@ describe('syncArchive', () => {
 			);
 		});
 
-		it('skips pruning above the safety limit unless explicitly allowed', async () => {
+		it('skips pruning above the safety limit', async () => {
 			const existing = ['block:100', 'block:101', 'block:102', 'block:7', 'block:8', 'block:9'];
 
 			const guarded = okTurbopufferFetch(existing);
@@ -571,17 +572,6 @@ describe('syncArchive', () => {
 			expect(skipped.summary.documentsDeleted).toBe(0);
 			expect(skipped.summary.pruneSkipped).toMatch(/3 of 6/);
 			expect(writeBodies(guarded)).toHaveLength(1);
-
-			const allowed = okTurbopufferFetch(existing);
-			const forced = await syncArchive({
-				accessToken: 't',
-				fetchFn: twoChannelsFetch(),
-				channelDelayMs: 0,
-				maxPruneFraction: 0.4,
-				allowLargePrune: true,
-				turbopuffer: turbopufferConfig(allowed)
-			});
-			expect(forced.summary.documentsDeleted).toBe(3);
 		});
 
 		it('does nothing when the namespace already matches', async () => {
@@ -611,7 +601,7 @@ function imageBlock(id: number) {
 		image: {
 			src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif',
 			file_size: 1000,
-			content_type: 'image/gif',
+			content_type: 'image/png',
 			small: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif' },
 			medium: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif' },
 			large: { src: 'https://d2w9rnfcy7mm78.cloudfront.net/1/o.gif', width: 10, height: 10 },
@@ -676,21 +666,6 @@ describe('syncArchive — vision stage', () => {
 		expect(result.visionCache?.[0]).toMatchObject({ block_id: '11', title: 'Generated title' });
 	});
 
-	it('spends nothing and writes no cache on a dry run', async () => {
-		const client = visionClient();
-		const result = await syncArchive({
-			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
-			fetchFn: visionFetch() as unknown as typeof fetch,
-			delayFn: async () => {},
-			vision: { client, dryRun: true }
-		});
-
-		expect(client.describe).not.toHaveBeenCalled();
-		expect(result.visionCache).toBeNull();
-		expect(result.summary.vision).toMatchObject({ blocksWithImage: 1, generated: 0 });
-	});
-
 	it('drops cache entries for blocks that have left the archive', async () => {
 		const stale = {
 			...VISION_RESULT,
@@ -713,5 +688,155 @@ describe('syncArchive — vision stage', () => {
 		});
 
 		expect(result.visionCache?.map((entry) => entry.block_id)).toEqual(['11']);
+	});
+
+	it('keeps cache entries for unfetched blocks when a channel failed', async () => {
+		const unfetched = {
+			...VISION_RESULT,
+			block_id: '999',
+			image_src_hash: 'sha256:old',
+			prompt_version: 1,
+			model: 'test-model',
+			input_mode: 'image' as const,
+			provider: 'test',
+			generated_at: '2026-01-01T00:00:00.000Z'
+		};
+
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: routedFetch({
+				'/v3/me': () => meResponse(7, 'maintainer'),
+				'/v3/users/7/contents': () =>
+					contentsResponse([ownedChannel(1, 'alpha', 'Alpha'), ownedChannel(2, 'beta', 'Beta')]),
+				'/v3/channels/alpha/contents': () => contentsResponse([imageBlock(11)]),
+				'/v3/channels/beta/contents': () => jsonResponse({ error: 'boom' }, { status: 500 })
+			}) as unknown as typeof fetch,
+			delayFn: async () => {},
+			visionCache: new Map([['999', unfetched]]),
+			vision: { client: visionClient() }
+		});
+
+		expect(result.summary.channelsFailed).toHaveLength(1);
+		expect(result.visionCache?.map((entry) => entry.block_id)).toEqual(['11', '999']);
+	});
+});
+
+function colourEntry(blockId: string, blue: number) {
+	return {
+		block_id: blockId,
+		image_src_hash: 'sha256:old',
+		colour_version: 1,
+		frames: 1,
+		measured_at: '2026-01-01T00:00:00.000Z',
+		weights: { ...ZERO_WEIGHTS, blue }
+	};
+}
+
+const ZERO_WEIGHTS = Object.fromEntries(ARCHIVE_COLOURS.map((colour) => [colour, 0])) as Record<
+	ArchiveColour,
+	number
+>;
+
+const measuredBlue = vi.fn(async () => ({
+	kind: 'measured' as const,
+	weights: { ...ZERO_WEIGHTS, blue: 700 },
+	frames: 1
+}));
+
+describe('syncArchive — colour stage', () => {
+	it('measures nothing, and reports nothing, when the stage is not requested', async () => {
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {}
+		});
+
+		expect(result.summary.colour).toBeNull();
+		expect(result.colourCache).toBeNull();
+	});
+
+	it('measures blocks with an image and indexes their weights', async () => {
+		const fetchFn = okTurbopufferFetch();
+		const measure = vi.fn(measuredBlue);
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(fetchFn),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			colour: { measure }
+		});
+
+		expect(measure).toHaveBeenCalledOnce();
+		expect(result.summary.colour).toMatchObject({ blocksWithImage: 1, measured: 1 });
+		expect(result.colourCache?.map((entry) => entry.block_id)).toEqual(['11']);
+
+		const rows = writeBodies(fetchFn).flatMap((body) => body.upsert_rows ?? []);
+		const image = rows.find((row: { id: string }) => row.id === 'block:11');
+		const text = rows.find((row: { id: string }) => row.id === 'block:12');
+		expect(image.colour_blue).toBe(700);
+		expect(text.colour_blue).toBe(0);
+		expect(text.colour_mono).toBe(0);
+	});
+
+	it('indexes cached weights on a run that does not measure', async () => {
+		const fetchFn = okTurbopufferFetch();
+		await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(fetchFn),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			colourCache: new Map([['11', colourEntry('11', 420)]])
+		});
+
+		const rows = writeBodies(fetchFn).flatMap((body) => body.upsert_rows ?? []);
+		expect(rows.find((row: { id: string }) => row.id === 'block:11').colour_blue).toBe(420);
+	});
+
+	it('drops cache entries for blocks that have left the archive', async () => {
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			colourCache: new Map([['999', colourEntry('999', 100)]]),
+			colour: { measure: measuredBlue }
+		});
+
+		expect(result.colourCache?.map((entry) => entry.block_id)).toEqual(['11']);
+	});
+
+	it('keeps cache entries for unfetched blocks when a channel failed', async () => {
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: routedFetch({
+				'/v3/me': () => meResponse(7, 'maintainer'),
+				'/v3/users/7/contents': () =>
+					contentsResponse([ownedChannel(1, 'alpha', 'Alpha'), ownedChannel(2, 'beta', 'Beta')]),
+				'/v3/channels/alpha/contents': () => contentsResponse([imageBlock(11)]),
+				'/v3/channels/beta/contents': () => jsonResponse({ error: 'boom' }, { status: 500 })
+			}) as unknown as typeof fetch,
+			delayFn: async () => {},
+			colourCache: new Map([['999', colourEntry('999', 100)]]),
+			colour: { measure: measuredBlue }
+		});
+
+		expect(result.colourCache?.map((entry) => entry.block_id)).toEqual(['11', '999']);
+	});
+
+	it('reports a measuring phase to the status display', async () => {
+		const onEvent = vi.fn();
+		await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			onEvent,
+			colour: { measure: measuredBlue }
+		});
+
+		expect(onEvent).toHaveBeenCalledWith({ kind: 'phase', phase: 'measuring' });
 	});
 });

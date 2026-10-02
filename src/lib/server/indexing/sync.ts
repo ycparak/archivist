@@ -15,17 +15,13 @@ import {
 import { EMPTY_CHANNEL_FILTER, exclusionReason, type ChannelFilter } from './channel-filter';
 import type { SyncEventSink } from './progress/events';
 import type { ChannelManifestEntry } from './channel-manifest';
+import { measureBlocks, type ColourStageOptions, type ColourStageSummary } from './colour';
+import { mergeColourCache, type ColourCache, type ColourCacheEntry } from './colour/cache';
 import { toArchiveBlock } from './normalize';
-import { describeBlocks, planVisionWork, type VisionStageSummary } from './vision';
+import { describeBlocks, type VisionStageSummary } from './vision';
 import { mergeVisionCache, type VisionCache, type VisionCacheEntry } from './vision/cache';
 import type { VisionClient } from './vision/client';
-import {
-	applyWriteBack,
-	formatPlanLine,
-	planWriteBack,
-	summarizePlans,
-	type WriteBackSummary
-} from './vision/writeback';
+import { applyWriteBack, planWriteBack, type WriteBackSummary } from './vision/writeback';
 
 export interface SyncOptions {
 	accessToken: string;
@@ -41,8 +37,6 @@ export interface SyncOptions {
 	channelFilter?: ChannelFilter;
 	/** Refuse to prune when it would delete more than this fraction of the namespace. */
 	maxPruneFraction?: number;
-	/** Bypass `maxPruneFraction`, e.g. after deliberately ignoring most channels. */
-	allowLargePrune?: boolean;
 	/**
 	 * Generated text to index. Supplied on every run, not only when the stage is enabled — a sync
 	 * without `vision` must still index what previous runs generated, or it would silently strip
@@ -51,26 +45,23 @@ export interface SyncOptions {
 	visionCache?: VisionCache;
 	/** Omit to index the existing cache without generating anything new. */
 	vision?: VisionSyncOptions;
-	/** Omit to leave the maintainer's Are.na archive untouched. */
-	pushArena?: PushArenaOptions;
+	/** Write generated titles and descriptions back to Are.na. Off by default. */
+	pushArena?: boolean;
+	/** Measured colour weights to index. Supplied on every run, for the same reason as `visionCache`. */
+	colourCache?: ColourCache;
+	/** Omit to index the existing colour cache without measuring anything new. */
+	colour?: ColourSyncOptions;
 }
 
-export interface PushArenaOptions {
-	/** Without this, the plan is printed and nothing is written. */
-	apply?: boolean;
-	limit?: number;
-	delayMs?: number;
+export interface ColourSyncOptions {
+	/** Called as each entry lands, so an interrupted run keeps what it measured. */
+	onEntry?: (entry: ColourCacheEntry) => void;
+	/** Replaces fetching and decoding each image; for tests. */
+	measure?: ColourStageOptions['measure'];
 }
 
 export interface VisionSyncOptions {
 	client: VisionClient;
-	limit?: number;
-	revise?: boolean | ReadonlySet<string>;
-	concurrency?: number;
-	/** Read animated blocks as motion by transcoding them locally first. Needs ffmpeg on PATH. */
-	video?: boolean;
-	/** Report what would be generated and what it would cost, then write nothing. */
-	dryRun?: boolean;
 	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
 	onEntry?: (entry: VisionCacheEntry) => void;
 }
@@ -95,6 +86,8 @@ export interface SyncSummary {
 	documentsDeleted: number;
 	/** Why stale documents were left in the namespace, or null when pruning ran. */
 	pruneSkipped: string | null;
+	/** Null when the colour stage did not run. */
+	colour: ColourStageSummary | null;
 	/** Null when the vision stage did not run. */
 	vision: VisionStageSummary | null;
 	/** Null when write-back was not requested. */
@@ -148,6 +141,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	blocks: ArchiveBlock[];
 	channels: ChannelManifestEntry[];
 	visionCache: VisionCacheEntry[] | null;
+	colourCache: ColourCacheEntry[] | null;
 	summary: SyncSummary;
 }> {
 	const {
@@ -162,10 +156,11 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		maxLeadingChannelFailures = DEFAULT_MAX_LEADING_CHANNEL_FAILURES,
 		channelFilter = EMPTY_CHANNEL_FILTER,
 		maxPruneFraction = DEFAULT_MAX_PRUNE_FRACTION,
-		allowLargePrune = false,
 		visionCache: existingVisionCache = new Map<string, VisionCacheEntry>(),
 		vision,
-		pushArena
+		pushArena,
+		colourCache: existingColourCache = new Map<string, ColourCacheEntry>(),
+		colour
 	} = options;
 	const client = new ArenaClient({ accessToken, fetchFn });
 
@@ -183,6 +178,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		upsertBatches: 0,
 		documentsDeleted: 0,
 		pruneSkipped: null,
+		colour: null,
 		vision: null,
 		writeBack: null
 	};
@@ -263,70 +259,64 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	summary.uniqueBlocks = blocksById.size;
 
 	const blocks = [...blocksById.values()];
+	// Same reasoning as pruning: a failed channel's blocks only look gone, and so do an aborted run's,
+	// so their cached work stays.
+	const fetchedIds = new Set(blocks.map((block) => block.id));
+	const liveIds = (cache: ReadonlyMap<string, unknown>) =>
+		summary.channelsFailed.length > 0 || signal?.aborted
+			? new Set([...fetchedIds, ...cache.keys()])
+			: fetchedIds;
+
+	let colourCache: ColourCacheEntry[] | null = null;
+	let colourWeights: ColourCache = existingColourCache;
+	if (colour) {
+		onEvent({ kind: 'phase', phase: 'measuring' });
+		const { entries, summary: colourSummary } = await measureBlocks(blocks, {
+			cache: existingColourCache,
+			log,
+			signal,
+			onEntry: colour.onEntry,
+			measure: colour.measure,
+			onProgress: (done, total) => onEvent({ kind: 'position', done, total })
+		});
+		summary.colour = colourSummary;
+		colourCache = mergeColourCache(existingColourCache, entries, liveIds(existingColourCache));
+		colourWeights = new Map(colourCache.map((entry) => [entry.block_id, entry]));
+	}
 
 	// Runs on the deduplicated set, so a block in five channels is described once.
 	let visionCache: VisionCacheEntry[] | null = null;
 	let visionText: VisionCache = existingVisionCache;
 	if (vision) {
-		if (vision.dryRun) {
-			const plan = planVisionWork(blocks, { ...vision, cache: existingVisionCache });
-			summary.vision = {
-				blocksWithImage: plan.withImage.length,
-				cacheHits: plan.cached,
-				generated: 0,
-				generatedFromVideo: 0,
-				skippedTooLarge: 0,
-				skippedUnsupported: 0,
-				skippedOverLimit: plan.overLimit,
-				failed: []
-			};
-			log(
-				`Vision (dry run): ${plan.withImage.length} block(s) with an image, ${plan.cached} cached, ${plan.pending.length} would be described`
-			);
-		} else {
-			onEvent({ kind: 'phase', phase: 'describing' });
-			const { entries, summary: visionSummary } = await describeBlocks(blocks, {
-				...vision,
-				cache: existingVisionCache,
-				log,
-				onEvent,
-				signal
-			});
-			summary.vision = visionSummary;
-			visionCache = mergeVisionCache(
-				existingVisionCache,
-				entries,
-				new Set(blocks.map((block) => block.id))
-			);
-			visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
-		}
+		onEvent({ kind: 'phase', phase: 'describing' });
+		const { entries, summary: visionSummary } = await describeBlocks(blocks, {
+			...vision,
+			cache: existingVisionCache,
+			log,
+			onEvent,
+			signal
+		});
+		summary.vision = visionSummary;
+		visionCache = mergeVisionCache(existingVisionCache, entries, liveIds(existingVisionCache));
+		visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
 	}
 
 	// Before indexing, because a failure here should not cost the upsert.
 	if (pushArena) {
 		onEvent({ kind: 'phase', phase: 'writing-back' });
 		const { plans, skipped } = planWriteBack(blocks, visionText, { ownerId: me.id });
-		const selected = pushArena.limit === undefined ? plans : plans.slice(0, pushArena.limit);
-
-		if (!pushArena.apply) {
-			log(`Are.na write-back (dry run): ${selected.length} block(s) would change`);
-			for (const plan of selected.slice(0, 20)) log(formatPlanLine(plan));
-			if (selected.length > 20) log(`  ... and ${selected.length - 20} more`);
-			summary.writeBack = summarizePlans(selected, skipped);
-		} else {
-			log(`Are.na write-back: updating ${selected.length} block(s)`);
-			summary.writeBack = await applyWriteBack(plans, skipped, {
-				updateBlock: (id, body) => client.updateBlock(id, body),
-				limit: pushArena.limit,
-				delayMs: pushArena.delayMs,
-				log,
-				signal
-			});
-		}
+		log(`Are.na write-back: updating ${plans.length} block(s)`);
+		summary.writeBack = await applyWriteBack(plans, skipped, {
+			updateBlock: (id, body) => client.updateBlock(id, body),
+			log,
+			signal
+		});
 	}
 
 	onEvent({ kind: 'phase', phase: 'upserting' });
-	const documents = blocks.map((block) => toSearchDocument(block, visionText.get(block.id)));
+	const documents = blocks.map((block) =>
+		toSearchDocument(block, visionText.get(block.id), colourWeights.get(block.id)?.weights)
+	);
 	const { batches, rowsUpserted } = await upsertSearchDocuments(documents, turbopuffer, {
 		log,
 		onProgress: (done, total) => onEvent({ kind: 'position', done, total })
@@ -346,7 +336,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 
 		if (stale.length === 0) {
 			log('No stale documents to prune');
-		} else if (!allowLargePrune && stale.length > existingCount * maxPruneFraction) {
+		} else if (stale.length > existingCount * maxPruneFraction) {
 			summary.pruneSkipped = `would delete ${stale.length} of ${existingCount} document(s), over the ${maxPruneFraction * 100}% safety limit`;
 		} else {
 			const { rowsDeleted } = await deleteSearchDocuments(stale, turbopuffer, {
@@ -360,5 +350,5 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	if (summary.pruneSkipped) log(`Skipped pruning: ${summary.pruneSkipped}`);
 
 	onEvent({ kind: 'phase', phase: 'done' });
-	return { blocks, channels, visionCache, summary };
+	return { blocks, channels, visionCache, colourCache, summary };
 }

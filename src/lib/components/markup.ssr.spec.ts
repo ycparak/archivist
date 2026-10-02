@@ -1,20 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
-import ResultCard from './ResultCard.svelte';
-import SearchForm from './SearchForm.svelte';
+import ArchiveIndex from './ArchiveIndex.svelte';
+import SearchField from './SearchField.svelte';
+import Shelf from './Shelf.svelte';
+import ShelfBlock from './ShelfBlock.svelte';
+import { layoutShelves } from './shelf';
 import {
 	emptyArchiveSearchState,
-	readArchiveSearchStateFromEntries,
-	toArchiveSearchHref,
+	readArchiveSearchState,
 	type ArchiveSearchState,
+	type ChannelManifestEntry,
 	type SearchResult
 } from '$lib/domain/search';
-
-function hrefsIn(body: string): URL[] {
-	return [...body.matchAll(/href="([^"]*)"/g)].map(
-		(match) => new URL(match[1].replaceAll('&amp;', '&'), 'https://archivist.test')
-	);
-}
 
 function state(overrides: Partial<ArchiveSearchState> = {}): ArchiveSearchState {
 	return { ...emptyArchiveSearchState, ...overrides };
@@ -41,241 +38,271 @@ function result(overrides: Partial<SearchResult> = {}): SearchResult {
 	};
 }
 
-describe('SearchForm markup', () => {
+const channels: ChannelManifestEntry[] = [
+	{ slug: 'materials', title: 'Materials' },
+	{ slug: 'references', title: 'References' }
+];
+
+type Link = { label: string; url: URL; current: boolean };
+
+/** Every link in the markup, its visible label or aria-label, and whether it is marked current. */
+function linksIn(body: string): Link[] {
+	return [...body.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map((match) => {
+		const attributes = match[1];
+		const href = /href="([^"]*)"/.exec(attributes)?.[1] ?? '';
+		const ariaLabel = /aria-label="([^"]*)"/.exec(attributes)?.[1];
+		const text = match[2].replace(/<[^>]*>/g, '').trim();
+		return {
+			label: (ariaLabel ?? text).replaceAll('&amp;', '&'),
+			url: new URL(href.replaceAll('&amp;', '&'), 'https://archivist.test'),
+			current: /aria-current="true"/.test(attributes)
+		};
+	});
+}
+
+function linkTo(body: string, label: string): Link {
+	const link = linksIn(body).find((candidate) => candidate.label === label);
+	if (!link) throw new Error(`No link labelled ${label}`);
+	return link;
+}
+
+function stateAt(link: Link): ArchiveSearchState {
+	return readArchiveSearchState(link.url.searchParams);
+}
+
+describe('SearchField markup', () => {
 	it('submits to the archive surface with a GET so the URL stays the source of truth', () => {
-		const { body } = render(SearchForm, {
-			props: { state: state(), channels: [], onnavigate: () => {} }
-		});
+		const { body } = render(SearchField, { props: { search: state(), onnavigate: () => {} } });
 
 		expect(body).toContain('method="GET"');
 		expect(body).toContain('action="/"');
+		expect(body).toContain('role="search"');
 	});
 
-	it('carries an active channel filter the manifest does not list as a hidden field so a submit cannot drop it', () => {
-		const { body } = render(SearchForm, {
+	it('names the field with the query parameter and labels it', () => {
+		const { body } = render(SearchField, {
+			props: { search: state({ query: 'felt' }), onnavigate: () => {} }
+		});
+
+		expect(body).toMatch(/<textarea[^>]*name="q"/);
+		expect(body).toMatch(/<textarea[^>]*id="archive-query"/);
+		expect(body).toContain('for="archive-query"');
+		expect(body).toContain('felt');
+	});
+
+	it('carries every active filter as a hidden field so a submit without JavaScript keeps it', () => {
+		const { body } = render(SearchField, {
 			props: {
-				state: state({ channelSlugs: ['materials', 'type'] }),
-				channels: [],
-				onnavigate: () => {}
-			}
-		});
-
-		const hidden = [...body.matchAll(/<input\b[^>]*type="hidden"[^>]*>/g)].map((match) => match[0]);
-		expect(hidden).toHaveLength(2);
-		for (const slug of ['materials', 'type']) {
-			expect(hidden.some((field) => field.includes(`value="${slug}"`))).toBe(true);
-		}
-		expect(hidden.every((field) => field.includes('name="channel"'))).toBe(true);
-	});
-
-	it('lists every manifest channel as a checkbox, checking only the active ones', () => {
-		const { body } = render(SearchForm, {
-			props: {
-				state: state({ channelSlugs: ['materials'] }),
-				channels: [
-					{ slug: 'materials', title: 'Materials' },
-					{ slug: 'references', title: 'References' }
-				],
-				onnavigate: () => {}
-			}
-		});
-
-		const checkboxes = [...body.matchAll(/<input\b[^>]*type="checkbox"[^>]*>/g)].map(
-			(match) => match[0]
-		);
-		const channelCheckboxes = checkboxes.filter((field) => field.includes('name="channel"'));
-		expect(channelCheckboxes).toHaveLength(2);
-		const checked = channelCheckboxes.filter((field) => /\bchecked\b/.test(field));
-		expect(checked).toHaveLength(1);
-		expect(checked[0]).toContain('value="materials"');
-		expect(body).toContain('References');
-	});
-
-	it('still preserves a channel filter the manifest does not list, alongside listed ones', () => {
-		const { body } = render(SearchForm, {
-			props: {
-				state: state({ channelSlugs: ['materials', 'unlisted-channel'] }),
-				channels: [{ slug: 'materials', title: 'Materials' }],
-				onnavigate: () => {}
-			}
-		});
-
-		const hidden = [...body.matchAll(/<input\b[^>]*type="hidden"[^>]*>/g)].map((match) => match[0]);
-		expect(hidden).toHaveLength(1);
-		expect(hidden[0]).toContain('value="unlisted-channel"');
-
-		const checkboxes = [...body.matchAll(/<input\b[^>]*type="checkbox"[^>]*>/g)].map(
-			(match) => match[0]
-		);
-		const checkedChannel = checkboxes.filter(
-			(field) => field.includes('name="channel"') && /\bchecked\b/.test(field)
-		);
-		expect(checkedChannel).toHaveLength(1);
-		expect(checkedChannel[0]).toContain('value="materials"');
-	});
-
-	it('renders no channel fieldset when the manifest is empty', () => {
-		const { body } = render(SearchForm, {
-			props: { state: state(), channels: [], onnavigate: () => {} }
-		});
-
-		expect(body).not.toContain('Channel');
-	});
-
-	it('rebuilds the same URL from what the form submits, filters included', () => {
-		const submitted = state({
-			query: 'felt',
-			mode: 'lexical',
-			channelSlugs: ['materials'],
-			blockTypes: ['Image'],
-			from: '2024-01-02',
-			to: '2024-01-31'
-		});
-
-		const entries: [string, string][] = [
-			['q', submitted.query],
-			['mode', submitted.mode],
-			['type', 'Image'],
-			['from', submitted.from],
-			['to', submitted.to],
-			['channel', 'materials']
-		];
-
-		expect(toArchiveSearchHref(readArchiveSearchStateFromEntries(entries))).toBe(
-			toArchiveSearchHref(submitted)
-		);
-	});
-
-	it('drops a blank date and an inapplicable ranking from what the form submits', () => {
-		const entries: [string, string][] = [
-			['q', ''],
-			['mode', 'semantic'],
-			['from', ''],
-			['to', '']
-		];
-
-		expect(toArchiveSearchHref(readArchiveSearchStateFromEntries(entries))).toBe('/');
-	});
-
-	it('names every control with the parameter the search request expects', () => {
-		const { body } = render(SearchForm, {
-			props: {
-				state: state({
-					query: 'felt',
+				search: state({
+					channelSlugs: ['materials', 'unlisted'],
 					blockTypes: ['Image'],
-					from: '2024-01-02',
-					to: '2024-01-31'
+					colours: ['blue'],
+					from: '2024-01-01',
+					to: '2024-06-30'
 				}),
-				channels: [],
 				onnavigate: () => {}
 			}
 		});
 
-		for (const name of ['q', 'mode', 'type', 'from', 'to']) {
-			expect(body).toContain(`name="${name}"`);
-		}
-		expect(body).toContain('value="felt"');
-		expect(body).toContain('value="2024-01-02"');
-		expect(body).toContain('value="2024-01-31"');
-	});
-
-	it('associates a label with every visible control', () => {
-		const { body } = render(SearchForm, {
-			props: { state: state(), channels: [], onnavigate: () => {} }
+		const hidden = [...body.matchAll(/<input\b[^>]*type="hidden"[^>]*>/g)].map((match) => {
+			const field = match[0];
+			return [/name="([^"]*)"/.exec(field)?.[1], /value="([^"]*)"/.exec(field)?.[1]];
 		});
-
-		for (const id of ['archive-query', 'archive-mode', 'archive-from', 'archive-to']) {
-			expect(body).toContain(`for="${id}"`);
-			expect(body).toContain(`id="${id}"`);
-		}
+		expect(hidden).toEqual([
+			['channel', 'materials'],
+			['channel', 'unlisted'],
+			['type', 'Image'],
+			['colour', 'blue'],
+			['from', '2024-01-01'],
+			['to', '2024-06-30']
+		]);
 	});
 
-	it('marks the checkbox for an active block type filter', () => {
-		const { body } = render(SearchForm, {
-			props: { state: state({ blockTypes: ['Image'] }), channels: [], onnavigate: () => {} }
-		});
-
-		const checkboxes = [...body.matchAll(/<input\b[^>]*type="checkbox"[^>]*>/g)].map(
-			(match) => match[0]
-		);
-		const checked = checkboxes.filter((field) => /\bchecked\b/.test(field));
-		expect(checked).toHaveLength(1);
-		expect(checked[0]).toContain('value="Image"');
-	});
-
-	it('shows the ranking the URL asked for', () => {
-		const { body } = render(SearchForm, {
+	it('carries a chosen ranking but leaves out browse order, which is invalid beside a query', () => {
+		const { body } = render(SearchField, {
 			props: {
-				state: state({ query: 'felt', mode: 'semantic' }),
-				channels: [],
+				search: state({ mode: 'lexical', sort: 'oldest-created' }),
 				onnavigate: () => {}
 			}
 		});
 
-		expect(body).toMatch(/<option[^>]*value="semantic"[^>]*selected/);
-		expect(body).not.toMatch(/<option[^>]*value="lexical"[^>]*selected/);
+		expect(body).toMatch(/<input[^>]*type="hidden"[^>]*name="mode"[^>]*value="lexical"/);
+		expect(body).not.toMatch(/name="sort"/);
 	});
 });
 
-describe('ResultCard markup', () => {
-	it('links the block to Are.na and leaves its image alt empty inside that named link', () => {
-		const { body } = render(ResultCard, { props: { result: result() } });
+describe('ArchiveIndex markup', () => {
+	function index(search: ArchiveSearchState, list = channels) {
+		return render(ArchiveIndex, {
+			props: { search, channels: list, blockCount: 2546, onnavigate: () => {} }
+		}).body;
+	}
 
-		expect(body).toContain('href="https://www.are.na/block/1"');
-		expect(body).toContain('Industrial felt');
-		expect(body).toContain('alt=""');
+	it('links every channel to the same search with that channel toggled', () => {
+		const body = index(state({ query: 'felt', channelSlugs: ['materials'] }));
+
+		const materials = linkTo(body, 'Materials');
+		expect(materials.current).toBe(true);
+		expect(stateAt(materials)).toMatchObject({ query: 'felt', channelSlugs: [] });
+
+		const references = linkTo(body, 'References');
+		expect(references.current).toBe(false);
+		expect(stateAt(references).channelSlugs).toEqual(['materials', 'references']);
+	});
+
+	it('keeps a channel filter the manifest does not list in every link', () => {
+		const body = index(state({ channelSlugs: ['unlisted'] }));
+
+		expect(stateAt(linkTo(body, 'Image')).channelSlugs).toEqual(['unlisted']);
+		expect(stateAt(linkTo(body, 'Materials')).channelSlugs).toEqual(['unlisted', 'materials']);
+	});
+
+	it('always offers a ranking, and offers browse order only without a query', () => {
+		const browsing = index(state());
+		expect(linkTo(browsing, 'Best match').current).toBe(true);
+		expect(stateAt(linkTo(browsing, 'Exact words')).mode).toBe('lexical');
+		expect(stateAt(linkTo(browsing, 'Most connected')).sort).toBe('most-connected');
+		expect(linkTo(browsing, 'Newest created').current).toBe(true);
+
+		const querying = index(state({ query: 'felt', mode: 'hybrid' }));
+		expect(linkTo(querying, 'Best match').current).toBe(true);
+		expect(stateAt(linkTo(querying, 'Related ideas'))).toMatchObject({
+			query: 'felt',
+			mode: 'semantic'
+		});
+		expect(linksIn(querying).some((link) => link.label === 'Newest created')).toBe(false);
+		expect(querying).toMatch(/aria-disabled="true"[^>]*>Newest created/);
+	});
+
+	it('toggles block types and colours, and stops offering colours past the limit', () => {
+		const body = index(state({ blockTypes: ['Image'], colours: ['red'] }));
+		expect(linkTo(body, 'Image').current).toBe(true);
+		expect(stateAt(linkTo(body, 'Web')).blockTypes).toEqual(['Image', 'Web']);
+		expect(linksIn(body).map((link) => link.label)).toEqual(
+			expect.arrayContaining(['Image', 'Video', 'GIF', 'Web', 'Text', 'Attachment', 'Embed'])
+		);
+		expect(linkTo(body, 'Red').current).toBe(true);
+		expect(stateAt(linkTo(body, 'Black & white')).colours).toEqual(['red', 'mono']);
+
+		const full = index(state({ colours: ['red', 'orange', 'yellow', 'green', 'blue'] }));
+		expect(linksIn(full).some((link) => link.label === 'Brown')).toBe(false);
+		expect(stateAt(linkTo(full, 'Red')).colours).toEqual(['orange', 'yellow', 'green', 'blue']);
+	});
+
+	it('names both ends of each date slider for a screen reader', () => {
+		const body = index(state());
+
+		expect(body).toMatch(/<input[^>]*type="range"[^>]*aria-label="Created from"/);
+		expect(body).toMatch(/<input[^>]*type="range"[^>]*aria-label="Created until"/);
+
+		expect(body).toMatch(/<input[^>]*type="range"[^>]*aria-label="Connected from"/);
+		expect(body).toMatch(/<input[^>]*type="range"[^>]*aria-label="Connected until"/);
+	});
+
+	it('counts the channels and blocks in the archive in the footer', () => {
+		const body = index(state());
+
+		expect(body).toContain('2 channels');
+		expect(body).toContain('2,546 blocks');
+	});
+
+	it('renders no channel list when the manifest is empty', () => {
+		expect(index(state(), [])).not.toContain('>Channel<');
+	});
+});
+
+describe('Shelf markup', () => {
+	function shelf(results: SearchResult[], query = '') {
+		return render(Shelf, {
+			props: {
+				layout: layoutShelves([results], new Map(channels.map((c) => [c.slug, c])), []),
+				requestKey: '/',
+				query,
+				coverHref: () => '/?channel=materials' as const,
+				isActiveChannel: () => false,
+				onloadmore: () => {}
+			}
+		}).body;
+	}
+
+	it('opens each channel with a cover that filters by it, captioned with its title and count', () => {
+		const body = shelf([
+			result(),
+			result({ id: 'block:2', arenaUrl: 'https://www.are.na/block/2' })
+		]);
+
+		const cover = linkTo(body, 'Show only Materials');
+		expect(cover.url.searchParams.getAll('channel')).toEqual(['materials']);
+		expect(body).toContain('2 blocks');
+	});
+
+	it('captions a block with its connection date and highlights the query in its words', () => {
+		const body = shelf([result({ title: 'Industrial felt offcuts' })], 'felt');
+
+		expect(body).toContain('2 Jan 2024');
+		expect(body).toMatch(/<mark[^>]*>felt<\/mark>/);
+	});
+
+	it('marks only the top row of captions for the search field to watch', () => {
+		const body = shelf([
+			result(),
+			result({
+				id: 'block:9',
+				channelSlugs: ['references'],
+				arenaUrl: 'https://www.are.na/block/9'
+			})
+		]);
+
+		expect(body.match(/data-top-annotation/g)).toHaveLength(2);
+	});
+});
+
+describe('ShelfBlock markup', () => {
+	it('links the block to Are.na, named by its title, without letting the router claim it', () => {
+		const { body } = render(ShelfBlock, { props: { result: result() } });
+
+		expect(body).toMatch(
+			/<a[^>]*href="https:\/\/www\.are\.na\/block\/1"[^>]*rel="external noopener noreferrer"/
+		);
+		expect(linkTo(body, 'Industrial felt').url.href).toBe('https://www.are.na/block/1');
 	});
 
 	it("uses Are.na's own alt text when the block image has it", () => {
-		const { body } = render(ResultCard, {
+		const { body } = render(ShelfBlock, {
 			props: { result: result({ imageAlt: 'A felt swatch' }) }
 		});
 
 		expect(body).toContain('alt="A felt swatch"');
 	});
 
-	it('sets intrinsic width/height attributes and drops the fixed placeholder box when Are.na supplies dimensions', () => {
-		const { body } = render(ResultCard, {
-			props: { result: result({ imageWidth: 800, imageHeight: 600 }) }
-		});
-
-		expect(body).toContain('width="800"');
-		expect(body).toContain('height="600"');
-		expect(body).not.toContain('aspect-4/3');
-	});
-
-	it('falls back to the fixed placeholder box when Are.na supplies no dimensions', () => {
-		const { body } = render(ResultCard, { props: { result: result() } });
-
-		expect(body).toContain('aspect-4/3');
-	});
-
-	it('lazy-loads by default and eagerly for the first cards', () => {
-		expect(render(ResultCard, { props: { result: result() } }).body).toContain('loading="lazy"');
-		expect(render(ResultCard, { props: { result: result(), eager: true } }).body).toContain(
+	it('lazy-loads by default and eagerly for the first blocks', () => {
+		expect(render(ShelfBlock, { props: { result: result() } }).body).toContain('loading="lazy"');
+		expect(render(ShelfBlock, { props: { result: result(), eager: true } }).body).toContain(
 			'loading="eager"'
 		);
 	});
 
-	it('renders a block without an image as text rather than an empty frame', () => {
-		const { body } = render(ResultCard, {
-			props: { result: result({ imageUrl: null, blockType: 'Text' }) }
+	it('sets a page of text for a block without an image rather than an empty frame', () => {
+		const { body } = render(ShelfBlock, {
+			props: {
+				result: result({ imageUrl: null, blockType: 'Text', description: 'Notes on felt' })
+			}
 		});
 
 		expect(body).not.toContain('<img');
-		expect(body).toContain('Industrial felt');
+		expect(body).toContain('Notes on felt');
 	});
 
 	it('labels an untitled block by its type without inventing archive metadata', () => {
-		const { body } = render(ResultCard, {
+		const { body } = render(ShelfBlock, {
 			props: { result: result({ title: null, blockType: 'Image' }) }
 		});
 
-		expect(body).toContain('Untitled image');
+		expect(body).toContain('aria-label="Untitled image"');
 	});
 });
 
-describe('ResultCard markup — video blocks', () => {
+describe('ShelfBlock markup — video blocks', () => {
 	const video = (overrides: Partial<SearchResult> = {}) =>
 		result({
 			blockType: 'Attachment',
@@ -285,7 +312,7 @@ describe('ResultCard markup — video blocks', () => {
 		});
 
 	it('plays the attachment instead of showing its thumbnail', () => {
-		const { body } = render(ResultCard, { props: { result: video() } });
+		const { body } = render(ShelfBlock, { props: { result: video() } });
 
 		expect(body).toContain('<video');
 		expect(body).toContain('src="https://attachments.are.na/1/abc.mp4"');
@@ -299,80 +326,28 @@ describe('ResultCard markup — video blocks', () => {
 	 * already wrong before any script runs.
 	 */
 	it('carries muted in the server markup, or autoplay is refused outright', () => {
-		expect(render(ResultCard, { props: { result: video() } }).body).toContain('muted=""');
+		expect(render(ShelfBlock, { props: { result: video() } }).body).toContain('muted=""');
 	});
 
-	it('loops, plays inline, and asks for no more than metadata up front', () => {
-		const { body } = render(ResultCard, { props: { result: video() } });
+	it('loops, plays inline, asks for no more than metadata, and shows no controls', () => {
+		const { body } = render(ShelfBlock, { props: { result: video() } });
 
 		expect(body).toContain('loop');
 		expect(body).toContain('playsinline');
 		expect(body).toContain('preload="metadata"');
+		expect(body).not.toContain('controls');
 	});
 
-	/** The card is a link; a control strip inside it would fight every click. */
-	it('shows no controls', () => {
-		expect(render(ResultCard, { props: { result: video() } }).body).not.toContain('controls');
-	});
-
-	it('uses the thumbnail as the poster, so the card looks the same before the first frame', () => {
-		const { body } = render(ResultCard, { props: { result: video() } });
-
-		expect(body).toContain('poster="https://images.are.na/felt.jpg"');
-	});
-
-	it('names the video for a screen reader, since it has no alt text of its own', () => {
-		expect(
-			render(ResultCard, { props: { result: video({ imageAlt: 'A glass marble rolling' }) } }).body
-		).toContain('aria-label="A glass marble rolling"');
-
-		expect(
-			render(ResultCard, { props: { result: video({ title: 'Glass in motion' }) } }).body
-		).toContain('aria-label="Glass in motion"');
-	});
-
-	it('keeps the aspect box it would have used for the thumbnail', () => {
-		const { body } = render(ResultCard, {
-			props: { result: video({ imageWidth: 800, imageHeight: 600 }) }
-		});
-
-		expect(body).toContain('width="800"');
-		expect(body).not.toContain('aspect-4/3');
-	});
-
-	it('leaves every other block on the image path', () => {
-		const { body } = render(ResultCard, { props: { result: result() } });
-
-		expect(body).not.toContain('<video');
-		expect(body).toContain('<img');
+	it('uses the thumbnail as the poster, so the page looks the same before the first frame', () => {
+		expect(render(ShelfBlock, { props: { result: video() } }).body).toContain(
+			'poster="https://images.are.na/felt.jpg"'
+		);
 	});
 
 	it('still shows a thumbnail for an Embed, which has no playable file', () => {
-		const { body } = render(ResultCard, {
-			props: { result: result({ blockType: 'Embed' }) }
-		});
+		const { body } = render(ShelfBlock, { props: { result: result({ blockType: 'Embed' }) } });
 
 		expect(body).not.toContain('<video');
 		expect(body).toContain('<img');
-	});
-
-	it('shows only the block title and a link to Are.na, without channels or other metadata', () => {
-		const { body } = render(ResultCard, {
-			props: {
-				result: result({ description: null, sourceTitle: 'A book', channelSlugs: ['materials'] })
-			}
-		});
-
-		expect(body).not.toContain('materials');
-		expect(body).not.toContain('A book');
-		expect(hrefsIn(body)).toHaveLength(1);
-	});
-
-	it('sends the block link to Are.na without letting the router claim it', () => {
-		const { body } = render(ResultCard, { props: { result: result() } });
-
-		expect(body).toMatch(
-			/<a[^>]*href="https:\/\/www\.are\.na\/block\/1"[^>]*rel="external noopener noreferrer"/
-		);
 	});
 });

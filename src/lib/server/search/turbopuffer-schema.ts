@@ -1,4 +1,6 @@
 import type Turbopuffer from '@turbopuffer/turbopuffer';
+import { colourAttribute, type ColourAttribute } from '$lib/domain/archive';
+import { ARCHIVE_COLOURS } from '$lib/domain/search';
 
 /** Turbopuffer requires this on every write once a namespace has a vector attribute. */
 export const archiveDistanceMetric: Turbopuffer.DistanceMetric = 'cosine_distance';
@@ -11,10 +13,13 @@ export const archiveNamespaceSchema = {
 		embed: { model: 'nvidia/nemotron-3-embed-8b', dims: 1024 }
 	},
 	block_type: { type: 'string', filterable: true },
+	/** The gallery's Block type: `ARCHIVE_BLOCK_TYPES`, derived at sync by `blockKind`. */
+	kind: { type: 'string', filterable: true },
 	channel_slugs: { type: '[]string', filterable: true },
 	connection_count: { type: 'uint', filterable: true },
 	connected_at: { type: 'datetime', filterable: true },
-	created_at: { type: 'datetime', filterable: false },
+	/** Filterable for the Created filter and sorts; flipped from false in place, which needs no new namespace. */
+	created_at: { type: 'datetime', filterable: true },
 	title: { type: 'string', filterable: false },
 	description: { type: 'string', filterable: false },
 	source_url: { type: 'string', filterable: false },
@@ -30,11 +35,15 @@ export const archiveNamespaceSchema = {
 	vision_title: { type: 'string', filterable: false },
 	vision_description: { type: 'string', filterable: false },
 	vision_ocr: { type: 'string', filterable: false },
-	/** Filterable for a future facet, but unproven — see the spec before exposing it. */
+	/** Filterable for a future facet, but unreliable: a grainy photograph came back as `painting`. Measure before exposing it. */
 	vision_medium: { type: 'string', filterable: true },
 	/**
 	 * Filterable for a future tag facet. Nothing reads it back yet: an attribute named in
 	 * `include_attributes` before a sync has written it fails the whole query with a 400.
 	 */
-	vision_tags: { type: '[]string', filterable: true }
+	vision_tags: { type: '[]string', filterable: true },
+	/** Per-mille share of the image in each colour: filtered on a threshold, and sorted on in browse. */
+	...(Object.fromEntries(
+		ARCHIVE_COLOURS.map((colour) => [colourAttribute(colour), { type: 'uint', filterable: true }])
+	) as Record<ColourAttribute, Turbopuffer.AttributeSchema>)
 } satisfies Record<string, Turbopuffer.AttributeSchema>;

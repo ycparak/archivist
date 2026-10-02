@@ -3,12 +3,16 @@ import Turbopuffer, {
 	type NamespaceMultiQueryParams,
 	type NamespaceQueryParams,
 	type QueryPerformance,
+	type RankByAttribute,
 	type Row
 } from '@turbopuffer/turbopuffer';
 import { z } from 'zod';
-import type { SearchTimings } from '$lib/domain/search';
+import { colourAttribute } from '$lib/domain/archive';
+import { ARCHIVE_DEFAULT_SORT, type SearchTimings } from '$lib/domain/search';
+import { colourThreshold } from './colour-filter';
 import type {
 	ArchiveSearchInput,
+	ArchiveSizeSource,
 	SearchRepository,
 	SearchResponse,
 	SearchResult
@@ -88,10 +92,16 @@ export class SearchUnavailableError extends Error {
 
 export function buildSearchFilters(input: ArchiveSearchInput): Filter | undefined {
 	const filters: Filter[] = [];
-	if (input.blockTypes.length) filters.push(['block_type', 'In', input.blockTypes]);
+	if (input.blockTypes.length) filters.push(['kind', 'In', input.blockTypes]);
 	if (input.channelSlugs.length) filters.push(['channel_slugs', 'ContainsAny', input.channelSlugs]);
+	const leading = coloursLeadOrder(input) ? input.colours[0] : undefined;
+	for (const colour of input.colours) {
+		filters.push([colourAttribute(colour), 'Gte', colourThreshold(colour, colour === leading)]);
+	}
 	if (input.from) filters.push(['connected_at', 'Gte', input.from.toISOString()]);
 	if (input.to) filters.push(['connected_at', 'Lte', input.to.toISOString()]);
+	if (input.createdFrom) filters.push(['created_at', 'Gte', input.createdFrom.toISOString()]);
+	if (input.createdTo) filters.push(['created_at', 'Lte', input.createdTo.toISOString()]);
 	return filters.length ? ['And', filters] : undefined;
 }
 
@@ -106,17 +116,53 @@ function sharedQuery(input: ArchiveSearchInput, optional: boolean) {
 	};
 }
 
+function coloursLeadOrder(input: ArchiveSearchInput): boolean {
+	return input.mode === 'browse' && input.sort === ARCHIVE_DEFAULT_SORT;
+}
+
+function sortKeys(sort: ArchiveSearchInput['sort']): RankByAttribute[] {
+	switch (sort) {
+		case 'newest-created':
+			return [['created_at', 'desc']];
+		case 'newest-connected':
+			return [['connected_at', 'desc']];
+		case 'oldest-created':
+			return [['created_at', 'asc']];
+		case 'oldest-connected':
+			return [['connected_at', 'asc']];
+		case 'most-connected':
+			return [
+				['connection_count', 'desc'],
+				['connected_at', 'desc']
+			];
+		case 'least-connected':
+			return [
+				['connection_count', 'asc'],
+				['connected_at', 'desc']
+			];
+	}
+}
+
+/**
+ * Turbopuffer leaves the order of rows tied on every sort key undefined, and it shifts with `limit`,
+ * which this paging re-fetches with every page; ending on `id` makes the sort a total order, so a
+ * block never repeats or vanishes at a page edge. With colours chosen and the default sort, the
+ * first colour's weight leads and the rest break its ties. A `Sum` of the weights would rank better,
+ * but it is an expression, and an expression takes no tiebreak. Every other sort leads with its own
+ * key, and colours then only filter.
+ */
+function browseOrder(input: ArchiveSearchInput): RankByAttribute[] {
+	const byColour = coloursLeadOrder(input)
+		? input.colours.map((colour): RankByAttribute => [colourAttribute(colour), 'desc'])
+		: [];
+	return [...byColour, ...sortKeys(input.sort), ['id', 'asc']];
+}
+
 function singleQuery(input: ArchiveSearchInput, optional: boolean): NamespaceQueryParams {
 	const shared = sharedQuery(input, optional);
 	switch (input.mode) {
 		case 'browse':
-			return {
-				...shared,
-				rank_by: [
-					['connection_count', 'desc'],
-					['connected_at', 'desc']
-				]
-			};
+			return { ...shared, rank_by: browseOrder(input) };
 		case 'lexical':
 			return { ...shared, rank_by: ['search_text', 'BM25', input.query] };
 		case 'semantic':
@@ -177,7 +223,9 @@ function asUnavailable(error: unknown): SearchUnavailableError {
 	return error instanceof SearchUnavailableError ? error : new SearchUnavailableError(error);
 }
 
-export class TurbopufferSearchRepository implements SearchRepository {
+const blockCountSchema = z.object({ blocks: z.number().int().nonnegative() });
+
+export class TurbopufferSearchRepository implements SearchRepository, ArchiveSizeSource {
 	private readonly namespace;
 
 	constructor(config: TurbopufferConfig) {
@@ -206,6 +254,18 @@ export class TurbopufferSearchRepository implements SearchRepository {
 					throw asUnavailable(retryError);
 				}
 			}
+			throw asUnavailable(error);
+		}
+	}
+
+	async countBlocks(): Promise<number> {
+		try {
+			const response = await this.namespace.query(
+				{ aggregate_by: { blocks: ['Count'] } },
+				{ timeout: QUERY_TIMEOUT_MS, maxRetries: QUERY_MAX_RETRIES }
+			);
+			return blockCountSchema.parse(response.aggregations).blocks;
+		} catch (error) {
 			throw asUnavailable(error);
 		}
 	}

@@ -187,22 +187,6 @@ describe('applyWriteBack', () => {
 		expect(summary.blocksPlanned).toBe(1);
 	});
 
-	it('honours a limit so a first push can be staged', async () => {
-		const blocks = ['11', '12', '13'].map((id) => block({ id }));
-		const manyCache = new Map(blocks.map((b) => [b.id, entry(b.id)]));
-		const { plans } = planWriteBack(blocks, manyCache, { ownerId: OWNER, now });
-		const updateBlock = vi.fn(async () => {});
-
-		const summary = await applyWriteBack(plans, skipped, {
-			updateBlock,
-			delayFn: async () => {},
-			limit: 2
-		});
-
-		expect(updateBlock).toHaveBeenCalledTimes(2);
-		expect(summary.blocksPlanned).toBe(2);
-	});
-
 	it('paces writes rather than firing them in parallel', async () => {
 		const blocks = ['11', '12'].map((id) => block({ id }));
 		const manyCache = new Map(blocks.map((b) => [b.id, entry(b.id)]));

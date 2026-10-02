@@ -1,7 +1,8 @@
-import { spawn } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runFfmpeg, type RunFfmpegOptions } from '../ffmpeg';
+import { isAnimatedImage } from '$lib/domain/archive';
 
 /**
  * Are.na stores animated GIFs on a CDN that publishes no smaller rendition — `thumb`, `square`,
@@ -28,53 +29,9 @@ export const MAX_TRANSCODED_BYTES = 4 * 1024 * 1024;
 /** A GIF this large is a download problem before it is a transcode problem. */
 export const MAX_SOURCE_BYTES = 64 * 1024 * 1024;
 
-const DEFAULT_TIMEOUT_MS = 60_000;
-
-export class FfmpegMissingError extends Error {
-	constructor(command: string, options?: ErrorOptions) {
-		super(
-			`Could not run "${command}". Animated blocks are transcoded locally before being described, which needs ffmpeg on PATH — install it (brew install ffmpeg) or pass --no-vision-video to describe them from a single frame instead.`,
-			options
-		);
-		this.name = 'FfmpegMissingError';
-	}
-}
-
-export interface RunFfmpegOptions {
-	command?: string;
-	timeoutMs?: number;
-	signal?: AbortSignal;
-}
-
-function runFfmpeg(args: string[], options: RunFfmpegOptions = {}): Promise<void> {
-	const { command = 'ffmpeg', timeoutMs = DEFAULT_TIMEOUT_MS, signal } = options;
-
-	return new Promise((resolve, reject) => {
-		const child = spawn(command, args, { signal });
-		let stderr = '';
-
-		child.stderr?.on('data', (chunk: Buffer) => {
-			// Keep only the tail: ffmpeg is verbose and only the last lines explain a failure.
-			stderr = (stderr + chunk.toString()).slice(-2000);
-		});
-
-		const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
-
-		child.on('error', (error: NodeJS.ErrnoException) => {
-			clearTimeout(timer);
-			reject(error.code === 'ENOENT' ? new FfmpegMissingError(command, { cause: error }) : error);
-		});
-
-		child.on('close', (code) => {
-			clearTimeout(timer);
-			if (code === 0) resolve();
-			else reject(new Error(`ffmpeg exited with code ${code}: ${stderr.trim() || 'no output'}`));
-		});
-	});
-}
-
 export type TranscodeResult =
-	{ kind: 'video'; dataUrl: string; bytes: number } | { kind: 'skipped'; reason: string };
+	| { kind: 'video'; dataUrl: string; bytes: number }
+	| { kind: 'skipped'; cause: 'unreachable' | 'too-large'; reason: string };
 
 export interface TranscodeOptions extends RunFfmpegOptions {
 	fetchFn?: typeof fetch;
@@ -103,13 +60,18 @@ export async function transcodeToVideoDataUrl(
 	onStage?.('downloading');
 	const response = await fetchFn(url, { headers: { 'User-Agent': 'archivist' } });
 	if (!response.ok) {
-		return { kind: 'skipped', reason: `source returned HTTP ${response.status}` };
+		return {
+			kind: 'skipped',
+			cause: 'unreachable',
+			reason: `source returned HTTP ${response.status}`
+		};
 	}
 
 	const source = Buffer.from(await response.arrayBuffer());
 	if (source.byteLength > maxSourceBytes) {
 		return {
 			kind: 'skipped',
+			cause: 'too-large',
 			reason: `source is ${(source.byteLength / 1024 / 1024).toFixed(1)}MB, over the ${maxSourceBytes / 1024 / 1024}MB download limit`
 		};
 	}
@@ -155,6 +117,7 @@ export async function transcodeToVideoDataUrl(
 		if (encoded.byteLength > maxTranscodedBytes) {
 			return {
 				kind: 'skipped',
+				cause: 'too-large',
 				reason: `transcoded to ${(encoded.byteLength / 1024 / 1024).toFixed(1)}MB, over the ${maxTranscodedBytes / 1024 / 1024}MB inline limit`
 			};
 		}
@@ -212,5 +175,5 @@ export async function cleanupStaleTranscodes(
  * the URL, since the CDN path carries no reliable extension.
  */
 export function isAnimated(contentType: string | null | undefined): boolean {
-	return contentType?.toLowerCase().trim() === 'image/gif';
+	return isAnimatedImage(contentType);
 }

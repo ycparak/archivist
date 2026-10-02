@@ -15,6 +15,7 @@ export type SyncPhase =
 	| 'starting'
 	| 'discovering'
 	| 'fetching'
+	| 'measuring'
 	| 'describing'
 	| 'writing-back'
 	| 'upserting'

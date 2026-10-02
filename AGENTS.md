@@ -12,12 +12,15 @@ This is an **agent router**: concise context loaded every session, read by both 
 
 Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, Turbopuffer (search datastore), Are.na V3 (source of truth for content).
 
-- `src/lib/domain/`: framework-free domain types and transformations. This code ships to the browser, so keep it free of Zod schemas, provider shapes, and any runtime validation library — put those behind `src/lib/server/`.
-- `src/lib/server/arena/`: Are.na transport and pagination only.
-- `src/lib/server/indexing/`: normalization, document construction, and sync orchestration.
-- `src/lib/server/search/`: search request validation, Turbopuffer adapter, and result mapping.
+- `src/lib/domain/`: framework-free domain types and transformations. `titles.ts` decides which Are.na titles carry no information; write-back and captions both use it. `search.ts` (the URL grammar, `SearchResult`, `ArchiveSearchState`) ships to the browser, so it must stay free of Zod schemas, provider shapes, and any runtime validation library. `archive.ts` (`ArchiveBlock`, `SearchDocument`, `toSearchDocument`) is imported only from `src/lib/server/` and does use Zod; never import it from a component or route markup. Provider validation and provider shapes live under `src/lib/server/`.
+- `src/lib/server/arena/`: Are.na transport, payload schemas, and pagination only.
+- `src/lib/server/indexing/`: normalization, channel filtering, the channel manifest, sync orchestration, the colour stage (`colour/`), the vision stage (`vision/`), and CLI progress reporting (`progress/`). It also holds the three committed files the sync writes: `channel-manifest.json`, `colour-cache.jsonl` and `vision-cache.jsonl`.
+- `src/lib/server/search/`: search request validation, env config, `executeArchiveSearch` (dedupe and paging), the read-side `SearchRepository`, result mapping, the evaluation-case schema, and the Turbopuffer write client and schema the sync uses.
+- `src/lib/server/rate-limit.ts`: edge rate limiting, wired in through `src/hooks.server.ts`.
 - `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
 - `src/routes/`: HTTP and UI composition only. Provider calls and ranking expressions do not belong in route files.
+- `src/styles/`: fonts, Tailwind theme tokens and the semantic colour roles.
+- `scripts/`: the manual CLIs (`sync.ts`, `evaluate-search.ts`, `calibrate-colour.ts`), the search evaluation fixture, and `worktree.sh`.
 
 Full technical detail: [docs/architecture.md](./docs/architecture.md).
 
@@ -27,10 +30,9 @@ All project documentation lives in `./docs/`. Keep active feature specs and work
 `./docs/specs/`, completed worksheets in `./docs/history/worksheets/`, and architecture decisions
 in `./docs/decisions/`.
 
-**Product**
+**Product & architecture**
 
-- [docs/prd.md](./docs/prd.md) — product requirements, audience, V1 job to be done
-- [docs/architecture.md](./docs/architecture.md) — data access model, Turbopuffer schema, retrieval behavior, sync lifecycle
+- [docs/architecture.md](./docs/architecture.md) — data access model, Turbopuffer schema, retrieval behavior, sync lifecycle, vision indexing
 
 **Workflow**
 
@@ -59,24 +61,25 @@ in `./docs/decisions/`.
 - Update [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) when completing user-visible work.
 - Load only docs relevant to the current task and scope.
 - If a behavior or rule changes in practice, update the owning doc in the same task.
-- Never run `bun run sync` (or any command that writes to the live Turbopuffer namespace or calls the maintainer's Are.na account, including `--vision` and `--push-arena-apply`). When a task needs a sync or re-index after the code changes, finish the code and tests, then hand back and ask the maintainer to run it, saying which command and why. Dry runs that write nothing are fine.
+- Never run a plain `bun run sync`. It does three things: it calls OpenRouter (which costs money), writes titles back to the maintainer's Are.na account, and upserts and prunes the live Turbopuffer namespace. Agents may run `bun run sync --no-vision`, `bun run sync --no-push-arena`, or both together, when a task needs the index refreshed. Know what each one still does: every variant upserts and prunes the live namespace; `--no-vision` alone still writes cached titles and descriptions to Are.na; `--no-push-arena` alone still calls OpenRouter for any block without a cached description. Use both flags unless the task needs one of those stages. Run it only after the code and tests are done, and say in the handoff which command you ran and why. Read-only commands such as `bun run evaluate:search` are fine.
 - In autonomous/loop mode, complete exactly one task at a time and commit immediately. Do not batch unless the user explicitly asks.
 - When coding or reviewing, follow the Engineering Guardrails and Product/Search rules below and the guidelines in linked docs.
 
-## Product Boundary
+## Scope
 
-- V1 is an open-source public gallery and search surface for one maintainer's Are.na archive.
-- Results are original Are.na blocks. Do not introduce generated collections, summaries, tags, link crawling, auth, accounts, analytics, background queues, or a chat UI in V1.
-- Exception, decided: a vision model describes blocks that are already synced, and that text is indexed for retrieval. Scope and constraints are fixed by [docs/decisions/adr-vision-indexing.md](./docs/decisions/adr-vision-indexing.md) and [docs/specs/spec-vision-indexing.md](./docs/specs/spec-vision-indexing.md) — read both before touching `src/lib/server/indexing/vision/`. Query time stays LLM-free.
-- Sync is manual and maintainer-only. Public requests query Turbopuffer only; they must never proxy to Are.na.
-- V2 may use Mastra for an evidence-first research mode. Keep V1 retrieval framework-agnostic so it can become a Mastra tool later. Do not start V2 work until the human explicitly starts that milestone.
+Archivist is a public gallery and search surface for one maintainer's Are.na archive. A new plan is being written; until it lands, the points below describe what the code does and are the boundary for changes. Anything beyond them needs the maintainer's explicit go-ahead.
+
+- Results are original Are.na blocks. Nothing generated is ever presented as a result.
+- There is no auth, accounts, analytics, background queue, chat/agent UI, or link crawling. Do not install Mastra or add agent behavior.
+- Query time is LLM-free. The one use of a model is the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
+- Sync is manual. A plain `bun run sync` is maintainer-only; agents may run the flagged variants described under Hard Rules. Public requests query Turbopuffer only; they must never proxy to Are.na.
 
 ## Search Invariants
 
 - Use the `search_text` schema in `docs/architecture.md` for both BM25 and native embeddings.
 - `src/lib/domain/search.ts` owns the URL search grammar (parameter names, the implicit-mode rule, the date format). The server parser and the UI both consume it; do not restate a parameter name anywhere else.
 - Hybrid means one Turbopuffer `multiQuery` with BM25 + native ANN and `rerank_by: ['RRF']`; do not implement ad-hoc score arithmetic in the UI.
-- Filter only `block_type`, `channel_slugs`, and `connected_at` in V1.
+- Filter only `kind`, `channel_slugs`, `connected_at`, `created_at`, and the `colour_*` weights. `kind` is the gallery's Block type, derived at sync by `blockKind`; `block_type` is Are.na's own type and is not a filter. `sort` changes the browse order only; a text query always ranks by relevance, and without a query every request browses. Colour browse sorts on the weights with an `id` tiebreak, never on a `Sum` expression, because expression ties have no stable order across pages. See [Retrieval behavior](./docs/architecture.md#retrieval-behavior).
 - Schema changes that alter an existing Turbopuffer attribute's type require a new versioned namespace. Record that migration as an ADR in `docs/decisions/`.
 
 ## Engineering Guardrails
@@ -94,7 +97,9 @@ in `./docs/decisions/`.
 - Keep code comments exceptionally rare. Add one only when it records non-obvious reasoning, an external constraint, or a deliberate tradeoff that cannot be made clear through names and structure; never narrate what the code already says.
 - Add a focused unit test for every normalizer, filter builder, and search-result mapper. Test behavior, not private implementation details.
 - Use accessible native controls, URL-backed browse/search state, server-side data access, and responsive image dimensions.
+- Write every Tailwind class in its canonical form: `@container-size`, not `[container-type:size]`; `max-h-lh`, not `max-h-[1lh]`. This is Tailwind IntelliSense's `suggestCanonicalClasses` rule, and `bun run lint` enforces it through `bun run check:classes`, which prints the canonical spelling for each offender. Never silence it with a raw arbitrary property when a utility exists.
 - Keep secrets server-only; do not log tokens, full raw API payloads, or user search queries.
+- When changing `docs/CHANGELOG.md` or `docs/TODOS.md`, keep one consistent format by matching the existing entries: the changelog sits under `## Unreleased` in `Added` / `Changed` / `Removed` / `Fixed` groups, newest first, one past-tense line per change; TODOs keep their fixed sections, with items written as `- [ ] **Title.** One sentence.`
 - Prefer the existing official SDKs. Add a dependency only when it removes meaningful production code; document why in an ADR if it changes the architecture.
 
 ## Tooling — Svelte MCP Server
@@ -110,8 +115,8 @@ This repo configures the official Svelte MCP server for **both** Claude Code (`.
 Run after a meaningful change and fix failures before handoff:
 
 ```sh
-bun run check   # wrangler types, svelte-kit sync, svelte-check (TypeScript)
-bun run lint    # prettier --check, eslint
+bun run check   # wrangler types, svelte-kit sync, svelte-check, tsc on scripts/
+bun run lint    # prettier --check, eslint, canonical Tailwind classes
 bun run test    # vitest
 bun run build   # wrangler types, vite build
 ```
@@ -124,7 +129,7 @@ bun run build   # wrangler types, vite build
 
 ## Pull Request Hygiene
 
-- Keep the first V1 pull request to one vertical slice.
+- Keep each pull request to one vertical slice.
 - State the changed behavior, test evidence, and any environment/configuration change.
 - Never commit `.env`, local snapshots containing private blocks, or a populated Turbopuffer export.
 

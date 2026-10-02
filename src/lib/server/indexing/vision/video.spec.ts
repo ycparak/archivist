@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { FfmpegMissingError } from '../ffmpeg';
 import {
 	cleanupStaleTranscodes,
-	FfmpegMissingError,
 	isAnimated,
 	MAX_SOURCE_BYTES,
 	transcodeToVideoDataUrl
@@ -13,7 +13,7 @@ import {
  * a mocked child process would pass with any arguments at all, and these arguments have been wrong
  * twice.
  *
- * `--no-vision-video` makes a machine without ffmpeg a supported way to run this project, so the
+ * `--no-vision` makes a machine without ffmpeg a supported way to run this project, so the
  * suites that need it skip rather than fail there. CI installs it and the check below asserts it,
  * so a skip can never quietly turn into missing coverage on the branch gate.
  */
@@ -114,6 +114,7 @@ describe.skipIf(!hasFfmpeg)('transcodeToVideoDataUrl', () => {
 
 		expect(result).toEqual({
 			kind: 'skipped',
+			cause: 'too-large',
 			reason: expect.stringContaining('over the') as unknown as string
 		});
 	});
@@ -126,6 +127,7 @@ describe.skipIf(!hasFfmpeg)('transcodeToVideoDataUrl', () => {
 
 		expect(result.kind).toBe('skipped');
 		if (result.kind !== 'skipped') return;
+		expect(result.cause).toBe('too-large');
 		expect(result.reason).toContain('inline limit');
 	});
 
@@ -134,7 +136,11 @@ describe.skipIf(!hasFfmpeg)('transcodeToVideoDataUrl', () => {
 			fetchFn: respondWith(Buffer.alloc(0), { status: 404 })
 		});
 
-		expect(result).toEqual({ kind: 'skipped', reason: 'source returned HTTP 404' });
+		expect(result).toEqual({
+			kind: 'skipped',
+			cause: 'unreachable',
+			reason: 'source returned HTTP 404'
+		});
 	});
 
 	it('names ffmpeg and how to install it when the binary is missing', async () => {

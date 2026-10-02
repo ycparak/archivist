@@ -26,7 +26,7 @@ Keep it tight. Another agent should be able to retrace your steps by reading the
 
 1. Check the git workspace state. If the working tree is dirty with WIP, either finish it cleanly or stash it. Note this in your worksheet.
 2. Run validation to confirm the project is healthy before starting:
-   - `bun run check` — svelte-kit sync, wrangler types, and svelte-check (TypeScript)
+   - `bun run check` — wrangler types, svelte-kit sync, svelte-check, and `tsc` on `scripts/`
    - `bun run lint` — prettier + eslint
    - `bun run test` — Vitest
 3. Fix any failures before entering the loop.
@@ -39,9 +39,9 @@ Keep it tight. Another agent should be able to retrace your steps by reading the
 
 ## Step 2: Investigate
 
-1. Read the linked spec (if any), relevant docs (`docs/prd.md`, `docs/architecture.md`, `docs/decisions/` for prior ADRs), and code. Understand the root cause or design space, not just the surface symptom.
+1. Read the linked spec (if any), relevant docs (`docs/architecture.md`, `docs/decisions/` for prior ADRs), and code. Understand the root cause or design space, not just the surface symptom.
 2. For bugs: write a failing test that reproduces the issue when practical. If a test is genuinely impractical, document why in the worksheet.
-3. For spec-driven features: identify the spec's non-negotiable constraints — the product boundary, architecture boundaries, and search invariants in [`AGENTS.md`](../../AGENTS.md) are non-negotiable unless the human explicitly changes them.
+3. For spec-driven features: identify the spec's non-negotiable constraints — the scope, architecture boundaries, and search invariants in [`AGENTS.md`](../../AGENTS.md) are non-negotiable unless the human explicitly changes them.
 4. If a Svelte/SvelteKit pattern is unfamiliar, use the Svelte MCP server's documentation tool before writing it — see [Use the Svelte MCP Server](../svelte-guidelines.md#use-the-svelte-mcp-server).
 5. If investigation reveals the task is too ambiguous or severely underspecified, move it back to **Up Next** (or a new **Needs Input** section) with a concise `[AGENT NOTE: ...]` explaining findings, blockers, and what decision is needed. Leave the worksheet so the human can review. Commit both and return to Step 1. This should be rare — make good autonomous decisions unless human input is truly required.
 
@@ -138,6 +138,6 @@ This summary is how the human reviewer starts their day.
 
 - One commit per task. Do not batch unless explicitly asked.
 - Be concise. Follow existing code patterns. This is a maturing codebase — use established patterns instead of inventing new ones.
-- Keep the product boundary in mind: V1 does not gain generated collections, summaries, tags, OCR, link crawling, auth, accounts, analytics, background queues, or a chat UI (see `AGENTS.md`).
+- Keep the scope in `AGENTS.md` in mind: no auth, accounts, analytics, background queues, link crawling, query-time LLM, or chat UI without an explicit decision from the maintainer.
 - For UI changes, test in the browser via `bun run dev` before reporting the task as complete.
 - When in doubt about scope or intent, move to **Needs Input** rather than guessing — but this should be rare. The cost is a lost day.

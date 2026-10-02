@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
 	archiveBlockSchema,
 	clampOcr,
+	blockKind,
 	isDegenerateText,
 	MAX_OCR_CHARS,
 	toSearchDocument
 } from './archive';
-import { ARCHIVE_BLOCK_TYPES } from './search';
+import { ARCHIVE_BLOCK_TYPES, ARCHIVE_COLOURS } from './search';
 
 describe('toSearchDocument', () => {
 	it('builds stable searchable text without inventing image content', () => {
@@ -74,6 +75,39 @@ describe('toSearchDocument', () => {
 		expect(document.image_alt).toBeNull();
 		expect(document.image_width).toBeNull();
 		expect(document.image_height).toBeNull();
+	});
+});
+
+describe('toSearchDocument — colour weights', () => {
+	const block = () =>
+		archiveBlockSchema.parse({
+			id: 9,
+			type: 'Image',
+			title: 'Brutalist window',
+			arenaUrl: 'https://www.are.na/block/9',
+			channels: [{ slug: 'architecture', title: 'Architecture' }]
+		});
+
+	const weights = Object.fromEntries(
+		ARCHIVE_COLOURS.map((colour) => [colour, colour === 'grey' ? 640 : colour === 'mono' ? 980 : 0])
+	) as Record<(typeof ARCHIVE_COLOURS)[number], number>;
+
+	it('writes one attribute per colour from the measured weights', () => {
+		const document = toSearchDocument(block(), null, weights);
+		expect(document.colour_grey).toBe(640);
+		expect(document.colour_mono).toBe(980);
+		expect(document.colour_red).toBe(0);
+	});
+
+	it('weighs zero in every colour for a block that was never measured', () => {
+		const document = toSearchDocument(block());
+		for (const colour of ARCHIVE_COLOURS) expect(document[`colour_${colour}`]).toBe(0);
+	});
+
+	it('keeps colour out of the searchable text', () => {
+		expect(toSearchDocument(block(), null, weights).search_text).toBe(
+			toSearchDocument(block()).search_text
+		);
 	});
 });
 
@@ -287,8 +321,8 @@ describe('toSearchDocument — a runaway already in the cache', () => {
 });
 
 describe('block type indexing', () => {
-	it('indexes every filterable block type verbatim', () => {
-		for (const blockType of ARCHIVE_BLOCK_TYPES) {
+	it("indexes Are.na's block type verbatim beside the kind the gallery filters by", () => {
+		for (const blockType of ['Image', 'Link', 'Text', 'Attachment', 'Embed']) {
 			const document = toSearchDocument(
 				archiveBlockSchema.parse({
 					id: 1,
@@ -298,6 +332,30 @@ describe('block type indexing', () => {
 				})
 			);
 			expect(document.block_type).toBe(blockType);
+			expect(ARCHIVE_BLOCK_TYPES).toContain(document.kind);
 		}
+	});
+});
+
+describe('blockKind', () => {
+	it('names a block by what it is to a reader', () => {
+		expect(blockKind({ type: 'Image', imageContentType: 'image/jpeg' })).toBe('Image');
+		expect(blockKind({ type: 'Link' })).toBe('Web');
+		expect(blockKind({ type: 'Text' })).toBe('Text');
+		expect(blockKind({ type: 'Embed' })).toBe('Embed');
+		expect(blockKind({ type: 'Attachment' })).toBe('Attachment');
+		expect(blockKind({ type: 'Channel' })).toBeNull();
+	});
+
+	it('pulls videos and animated GIFs out of whichever block holds them', () => {
+		expect(blockKind({ type: 'Attachment', videoUrl: 'https://attachments.are.na/1/a.mp4' })).toBe(
+			'Video'
+		);
+		expect(blockKind({ type: 'Image', imageContentType: 'image/GIF' })).toBe('GIF');
+		expect(blockKind({ type: 'Attachment', imageContentType: 'image/gif' })).toBe('GIF');
+	});
+
+	it('keeps a link a web page even when its preview is a GIF', () => {
+		expect(blockKind({ type: 'Link', imageContentType: 'image/gif' })).toBe('Web');
 	});
 });

@@ -4,12 +4,13 @@ import {
 	serializeChannelManifest
 } from '$lib/server/indexing/channel-manifest';
 import { parseSlugList } from '$lib/server/indexing/channel-filter';
-import { createSyncReporter } from '$lib/server/indexing/progress/reporter';
 import {
-	syncArchive,
-	type PushArenaOptions,
-	type VisionSyncOptions
-} from '$lib/server/indexing/sync';
+	parseColourCache,
+	serializeColourCache,
+	type ColourCacheEntry
+} from '$lib/server/indexing/colour/cache';
+import { createSyncReporter } from '$lib/server/indexing/progress/reporter';
+import { syncArchive, type VisionSyncOptions } from '$lib/server/indexing/sync';
 import { createVisionClient } from '$lib/server/indexing/vision/client';
 import {
 	parseVisionCache,
@@ -19,31 +20,34 @@ import {
 import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 
 const VISION_CACHE_URL = new URL('../src/lib/server/indexing/vision-cache.jsonl', import.meta.url);
+const COLOUR_CACHE_URL = new URL('../src/lib/server/indexing/colour-cache.jsonl', import.meta.url);
 
-function flagValue(name: string): string | undefined {
-	const prefix = `--${name}=`;
-	return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
+/**
+ * Vision and Are.na write-back are on by default, so a mistyped opt-out (`--no-vison`) must not be
+ * ignored: it would run the stage, and write to the maintainer's archive, anyway.
+ */
+const KNOWN_FLAGS = new Set(['no-vision', 'no-push-arena', 'no-colour']);
+
+const unknownFlags = process.argv
+	.slice(2)
+	.filter((arg) => !(arg.startsWith('--') && KNOWN_FLAGS.has(arg.slice(2))));
+if (unknownFlags.length > 0) {
+	console.error(
+		`Unknown argument(s): ${unknownFlags.join(' ')}. Known flags: ${[...KNOWN_FLAGS].map((flag) => `--${flag}`).join(', ')}.`
+	);
+	process.exit(1);
 }
 
 function hasFlag(name: string): boolean {
-	return process.argv.includes(`--${name}`) || flagValue(name) !== undefined;
+	return process.argv.includes(`--${name}`);
 }
 
-/** `--revision` revises everything; `--revision=a,b` revises only those channels. */
-function parseRevise(): boolean | Set<string> | undefined {
-	if (!hasFlag('revision')) return undefined;
-	const value = flagValue('revision');
-	if (!value) return true;
-	const slugs = value
-		.split(',')
-		.map((slug) => slug.trim())
-		.filter(Boolean);
-	return slugs.length ? new Set(slugs) : true;
-}
-
-async function readVisionCache(): Promise<Map<string, VisionCacheEntry>> {
+async function readCache<T>(
+	url: URL,
+	parse: (contents: string) => Map<string, T>
+): Promise<Map<string, T>> {
 	try {
-		return parseVisionCache(await readFile(VISION_CACHE_URL, 'utf8'));
+		return parse(await readFile(url, 'utf8'));
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Map();
 		throw error;
@@ -51,40 +55,17 @@ async function readVisionCache(): Promise<Map<string, VisionCacheEntry>> {
 }
 
 function resolveVisionOptions(): Omit<VisionSyncOptions, 'onEntry'> | undefined {
-	const dryRun = hasFlag('vision-dry-run');
-	if (!hasFlag('vision') && !dryRun) return undefined;
+	if (hasFlag('no-vision')) return undefined;
 
 	const apiKey = process.env.OPENROUTER_API_KEY;
 	if (!apiKey) {
 		console.error(
-			'OPENROUTER_API_KEY must be set to run the vision stage. Copy .env.example to .env and fill it in.'
+			'OPENROUTER_API_KEY must be set to run the vision stage. Copy .env.example to .env and fill it in, or pass --no-vision.'
 		);
 		process.exit(1);
 	}
 
-	const limit = positiveIntFlag('vision-limit');
-	const concurrency = positiveIntFlag('vision-concurrency');
-
-	return {
-		client: createVisionClient({ apiKey }),
-		limit,
-		concurrency,
-		revise: parseRevise(),
-		// Animations are read as motion by default; the opt-out is for machines without ffmpeg.
-		video: !hasFlag('no-vision-video'),
-		dryRun
-	};
-}
-
-function positiveIntFlag(name: string): number | undefined {
-	const raw = flagValue(name);
-	if (raw === undefined) return undefined;
-	const value = Number(raw);
-	if (!Number.isInteger(value) || value < 0) {
-		console.error(`--${name} must be a non-negative integer, got "${raw}"`);
-		process.exit(1);
-	}
-	return value;
+	return { client: createVisionClient({ apiKey }) };
 }
 
 const accessToken = process.env.ARENA_ACCESS_TOKEN;
@@ -103,15 +84,11 @@ if (!apiKey || !region) {
 }
 const namespace = process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE;
 
-function resolvePushArena(): PushArenaOptions | undefined {
-	const apply = hasFlag('push-arena-apply');
-	if (!hasFlag('push-arena') && !apply) return undefined;
-	return { apply, limit: positiveIntFlag('push-arena-limit') };
-}
-
 const vision = resolveVisionOptions();
-const pushArena = resolvePushArena();
-const visionCache = await readVisionCache();
+const pushArena = !hasFlag('no-push-arena');
+const measureColour = !hasFlag('no-colour');
+const visionCache = await readCache(VISION_CACHE_URL, parseVisionCache);
+const colourCache = await readCache(COLOUR_CACHE_URL, parseColourCache);
 const reporter = createSyncReporter();
 
 // A killed run must not leave the terminal with its cursor still hidden.
@@ -124,42 +101,68 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 
 /**
  * A full backfill runs for hours. Checkpointing every 25 entries means a crash, a rate-limit wall
- * or a Ctrl-C costs at most 25 descriptions instead of the whole run — and the next run resumes
- * from the file, because a cached block is never re-sent.
+ * or a Ctrl-C costs at most 25 entries instead of the whole run — and the next run resumes from the
+ * file, because a cached block is never redone.
  */
 const CHECKPOINT_EVERY = 25;
-const live = new Map(visionCache);
-let sinceCheckpoint = 0;
+
+/**
+ * Writes are queued, so a slow checkpoint can never land after, and overwrite, the final write.
+ */
+function cacheWriter<T extends { block_id: string }>(
+	initial: Map<string, T>,
+	write: (entries: Iterable<T>) => Promise<void>
+) {
+	const live = new Map(initial);
+	let sinceCheckpoint = 0;
+	let queue = Promise.resolve();
+	const enqueue = (entries: T[]) => {
+		const next = queue.then(() => write(entries));
+		queue = next.catch(() => {});
+		return next;
+	};
+	return {
+		onEntry(entry: T) {
+			live.set(entry.block_id, entry);
+			if (++sinceCheckpoint < CHECKPOINT_EVERY) return;
+			sinceCheckpoint = 0;
+			enqueue([...live.values()]).catch((error) => {
+				reporter.log(
+					`  checkpoint write failed: ${error instanceof Error ? error.message : String(error)}`
+				);
+			});
+		},
+		final: (entries: T[]) => enqueue(entries)
+	};
+}
 
 async function writeVisionCache(entries: Iterable<VisionCacheEntry>) {
 	await writeFile(VISION_CACHE_URL, serializeVisionCache(entries));
 }
 
-const onEntry = (entry: VisionCacheEntry) => {
-	live.set(entry.block_id, entry);
-	if (++sinceCheckpoint < CHECKPOINT_EVERY) return;
-	sinceCheckpoint = 0;
-	void writeVisionCache(live.values()).catch((error) => {
-		reporter.log(
-			`  checkpoint write failed: ${error instanceof Error ? error.message : String(error)}`
-		);
-	});
-};
+async function writeColourCache(entries: Iterable<ColourCacheEntry>) {
+	await writeFile(COLOUR_CACHE_URL, serializeColourCache(entries));
+}
+
+const visionWriter = cacheWriter(visionCache, writeVisionCache);
+const colourWriter = cacheWriter(colourCache, writeColourCache);
 
 try {
 	const {
 		channels,
 		visionCache: mergedVisionCache,
+		colourCache: mergedColourCache,
 		summary
 	} = await syncArchive({
 		accessToken,
 		turbopuffer: { apiKey, region, namespace },
 		log: (message) => reporter.log(message),
 		onEvent: (event) => reporter.emit(event),
-		allowLargePrune: hasFlag('allow-large-prune'),
 		visionCache,
-		vision: vision && { ...vision, onEntry },
+		vision: vision && { ...vision, onEntry: visionWriter.onEntry },
 		pushArena,
+		colourCache,
+		colour: measureColour ? { onEntry: colourWriter.onEntry } : undefined,
 		channelFilter: {
 			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
 			allowPrivate: parseSlugList(process.env.ARENA_ALLOW_PRIVATE_CHANNELS)
@@ -171,8 +174,12 @@ try {
 	reporter.stop();
 
 	if (mergedVisionCache) {
-		await writeVisionCache(mergedVisionCache);
+		await visionWriter.final(mergedVisionCache);
 		console.log(`Wrote vision cache: ${mergedVisionCache.length} entr(ies)`);
+	}
+	if (mergedColourCache) {
+		await colourWriter.final(mergedColourCache);
+		console.log(`Wrote colour cache: ${mergedColourCache.length} entr(ies)`);
 	}
 
 	const manifest = buildChannelManifest(channels);
@@ -198,22 +205,39 @@ try {
 	console.log(
 		`  Upserted:            ${summary.documentsUpserted} document(s) into "${namespace}" across ${summary.upsertBatches} batch(es)`
 	);
+	if (summary.colour) {
+		const c = summary.colour;
+		console.log(`  Colour cache hits:   ${c.cacheHits} (no download)`);
+		console.log(`  Colour measured:     ${c.measured}`);
+		if (c.skippedTooLarge) console.log(`  Colour skipped:      ${c.skippedTooLarge} (too large)`);
+		if (c.skippedUnreachable)
+			console.log(
+				`  Colour skipped:      ${c.skippedUnreachable} (source could not be downloaded)`
+			);
+		if (c.skippedUnsupported)
+			console.log(`  Colour skipped:      ${c.skippedUnsupported} (format not readable)`);
+		if (c.failed.length) {
+			console.log(`  Colour failed:       ${c.failed.length}`);
+			for (const failure of c.failed.slice(0, 10)) {
+				console.log(`    - ${failure.blockId}: ${failure.error}`);
+			}
+			if (c.failed.length > 10) console.log(`    ... and ${c.failed.length - 10} more`);
+		}
+	}
 	if (summary.vision) {
 		const v = summary.vision;
 		console.log(`  Blocks with image:   ${v.blocksWithImage}`);
 		console.log(`  Vision cache hits:   ${v.cacheHits} (no model call, no cost)`);
-		if (vision?.dryRun) {
-			const would = v.blocksWithImage - v.cacheHits - v.skippedOverLimit;
-			console.log(`  Vision would run:    ${would} block(s) — dry run, nothing spent`);
-		} else {
-			console.log(`  Vision generated:    ${v.generated}`);
-		}
+		console.log(`  Vision generated:    ${v.generated}`);
 		if (v.generatedFromVideo) console.log(`  Vision from video:   ${v.generatedFromVideo}`);
 		if (v.skippedTooLarge)
 			console.log(`  Vision skipped:      ${v.skippedTooLarge} (media too large)`);
+		if (v.skippedUnreachable)
+			console.log(
+				`  Vision skipped:      ${v.skippedUnreachable} (source could not be downloaded)`
+			);
 		if (v.skippedUnsupported)
 			console.log(`  Vision skipped:      ${v.skippedUnsupported} (format not describable)`);
-		if (v.skippedOverLimit) console.log(`  Vision over limit:   ${v.skippedOverLimit}`);
 		if (v.failed.length) {
 			console.log(`  Vision failed:       ${v.failed.length}`);
 			for (const failure of v.failed.slice(0, 10)) {
@@ -224,13 +248,7 @@ try {
 	}
 	if (summary.writeBack) {
 		const w = summary.writeBack;
-		if (pushArena?.apply) {
-			console.log(
-				`  Are.na written:      ${w.blocksUpdated} of ${w.blocksPlanned} planned block(s)`
-			);
-		} else {
-			console.log(`  Are.na would write:  ${w.blocksPlanned} block(s) — nothing written`);
-		}
+		console.log(`  Are.na written:      ${w.blocksUpdated} of ${w.blocksPlanned} planned block(s)`);
 		console.log(`    titles replaced:   ${w.titlesReplaced}`);
 		console.log(`    titles added:      ${w.titlesAdded}`);
 		console.log(`    descriptions:      ${w.descriptionsAdded}`);
@@ -244,15 +262,10 @@ try {
 			}
 			if (w.failed.length > 10) console.log(`      ... and ${w.failed.length - 10} more`);
 		}
-		if (!pushArena?.apply) {
-			console.log('    Re-run with --push-arena-apply to write.');
-		}
 	}
 	if (summary.pruneSkipped) {
 		console.log(`  Pruned:              skipped (${summary.pruneSkipped})`);
-		console.log(
-			'  Stale documents remain searchable. Re-run with --allow-large-prune if intended.'
-		);
+		console.log('  Stale documents remain searchable.');
 	} else {
 		console.log(`  Pruned:              ${summary.documentsDeleted} stale document(s)`);
 	}

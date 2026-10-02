@@ -5,7 +5,6 @@ import {
 	hasActiveFilters,
 	readArchiveSearchState,
 	toArchiveSearchHref,
-	withChannel,
 	type ArchiveSearchState
 } from './search';
 
@@ -29,8 +28,26 @@ describe('toArchiveSearchHref', () => {
 		);
 	});
 
-	it('drops a ranking mode that cannot apply without a query', () => {
-		expect(toArchiveSearchHref(state({ query: '', mode: 'semantic' }))).toBe('/');
+	it('remembers a chosen ranking without a query, so it applies to the next one', () => {
+		expect(toArchiveSearchHref(state({ query: '', mode: 'semantic' }))).toBe('/?mode=semantic');
+		expect(toArchiveSearchHref(state({ query: '', mode: 'hybrid' }))).toBe('/');
+	});
+
+	it('keeps a browse order other than the default, and drops it once a query ranks instead', () => {
+		expect(toArchiveSearchHref(state({ sort: 'most-connected' }))).toBe('/?sort=most-connected');
+		expect(toArchiveSearchHref(state({ sort: 'newest-created' }))).toBe('/');
+		expect(toArchiveSearchHref(state({ mode: 'lexical', sort: 'least-connected' }))).toBe(
+			'/?mode=lexical&sort=least-connected'
+		);
+		expect(
+			toArchiveSearchHref(state({ query: 'felt', mode: 'hybrid', sort: 'oldest-connected' }))
+		).toBe('/?q=felt');
+	});
+
+	it('repeats colours in the order they were chosen', () => {
+		expect(toArchiveSearchHref(state({ colours: ['orange', 'blue'] }))).toBe(
+			'/?colour=orange&colour=blue'
+		);
 	});
 
 	it('repeats channel and type filters and keeps date bounds', () => {
@@ -38,12 +55,12 @@ describe('toArchiveSearchHref', () => {
 			toArchiveSearchHref(
 				state({
 					channelSlugs: ['materials', 'type'],
-					blockTypes: ['Image', 'Link'],
+					blockTypes: ['Image', 'Web'],
 					from: '2024-01-02',
 					to: '2024-01-31'
 				})
 			)
-		).toBe('/?channel=materials&channel=type&type=Image&type=Link&from=2024-01-02&to=2024-01-31');
+		).toBe('/?channel=materials&channel=type&type=Image&type=Web&from=2024-01-02&to=2024-01-31');
 	});
 });
 
@@ -55,11 +72,15 @@ describe('readArchiveSearchState', () => {
 			state({ query: 'felt', mode: 'lexical' }),
 			state({ query: 'felt', mode: 'semantic', channelSlugs: ['materials'] }),
 			state({ blockTypes: ['Image'], from: '2024-01-02', to: '2024-01-31' }),
+			state({ colours: ['blue', 'mono'] }),
+			state({ colours: ['blue'], sort: 'oldest-created' }),
+			state({ mode: 'lexical', createdFrom: '2020-01-01', createdTo: '2021-12-31' }),
+			state({ blockTypes: ['Video', 'GIF', 'Web'] }),
 			state({
 				query: 'archival',
 				mode: 'lexical',
 				channelSlugs: ['materials', 'type'],
-				blockTypes: ['Image', 'Link'],
+				blockTypes: ['Image', 'Web'],
 				from: '2024-01-02',
 				to: '2024-01-31'
 			})
@@ -77,12 +98,29 @@ describe('readArchiveSearchState', () => {
 		expect(readArchiveSearchState(new URLSearchParams('mode=')).mode).toBe('browse');
 	});
 
+	it('falls back to the default browse order for an unknown sort', () => {
+		expect(readArchiveSearchState(new URLSearchParams('sort=random')).sort).toBe('newest-created');
+		expect(readArchiveSearchState(new URLSearchParams('sort=oldest-created')).sort).toBe(
+			'oldest-created'
+		);
+	});
+
 	it('collapses duplicate filter values so keyed rendering cannot break', () => {
 		expect(
 			readArchiveSearchState(
 				new URLSearchParams('channel=materials&channel=materials&type=Image&type=Image')
 			)
 		).toMatchObject({ channelSlugs: ['materials'], blockTypes: ['Image'] });
+	});
+
+	it('drops unknown colours and keeps at most as many as a request may carry', () => {
+		expect(
+			readArchiveSearchState(
+				new URLSearchParams(
+					'colour=teal&colour=red&colour=orange&colour=yellow&colour=green&colour=blue&colour=purple'
+				)
+			).colours
+		).toEqual(['red', 'orange', 'yellow', 'green', 'blue']);
 	});
 
 	it('drops a date that is not a real calendar day', () => {
@@ -107,19 +145,16 @@ describe('search state transitions', () => {
 		query: 'felt',
 		mode: 'lexical',
 		channelSlugs: ['materials', 'type'],
-		blockTypes: ['Image', 'Link'],
+		blockTypes: ['Image', 'Web'],
 		from: '2024-01-02',
 		to: '2024-01-31'
-	});
-
-	it('adds a channel at most once', () => {
-		expect(withChannel(state(), 'materials').channelSlugs).toEqual(['materials']);
-		expect(withChannel(active, 'materials')).toBe(active);
 	});
 
 	it('reports whether any filter is active', () => {
 		expect(hasActiveFilters(state({ query: 'felt' }))).toBe(false);
 		expect(hasActiveFilters(state({ to: '2024-01-31' }))).toBe(true);
+		expect(hasActiveFilters(state({ colours: ['mono'] }))).toBe(true);
+		expect(hasActiveFilters(state({ createdFrom: '2020-01-01' }))).toBe(true);
 		expect(hasActiveFilters(active)).toBe(true);
 	});
 });

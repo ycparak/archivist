@@ -2,6 +2,7 @@
 	"name": "archivist",
 	"private": true,
 	"version": "0.0.1",
+	"license": "MIT",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -10,19 +11,23 @@
 		"prepare": "wrangler types --env-file=.env.example || echo ''; svelte-kit sync || echo ''",
 		"check": "bun run gen && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit --project scripts/tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"lint": "prettier --check . && eslint .",
+		"lint": "prettier --check . && eslint . && bun run check:classes",
+		"check:classes": "bun run scripts/check-classes.ts",
 		"format": "prettier --write .",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
 		"gen": "wrangler types --env-file=.env.example",
 		"sync": "bun run scripts/sync.ts",
-		"evaluate:search": "bun run scripts/evaluate-search.ts"
+		"evaluate:search": "bun run scripts/evaluate-search.ts",
+		"calibrate:colour": "bun run scripts/calibrate-colour.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
 		"@sveltejs/adapter-cloudflare": "^7.2.8",
 		"@sveltejs/kit": "^2.63.0",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@tailwindcss/node": "4.3.3",
+		"@tailwindcss/oxide": "4.3.3",
 		"@tailwindcss/vite": "^4.3.3",
 		"@types/node": "^24",
 		"eslint": "^10.4.1",
@@ -43,6 +48,7 @@
 	},
 	"dependencies": {
 		"@aredotna/sdk": "^0.1.1",
+		"@chenglou/pretext": "^0.0.9",
 		"@turbopuffer/turbopuffer": "^2.8.0",
 		"zod": "^4.6.2"
 	}

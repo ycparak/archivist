@@ -1,24 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { emptyArchiveSearchState, type ArchiveSearchState } from '$lib/domain/search';
-import { blockDisplayTitle, formatArchiveDate, formatSearchTimings, resultsStatus } from './format';
-
-describe('formatArchiveDate', () => {
-	it('formats a connected timestamp in UTC', () => {
-		expect(formatArchiveDate('2024-01-02T09:15:00.000Z')).toBe('2 Jan 2024');
-		expect(formatArchiveDate('2024-12-31T00:00:00.000Z')).toBe('31 Dec 2024');
-	});
-
-	it('does not shift the day for a timestamp near midnight UTC', () => {
-		expect(formatArchiveDate('2024-01-01T23:30:00.000Z')).toBe('1 Jan 2024');
-		expect(formatArchiveDate('2024-01-01T00:30:00.000Z')).toBe('1 Jan 2024');
-	});
-
-	it('returns nothing for a missing or unreadable value', () => {
-		expect(formatArchiveDate(null)).toBeNull();
-		expect(formatArchiveDate('')).toBeNull();
-		expect(formatArchiveDate('not-a-date')).toBeNull();
-	});
-});
+import {
+	archiveCount,
+	blockDisplayTitle,
+	channelLabel,
+	channelSymbol,
+	resultsStatus
+} from './format';
 
 describe('blockDisplayTitle', () => {
 	it('prefers the block’s own title', () => {
@@ -32,11 +20,34 @@ describe('blockDisplayTitle', () => {
 	});
 });
 
-describe('formatSearchTimings', () => {
-	it('shows total, query, and rerank time in seconds', () => {
-		expect(formatSearchTimings({ totalMs: 963, queryMs: 412.6, rerankMs: 0 })).toBe(
-			'time: 0.96s (query: 0.41s, rerank: 0.00s)'
+describe('channelLabel', () => {
+	it('drops the symbols a channel title starts with', () => {
+		expect(channelLabel('✦ AI + HCI + OS — Prototype Bricolage')).toBe(
+			'AI + HCI + OS — Prototype Bricolage'
 		);
+		expect(channelLabel('\uf8ff Data Viz')).toBe('Data Viz');
+		expect(channelLabel('𖤛 Applied Aesthetics')).toBe('Applied Aesthetics');
+		expect(channelLabel('3D Type')).toBe('3D Type');
+	});
+
+	it('keeps a title that is nothing but symbols', () => {
+		expect(channelLabel('✦ ✦')).toBe('✦ ✦');
+	});
+});
+
+describe('channelSymbol', () => {
+	it('returns the symbol a channel title starts with, and null without one', () => {
+		expect(channelSymbol('✦ Tools for Thought')).toBe('✦');
+		expect(channelSymbol('𖤛 Applied Aesthetics')).toBe('𖤛');
+		expect(channelSymbol('Map')).toBeNull();
+		expect(channelSymbol('✦ ✦')).toBeNull();
+	});
+});
+
+describe('archiveCount', () => {
+	it('groups thousands and pluralises', () => {
+		expect(archiveCount(2546, 'block')).toBe('2,546 blocks');
+		expect(archiveCount(1, 'channel')).toBe('1 channel');
 	});
 });
 
