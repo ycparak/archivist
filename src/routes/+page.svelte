@@ -9,7 +9,7 @@
 	import SearchField from '$lib/components/SearchField.svelte';
 	import Shelf from '$lib/components/Shelf.svelte';
 	import { hrefWith, toggled } from '$lib/components/filters';
-	import { channelLabel, resultsStatus } from '$lib/components/format';
+	import { channelLabel, channelSymbol, resultsStatus } from '$lib/components/format';
 	import { layoutShelves } from '$lib/components/shelf';
 	import {
 		ARCHIVE_PAGE_PARAM,
@@ -39,7 +39,11 @@
 	const resultCount = $derived(pages.reduce((count, results) => count + results.length, 0));
 	const hasMore = $derived(loadedHere ? loadedHere.hasMore : data.kind === 'ok' && data.hasMore);
 	const channels = $derived(
-		data.channels.map((channel) => ({ ...channel, title: channelLabel(channel.title) }))
+		data.channels.map(({ slug, title }) => ({
+			slug,
+			title: channelLabel(title),
+			symbol: channelSymbol(title)
+		}))
 	);
 	const channelsBySlug = $derived(new Map(channels.map((channel) => [channel.slug, channel])));
 	const layout = $derived(layoutShelves(pages, channelsBySlug, searchState.channelSlugs));
@@ -157,7 +161,7 @@
 	<SearchField search={searchState} onnavigate={navigate} />
 
 	<main
-		class="[container-type:size] relative min-h-0 flex-1 overflow-x-auto overflow-y-hidden sm:h-full"
+		class="@container-size relative min-h-0 flex-1 overflow-x-auto overflow-y-hidden sm:h-full"
 		data-shelf-scroller
 		bind:this={scroller}
 		{@attach wheelSideways}

@@ -87,7 +87,7 @@ describe('handleSearchRequest', () => {
 	it('returns 400 before constructing a repository for invalid input', async () => {
 		const createRepository = vi.fn();
 		const response = await handleSearchRequest(
-			new URL('https://archivist.test/api/search?mode=lexical&q=%20'),
+			new URL('https://archivist.test/api/search?mode=fuzzy&q=felt'),
 			createRepository
 		);
 

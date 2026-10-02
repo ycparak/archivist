@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { blockKind } from '$lib/domain/archive';
 import { ARCHIVE_BLOCK_TYPES } from '$lib/domain/search';
 import {
 	arenaChannelContentsResponseSchema,
@@ -239,11 +240,13 @@ describe('arenaOwnedChannelsResponseSchema', () => {
 });
 
 describe('archive block vocabulary', () => {
-	it('matches the block types the UI offers as filters', () => {
+	it('gives every Are.na block type a kind the UI offers as a filter', () => {
 		const schemaBlockTypes = arenaContentItemSchema.options
 			.map((option) => option.shape.type.value)
 			.filter((blockType) => blockType !== 'Channel');
 
-		expect([...schemaBlockTypes].sort()).toEqual([...ARCHIVE_BLOCK_TYPES].sort());
+		for (const type of schemaBlockTypes) {
+			expect(ARCHIVE_BLOCK_TYPES).toContain(blockKind({ type }));
+		}
 	});
 });

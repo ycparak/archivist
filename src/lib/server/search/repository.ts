@@ -92,13 +92,15 @@ export class SearchUnavailableError extends Error {
 
 export function buildSearchFilters(input: ArchiveSearchInput): Filter | undefined {
 	const filters: Filter[] = [];
-	if (input.blockTypes.length) filters.push(['block_type', 'In', input.blockTypes]);
+	if (input.blockTypes.length) filters.push(['kind', 'In', input.blockTypes]);
 	if (input.channelSlugs.length) filters.push(['channel_slugs', 'ContainsAny', input.channelSlugs]);
 	for (const colour of input.colours) {
 		filters.push([colourAttribute(colour), 'Gte', COLOUR_THRESHOLDS[colour]]);
 	}
 	if (input.from) filters.push(['connected_at', 'Gte', input.from.toISOString()]);
 	if (input.to) filters.push(['connected_at', 'Lte', input.to.toISOString()]);
+	if (input.createdFrom) filters.push(['created_at', 'Gte', input.createdFrom.toISOString()]);
+	if (input.createdTo) filters.push(['created_at', 'Lte', input.createdTo.toISOString()]);
 	return filters.length ? ['And', filters] : undefined;
 }
 
@@ -118,27 +120,28 @@ function sharedQuery(input: ArchiveSearchInput, optional: boolean) {
  * which this paging re-fetches with every page; ending on `id` makes the sort a total order, so a
  * block never repeats or vanishes at a page edge. With colours chosen and the default sort, the
  * first colour's weight leads and the rest break its ties. A `Sum` of the weights would rank better,
- * but it is an expression, and an expression takes no tiebreak. A date sort leads with the date, and
- * colours then only filter.
+ * but it is an expression, and an expression takes no tiebreak. Every other sort leads with its own
+ * key, and colours then only filter.
  */
 function browseOrder(input: ArchiveSearchInput): RankByAttribute[] {
+	const byId: RankByAttribute = ['id', 'asc'];
 	switch (input.sort) {
-		case 'newest':
-			return [
-				['connected_at', 'desc'],
-				['id', 'asc']
-			];
-		case 'oldest':
-			return [
-				['connected_at', 'asc'],
-				['id', 'asc']
-			];
-		case 'connections':
+		case 'newest-created':
+			return [['created_at', 'desc'], byId];
+		case 'newest-connected':
+			return [['connected_at', 'desc'], byId];
+		case 'oldest-created':
+			return [['created_at', 'asc'], byId];
+		case 'oldest-connected':
+			return [['connected_at', 'asc'], byId];
+		case 'least-connected':
+			return [['connection_count', 'asc'], ['connected_at', 'desc'], byId];
+		case 'most-connected':
 			return [
 				...input.colours.map((colour): RankByAttribute => [colourAttribute(colour), 'desc']),
 				['connection_count', 'desc'],
 				['connected_at', 'desc'],
-				['id', 'asc']
+				byId
 			];
 	}
 }

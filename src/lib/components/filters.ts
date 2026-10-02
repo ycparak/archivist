@@ -2,6 +2,7 @@ import {
 	ARCHIVE_BLOCK_TYPES,
 	ARCHIVE_COLOURS,
 	ARCHIVE_MAX_COLOURS,
+	effectiveSearchMode,
 	toArchiveSearchHref,
 	type ArchiveColour,
 	type ArchiveSearchHref,
@@ -25,10 +26,13 @@ export function canAddColour(state: ArchiveSearchState, colour: ArchiveColour): 
 	return state.colours.includes(colour) || state.colours.length < ARCHIVE_MAX_COLOURS;
 }
 
-/** The oldest connection in the archive as of October 2026; the date slider starts here. */
-export const CONNECTED_AT_FIRST_MONTH = { year: 2024, month: 6 } as const;
-
 export type Month = { year: number; month: number };
+
+/** The oldest connection in the archive as of October 2026; the Connected slider starts here. */
+export const CONNECTED_AT_FIRST_MONTH: Month = { year: 2024, month: 6 };
+
+/** The oldest block in the archive as of October 2026; the Created slider starts here. */
+export const CREATED_AT_FIRST_MONTH: Month = { year: 2014, month: 2 };
 
 export function monthsBetween(first: Month, last: Month): number {
 	return Math.max(1, (last.year - first.year) * 12 + (last.month - first.month) + 1);
@@ -105,26 +109,32 @@ const RANKINGS = [
 	{ mode: 'semantic', label: 'Related ideas' }
 ] as const;
 
-/** Ranking only means something with a query; browse has its own order. */
+/**
+ * Always choosable. Without a query the choice is remembered in the URL and ranks the next search;
+ * until one is chosen, Best match is the one that will apply.
+ */
 export function searchTypeOptions(state: ArchiveSearchState): FilterOption[] {
-	const querying = Boolean(state.query.trim());
+	const chosen = state.mode === 'browse' ? 'hybrid' : state.mode;
 	return RANKINGS.map(({ mode, label }) => ({
 		key: mode,
 		label,
-		href: querying ? hrefWith(state, { mode }) : undefined,
-		active: querying && state.mode === mode
+		href: hrefWith(state, { mode }),
+		active: chosen === mode
 	}));
 }
 
 const SORTS: { sort: ArchiveSort; label: string }[] = [
-	{ sort: 'connections', label: 'Most connected' },
-	{ sort: 'newest', label: 'Newest' },
-	{ sort: 'oldest', label: 'Oldest' }
+	{ sort: 'newest-created', label: 'Newest created' },
+	{ sort: 'newest-connected', label: 'Newest connected' },
+	{ sort: 'oldest-created', label: 'Oldest created' },
+	{ sort: 'oldest-connected', label: 'Oldest connected' },
+	{ sort: 'most-connected', label: 'Most connected' },
+	{ sort: 'least-connected', label: 'Least connected' }
 ];
 
 /** Order only applies to browse; a query ranks by relevance. */
 export function sortOptions(state: ArchiveSearchState): FilterOption[] {
-	const browsing = !state.query.trim() || state.mode === 'browse';
+	const browsing = effectiveSearchMode(state.query, state.mode) === 'browse';
 	return SORTS.map(({ sort, label }) => ({
 		key: sort,
 		label,

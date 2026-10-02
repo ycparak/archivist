@@ -7,10 +7,13 @@
 		ArchiveSearchState,
 		ChannelManifestEntry
 	} from '$lib/domain/search';
-	import ConnectedAtSlider from './ConnectedAtSlider.svelte';
+	import DateRangeSlider from './DateRangeSlider.svelte';
 	import {
 		blockTypeOptions,
 		channelOption,
+		CONNECTED_AT_FIRST_MONTH,
+		CREATED_AT_FIRST_MONTH,
+		hrefWith,
 		colourOptions,
 		searchTypeOptions,
 		sortOptions,
@@ -111,7 +114,7 @@
 		{@attach fitChannels}
 	>
 		<div
-			class="rule flex min-h-0 w-(--column-width) flex-none flex-col gap-(--gap-paragraph) clip-trimmed spread:contents"
+			class="rule flex min-h-0 w-(--column-width) flex-none flex-col gap-(--gap-paragraph) spread:contents"
 		>
 			<section
 				class="flex min-h-0 flex-col gap-(--gap-paragraph) spread:rule spread:w-(--column-width) spread:flex-none"
@@ -119,7 +122,21 @@
 			>
 				{@render list('Search type', searchTypeOptions(search))}
 				{@render list('Sort by', sortOptions(search))}
-				<ConnectedAtSlider {search} {onnavigate} />
+				<DateRangeSlider
+					heading="Connected"
+					from={search.from}
+					to={search.to}
+					first={CONNECTED_AT_FIRST_MONTH}
+					onchange={(range) => onnavigate(hrefWith(search, range))}
+				/>
+				<DateRangeSlider
+					heading="Created"
+					from={search.createdFrom}
+					to={search.createdTo}
+					first={CREATED_AT_FIRST_MONTH}
+					onchange={({ from, to }) =>
+						onnavigate(hrefWith(search, { createdFrom: from, createdTo: to }))}
+				/>
 			</section>
 			<section
 				class="flex min-h-0 flex-col gap-(--gap-paragraph) spread:rule spread:w-(--column-width) spread:flex-none"
@@ -181,7 +198,7 @@
 	</nav>
 
 	<footer
-		class="row-start-3 flex items-end gap-(--column-gap) self-end pb-3 text-foreground-strong"
+		class="row-start-3 flex items-end gap-(--column-gap) self-end pb-(--annotation-padding) text-foreground-strong"
 	>
 		<p class="w-(--column-width) flex-none font-serif text-3xl">Archivist</p>
 		<p class="lines">

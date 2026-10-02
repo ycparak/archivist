@@ -1,6 +1,5 @@
 import {
 	ARCHIVE_RESULT_LIMIT,
-	type ArchiveBlockType,
 	type ArchiveSearchState,
 	type SearchResult
 } from '$lib/domain/search';
@@ -15,7 +14,8 @@ export function mediaRatio(result: Pick<SearchResult, 'imageWidth' | 'imageHeigh
 	return Math.min(MAX_MEDIA_RATIO, Math.max(MIN_MEDIA_RATIO, imageWidth / imageHeight));
 }
 
-const UNTITLED_LABELS: Record<ArchiveBlockType, string> = {
+/** Keyed by Are.na's own block type, which results carry, not the gallery's Block type. */
+const UNTITLED_LABELS: Record<string, string> = {
 	Image: 'Untitled image',
 	Link: 'Untitled link',
 	Text: 'Untitled text',
@@ -25,7 +25,7 @@ const UNTITLED_LABELS: Record<ArchiveBlockType, string> = {
 
 export function blockDisplayTitle(title: string | null, blockType: string): string {
 	if (title) return title;
-	return UNTITLED_LABELS[blockType as ArchiveBlockType] ?? 'Untitled block';
+	return UNTITLED_LABELS[blockType] ?? 'Untitled block';
 }
 
 /**
@@ -35,6 +35,13 @@ export function blockDisplayTitle(title: string | null, blockType: string): stri
  */
 export function channelLabel(title: string): string {
 	return title.replace(/^[^\p{Script=Latin}\p{N}]+/u, '') || title;
+}
+
+/** The symbol `channelLabel` takes off a channel title, or null when the title has none. */
+export function channelSymbol(title: string): string | null {
+	const label = channelLabel(title);
+	if (label === title) return null;
+	return title.slice(0, title.length - label.length).trim() || null;
 }
 
 const count = new Intl.NumberFormat('en');
@@ -56,7 +63,8 @@ export function resultsStatus({ kind, state, resultCount, searching }: ResultsSt
 		state.channelSlugs.length +
 		state.blockTypes.length +
 		state.colours.length +
-		(state.from || state.to ? 1 : 0);
+		(state.from || state.to ? 1 : 0) +
+		(state.createdFrom || state.createdTo ? 1 : 0);
 	const filters = filterCount ? ` with ${filterCount} filter${filterCount === 1 ? '' : 's'}` : '';
 
 	if (searching) return `Searching ${subject}${filters}\u2026`;

@@ -1,4 +1,16 @@
-export const ARCHIVE_BLOCK_TYPES = ['Image', 'Link', 'Text', 'Attachment', 'Embed'] as const;
+/**
+ * What a block is, as a reader would put it. Not Are.na's own block types: a video or animated GIF
+ * is pulled out of whatever block holds it, and a Link is a Web page. The sync stores it as `kind`.
+ */
+export const ARCHIVE_BLOCK_TYPES = [
+	'Image',
+	'Video',
+	'GIF',
+	'Web',
+	'Text',
+	'Attachment',
+	'Embed'
+] as const;
 
 export type ArchiveBlockType = (typeof ARCHIVE_BLOCK_TYPES)[number];
 
@@ -31,15 +43,24 @@ export const ARCHIVE_SEARCH_PARAM = {
 	colour: 'colour',
 	from: 'from',
 	to: 'to',
+	createdFrom: 'created_from',
+	createdTo: 'created_to',
 	sort: 'sort'
 } as const;
 
-/** Browse order. `connections` is the default and never appears in a URL; a text query ranks by relevance instead. */
-export const ARCHIVE_SORTS = ['connections', 'newest', 'oldest'] as const;
+/** Browse order. `most-connected` is the default and never appears in a URL; a text query ranks by relevance instead. */
+export const ARCHIVE_SORTS = [
+	'newest-created',
+	'newest-connected',
+	'oldest-created',
+	'oldest-connected',
+	'most-connected',
+	'least-connected'
+] as const;
 
 export type ArchiveSort = (typeof ARCHIVE_SORTS)[number];
 
-export const ARCHIVE_DEFAULT_SORT: ArchiveSort = 'connections';
+export const ARCHIVE_DEFAULT_SORT: ArchiveSort = 'most-connected';
 
 export const ARCHIVE_PAGE_PARAM = { offset: 'offset' } as const;
 
@@ -87,6 +108,8 @@ export type ArchiveSearchState = {
 	colours: ArchiveColour[];
 	from: string;
 	to: string;
+	createdFrom: string;
+	createdTo: string;
 	sort: ArchiveSort;
 };
 
@@ -98,11 +121,21 @@ export const emptyArchiveSearchState: ArchiveSearchState = {
 	colours: [],
 	from: '',
 	to: '',
+	createdFrom: '',
+	createdTo: '',
 	sort: ARCHIVE_DEFAULT_SORT
 };
 
 export function defaultSearchMode(query: string): ArchiveSearchMode {
 	return query.trim() ? 'hybrid' : 'browse';
+}
+
+/**
+ * The ranking a search runs with. Without a query there is nothing to rank, so it browses; a
+ * ranking chosen beforehand is kept in the URL and applies once a query arrives.
+ */
+export function effectiveSearchMode(query: string, mode: ArchiveSearchMode): ArchiveSearchMode {
+	return query.trim() ? mode : 'browse';
 }
 
 export type ArchiveSearchHref = '/' | `/?${string}`;
@@ -112,7 +145,8 @@ export function toArchiveSearchHref(state: ArchiveSearchState): ArchiveSearchHre
 	const params = new URLSearchParams();
 
 	if (query) params.set(ARCHIVE_SEARCH_PARAM.query, query);
-	if (query && state.mode !== defaultSearchMode(query)) {
+	const remembersRanking = state.mode === 'lexical' || state.mode === 'semantic';
+	if (query ? state.mode !== defaultSearchMode(query) : remembersRanking) {
 		params.set(ARCHIVE_SEARCH_PARAM.mode, state.mode);
 	}
 	for (const slug of state.channelSlugs) params.append(ARCHIVE_SEARCH_PARAM.channel, slug);
@@ -120,7 +154,10 @@ export function toArchiveSearchHref(state: ArchiveSearchState): ArchiveSearchHre
 	for (const colour of state.colours) params.append(ARCHIVE_SEARCH_PARAM.colour, colour);
 	if (state.from) params.set(ARCHIVE_SEARCH_PARAM.from, state.from);
 	if (state.to) params.set(ARCHIVE_SEARCH_PARAM.to, state.to);
-	if ((!query || state.mode === 'browse') && state.sort !== ARCHIVE_DEFAULT_SORT) {
+	if (state.createdFrom) params.set(ARCHIVE_SEARCH_PARAM.createdFrom, state.createdFrom);
+	if (state.createdTo) params.set(ARCHIVE_SEARCH_PARAM.createdTo, state.createdTo);
+	const browsing = effectiveSearchMode(query, state.mode) === 'browse';
+	if (browsing && state.sort !== ARCHIVE_DEFAULT_SORT) {
 		params.set(ARCHIVE_SEARCH_PARAM.sort, state.sort);
 	}
 
@@ -182,6 +219,8 @@ export function readArchiveSearchState(searchParams: URLSearchParams): ArchiveSe
 			.slice(0, ARCHIVE_MAX_COLOURS),
 		from: readDate(searchParams, ARCHIVE_SEARCH_PARAM.from),
 		to: readDate(searchParams, ARCHIVE_SEARCH_PARAM.to),
+		createdFrom: readDate(searchParams, ARCHIVE_SEARCH_PARAM.createdFrom),
+		createdTo: readDate(searchParams, ARCHIVE_SEARCH_PARAM.createdTo),
 		sort: isArchiveSort(requestedSort) ? requestedSort : ARCHIVE_DEFAULT_SORT
 	};
 }
@@ -200,6 +239,8 @@ export function hasActiveFilters(state: ArchiveSearchState): boolean {
 		state.blockTypes.length ||
 		state.colours.length ||
 		state.from ||
-		state.to
+		state.to ||
+		state.createdFrom ||
+		state.createdTo
 	);
 }

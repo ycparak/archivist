@@ -8,12 +8,18 @@
 	font-variation-settings: 'DRKM' 0;
 }
 
+/* Newsreader's own metrics (ascent 0.74em, descent 0.26em, caps 0.72em) put its capitals at the top
+   of the line box, so a caret or selection hangs below the text. Ascent is raised to cap height
+   plus descent, which centres the capitals in any line box without moving a trimmed line. */
 @font-face {
 	font-family: 'Newsreader';
 	src: url('/fonts/Newsreader.woff2') format('woff2');
 	font-weight: 200 800;
 	font-style: normal;
 	font-display: swap;
+	ascent-override: 98%;
+	descent-override: 26%;
+	line-gap-override: 0%;
 }
 
 @font-face {
@@ -22,4 +28,7 @@
 	font-weight: 200 800;
 	font-style: italic;
 	font-display: swap;
+	ascent-override: 98%;
+	descent-override: 26%;
+	line-gap-override: 0%;
 }

@@ -118,12 +118,15 @@ describe('SearchField markup', () => {
 		]);
 	});
 
-	it('leaves out ranking and order, each of which is invalid beside the other kind of query', () => {
+	it('carries a chosen ranking but leaves out browse order, which is invalid beside a query', () => {
 		const { body } = render(SearchField, {
-			props: { search: state({ query: 'felt', mode: 'lexical' }), onnavigate: () => {} }
+			props: {
+				search: state({ mode: 'lexical', sort: 'oldest-created' }),
+				onnavigate: () => {}
+			}
 		});
 
-		expect(body).not.toMatch(/type="hidden"[^>]*name="mode"/);
+		expect(body).toMatch(/<input[^>]*type="hidden"[^>]*name="mode"[^>]*value="lexical"/);
 		expect(body).not.toMatch(/name="sort"/);
 	});
 });
@@ -154,11 +157,11 @@ describe('ArchiveIndex markup', () => {
 		expect(stateAt(linkTo(body, 'Materials')).channelSlugs).toEqual(['unlisted', 'materials']);
 	});
 
-	it('offers ranking only with a query, and browse order only without one', () => {
+	it('always offers a ranking, and offers browse order only without a query', () => {
 		const browsing = index(state());
-		expect(linksIn(browsing).some((link) => link.label === 'Exact words')).toBe(false);
-		expect(browsing).toMatch(/aria-disabled="true"[^>]*>Exact words/);
-		expect(stateAt(linkTo(browsing, 'Newest')).sort).toBe('newest');
+		expect(linkTo(browsing, 'Best match').current).toBe(true);
+		expect(stateAt(linkTo(browsing, 'Exact words')).mode).toBe('lexical');
+		expect(stateAt(linkTo(browsing, 'Newest created')).sort).toBe('newest-created');
 		expect(linkTo(browsing, 'Most connected').current).toBe(true);
 
 		const querying = index(state({ query: 'felt', mode: 'hybrid' }));
@@ -167,13 +170,17 @@ describe('ArchiveIndex markup', () => {
 			query: 'felt',
 			mode: 'semantic'
 		});
-		expect(linksIn(querying).some((link) => link.label === 'Newest')).toBe(false);
+		expect(linksIn(querying).some((link) => link.label === 'Newest created')).toBe(false);
+		expect(querying).toMatch(/aria-disabled="true"[^>]*>Newest created/);
 	});
 
 	it('toggles block types and colours, and stops offering colours past the limit', () => {
 		const body = index(state({ blockTypes: ['Image'], colours: ['red'] }));
 		expect(linkTo(body, 'Image').current).toBe(true);
-		expect(stateAt(linkTo(body, 'Link')).blockTypes).toEqual(['Image', 'Link']);
+		expect(stateAt(linkTo(body, 'Web')).blockTypes).toEqual(['Image', 'Web']);
+		expect(linksIn(body).map((link) => link.label)).toEqual(
+			expect.arrayContaining(['Image', 'Video', 'GIF', 'Web', 'Text', 'Attachment', 'Embed'])
+		);
 		expect(linkTo(body, 'Red').current).toBe(true);
 		expect(stateAt(linkTo(body, 'Black & white')).colours).toEqual(['red', 'mono']);
 
@@ -182,8 +189,11 @@ describe('ArchiveIndex markup', () => {
 		expect(stateAt(linkTo(full, 'Red')).colours).toEqual(['orange', 'yellow', 'green', 'blue']);
 	});
 
-	it('names both ends of the connected-date slider for a screen reader', () => {
+	it('names both ends of each date slider for a screen reader', () => {
 		const body = index(state());
+
+		expect(body).toMatch(/<input[^>]*type="range"[^>]*aria-label="Created from"/);
+		expect(body).toMatch(/<input[^>]*type="range"[^>]*aria-label="Created until"/);
 
 		expect(body).toMatch(/<input[^>]*type="range"[^>]*aria-label="Connected from"/);
 		expect(body).toMatch(/<input[^>]*type="range"[^>]*aria-label="Connected until"/);
