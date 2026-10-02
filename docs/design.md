@@ -104,8 +104,10 @@ raw ramp, except for the fixed swatch and page colours noted below.
 - Selection is blue with white text.
 - Swatches use the palette tokens: `red`, `paprika` (orange), `yellow`, `green`, `blue`, `lilac`
   (purple), `brown`, `gray-500` (grey) and a black-and-white diagonal with a `foreground-detail`
-  outline for mono. They sit in a nine-column grid, `gap-1`, filling the column's width. Pink, black
-  and white are never offered, even when a URL asks for one; the URL still filters by it.
+  outline for mono. They sit in a nine-column grid, `gap-1.75`, filling the column's width, so two
+  selected neighbours keep clear of each other's rings. A selected swatch's ring is its own colour
+  (`foreground-strong` for mono), 1px with a 2px offset. Pink, black and white are never offered,
+  even when a URL asks for one; the URL still filters by it.
 
 ## Layout
 
