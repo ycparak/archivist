@@ -48,6 +48,7 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Fixed
 
+- Fixed browsing so a block can no longer appear twice, or never, while scrolling. 104 blocks share both their connection count and the time they were added with another block, and Turbopuffer may return such ties in a different order on each page; browse now breaks ties by block id.
 - Fixed the `bun run sync` summary counting an animation that could not be downloaded as "media too large". It now has its own line.
 - Fixed `bun run sync` dropping saved vision descriptions for blocks in a channel that failed that run. Nothing is dropped from the cache unless every channel synced.
 - Fixed the missing-ffmpeg error from `bun run sync`, which suggested the removed `--no-vision-video` flag. It now suggests `--no-vision`.

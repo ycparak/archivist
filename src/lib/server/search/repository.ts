@@ -113,18 +113,13 @@ function sharedQuery(input: ArchiveSearchInput, optional: boolean) {
 }
 
 /**
- * With colours chosen, browse sorts by the first colour's weight and breaks ties on the rest. A
- * `Sum` of the weights would rank better, but Turbopuffer leaves the order of equal scores undefined
- * and it shifts with `limit`, which this paging re-fetches with every page; ending the sort on `id`
- * makes it a total order.
+ * Turbopuffer leaves the order of rows tied on every sort key undefined, and it shifts with `limit`,
+ * which this paging re-fetches with every page; ending on `id` makes the sort a total order, so a
+ * block never repeats or vanishes at a page edge. With colours chosen, the first colour's weight
+ * leads and the rest break its ties. A `Sum` of the weights would rank better, but it is an
+ * expression, and an expression takes no tiebreak.
  */
 function browseOrder(input: ArchiveSearchInput): RankByAttribute[] {
-	if (!input.colours.length) {
-		return [
-			['connection_count', 'desc'],
-			['connected_at', 'desc']
-		];
-	}
 	return [
 		...input.colours.map((colour): RankByAttribute => [colourAttribute(colour), 'desc']),
 		['connection_count', 'desc'],
