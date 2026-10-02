@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ARCHIVE_COLOURS, ARCHIVE_MAX_COLOURS } from '$lib/domain/search';
+import { COLOUR_THRESHOLDS } from './colour-filter';
 import type { ArchiveSearchInput } from './contracts';
 import {
 	buildSearchFilters,
@@ -12,6 +14,7 @@ function input(overrides: Partial<ArchiveSearchInput> = {}): ArchiveSearchInput 
 		query: '',
 		channelSlugs: [],
 		blockTypes: [],
+		colours: [],
 		limit: 24,
 		offset: 0,
 		...overrides
@@ -159,6 +162,16 @@ describe('buildSearchFilters', () => {
 		expect(buildSearchFilters(input())).toBeUndefined();
 	});
 
+	it('requires every chosen colour, each at its own threshold', () => {
+		expect(buildSearchFilters(input({ colours: ['blue', 'mono'] }))).toEqual([
+			'And',
+			[
+				['colour_blue', 'Gte', COLOUR_THRESHOLDS.blue],
+				['colour_mono', 'Gte', COLOUR_THRESHOLDS.mono]
+			]
+		]);
+	});
+
 	it('uses only the three filterable attributes and composes categories with AND', () => {
 		expect(
 			buildSearchFilters(
@@ -263,6 +276,41 @@ describe('TurbopufferSearchRepository', () => {
 		]);
 		expect(body.limit).toBe(25);
 		expect(body.rank_by).not.toContain('search_text');
+	});
+
+	it('orders colour browse by the first colour, then the rest, then a total tiebreak', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ colours: ['orange', 'blue'] }));
+		expect(requestedBody(fetchFn).rank_by).toEqual([
+			['colour_orange', 'desc'],
+			['colour_blue', 'desc'],
+			['connection_count', 'desc'],
+			['connected_at', 'desc'],
+			['id', 'asc']
+		]);
+	});
+
+	it('stays within the sort keys Turbopuffer allows at the most colours a request may choose', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		const colours = ARCHIVE_COLOURS.slice(0, ARCHIVE_MAX_COLOURS);
+		await repository(fetchFn).search(input({ colours: [...colours] }));
+		expect(requestedBody(fetchFn).rank_by.length).toBeLessThanOrEqual(8);
+	});
+
+	it('keeps relevance order for a text query and lets colour only filter', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ mode: 'lexical', query: 'felt', colours: ['red'] }));
+		const body = requestedBody(fetchFn);
+		expect(body.rank_by).toEqual(['search_text', 'BM25', 'felt']);
+		expect(body.filters).toEqual(['And', [['colour_red', 'Gte', COLOUR_THRESHOLDS.red]]]);
+	});
+
+	it('never asks for colour weights back, so results do not depend on them existing', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ colours: ['red'] }));
+		expect(
+			requestedBody(fetchFn).include_attributes.some((name: string) => name.startsWith('colour_'))
+		).toBe(false);
 	});
 
 	it('uses BM25 for lexical search', async () => {

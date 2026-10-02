@@ -15,6 +15,8 @@ import {
 import { EMPTY_CHANNEL_FILTER, exclusionReason, type ChannelFilter } from './channel-filter';
 import type { SyncEventSink } from './progress/events';
 import type { ChannelManifestEntry } from './channel-manifest';
+import { measureBlocks, type ColourStageOptions, type ColourStageSummary } from './colour';
+import { mergeColourCache, type ColourCache, type ColourCacheEntry } from './colour/cache';
 import { toArchiveBlock } from './normalize';
 import { describeBlocks, type VisionStageSummary } from './vision';
 import { mergeVisionCache, type VisionCache, type VisionCacheEntry } from './vision/cache';
@@ -45,6 +47,17 @@ export interface SyncOptions {
 	vision?: VisionSyncOptions;
 	/** Write generated titles and descriptions back to Are.na. Off by default. */
 	pushArena?: boolean;
+	/** Measured colour weights to index. Supplied on every run, for the same reason as `visionCache`. */
+	colourCache?: ColourCache;
+	/** Omit to index the existing colour cache without measuring anything new. */
+	colour?: ColourSyncOptions;
+}
+
+export interface ColourSyncOptions {
+	/** Called as each entry lands, so an interrupted run keeps what it measured. */
+	onEntry?: (entry: ColourCacheEntry) => void;
+	/** Replaces fetching and decoding each image; for tests. */
+	measure?: ColourStageOptions['measure'];
 }
 
 export interface VisionSyncOptions {
@@ -73,6 +86,8 @@ export interface SyncSummary {
 	documentsDeleted: number;
 	/** Why stale documents were left in the namespace, or null when pruning ran. */
 	pruneSkipped: string | null;
+	/** Null when the colour stage did not run. */
+	colour: ColourStageSummary | null;
 	/** Null when the vision stage did not run. */
 	vision: VisionStageSummary | null;
 	/** Null when write-back was not requested. */
@@ -126,6 +141,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	blocks: ArchiveBlock[];
 	channels: ChannelManifestEntry[];
 	visionCache: VisionCacheEntry[] | null;
+	colourCache: ColourCacheEntry[] | null;
 	summary: SyncSummary;
 }> {
 	const {
@@ -142,7 +158,9 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		maxPruneFraction = DEFAULT_MAX_PRUNE_FRACTION,
 		visionCache: existingVisionCache = new Map<string, VisionCacheEntry>(),
 		vision,
-		pushArena
+		pushArena,
+		colourCache: existingColourCache = new Map<string, ColourCacheEntry>(),
+		colour
 	} = options;
 	const client = new ArenaClient({ accessToken, fetchFn });
 
@@ -160,6 +178,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		upsertBatches: 0,
 		documentsDeleted: 0,
 		pruneSkipped: null,
+		colour: null,
 		vision: null,
 		writeBack: null
 	};
@@ -240,6 +259,30 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	summary.uniqueBlocks = blocksById.size;
 
 	const blocks = [...blocksById.values()];
+	// Same reasoning as pruning: a failed channel's blocks only look gone, and so do an aborted run's,
+	// so their cached work stays.
+	const fetchedIds = new Set(blocks.map((block) => block.id));
+	const liveIds = (cache: ReadonlyMap<string, unknown>) =>
+		summary.channelsFailed.length > 0 || signal?.aborted
+			? new Set([...fetchedIds, ...cache.keys()])
+			: fetchedIds;
+
+	let colourCache: ColourCacheEntry[] | null = null;
+	let colourWeights: ColourCache = existingColourCache;
+	if (colour) {
+		onEvent({ kind: 'phase', phase: 'measuring' });
+		const { entries, summary: colourSummary } = await measureBlocks(blocks, {
+			cache: existingColourCache,
+			log,
+			signal,
+			onEntry: colour.onEntry,
+			measure: colour.measure,
+			onProgress: (done, total) => onEvent({ kind: 'position', done, total })
+		});
+		summary.colour = colourSummary;
+		colourCache = mergeColourCache(existingColourCache, entries, liveIds(existingColourCache));
+		colourWeights = new Map(colourCache.map((entry) => [entry.block_id, entry]));
+	}
 
 	// Runs on the deduplicated set, so a block in five channels is described once.
 	let visionCache: VisionCacheEntry[] | null = null;
@@ -254,15 +297,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 			signal
 		});
 		summary.vision = visionSummary;
-		// Same reasoning as pruning: a failed channel's blocks only look gone, and their entries are
-		// paid-for work.
-		const fetchedIds = new Set(blocks.map((block) => block.id));
-		const fetchIncomplete = summary.channelsFailed.length > 0 || Boolean(signal?.aborted);
-		visionCache = mergeVisionCache(
-			existingVisionCache,
-			entries,
-			fetchIncomplete ? new Set([...fetchedIds, ...existingVisionCache.keys()]) : fetchedIds
-		);
+		visionCache = mergeVisionCache(existingVisionCache, entries, liveIds(existingVisionCache));
 		visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
 	}
 
@@ -279,7 +314,9 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	}
 
 	onEvent({ kind: 'phase', phase: 'upserting' });
-	const documents = blocks.map((block) => toSearchDocument(block, visionText.get(block.id)));
+	const documents = blocks.map((block) =>
+		toSearchDocument(block, visionText.get(block.id), colourWeights.get(block.id)?.weights)
+	);
 	const { batches, rowsUpserted } = await upsertSearchDocuments(documents, turbopuffer, {
 		log,
 		onProgress: (done, total) => onEvent({ kind: 'position', done, total })
@@ -313,5 +350,5 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	if (summary.pruneSkipped) log(`Skipped pruning: ${summary.pruneSkipped}`);
 
 	onEvent({ kind: 'phase', phase: 'done' });
-	return { blocks, channels, visionCache, summary };
+	return { blocks, channels, visionCache, colourCache, summary };
 }

@@ -10,13 +10,14 @@
 Maintainer CLI (bun run sync, manual)
   -> Are.na V3 (personal access token)
   -> normalize original block metadata, dedupe across channels
+  -> colour weights measured with ffmpeg, cached in colour-cache.jsonl (skip: --no-colour)
   -> OpenRouter vision model, cached in vision-cache.jsonl (skip: --no-vision)
   -> write generated titles/descriptions back to Are.na (skip: --no-push-arena)
   -> Turbopuffer namespace: arena-blocks-v1
-  -> channel-manifest.json, vision-cache.jsonl (committed)
+  -> channel-manifest.json, vision-cache.jsonl, colour-cache.jsonl (committed)
 
 Public SvelteKit app on Cloudflare Workers
-  -> GET /?q=&mode=&channel=&type=&from=&to=         (SSR gallery)
+  -> GET /?q=&mode=&channel=&type=&colour=&from=&to= (SSR gallery)
   -> GET /api/search?...&offset=                     (JSON, used for infinite scroll)
   -> executeArchiveSearch -> SearchRepository -> Turbopuffer multiQuery / query
   -> typed original-block result cards
@@ -24,16 +25,16 @@ Public SvelteKit app on Cloudflare Workers
 
 Code layout:
 
-| Path                                 | Owns                                                                                                                                                                       |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/lib/domain/`                    | `search.ts`: the URL grammar, modes, `SearchResult`, shared with the browser. `archive.ts`: `ArchiveBlock`, `SearchDocument`, `toSearchDocument` (server-only in practice) |
-| `src/lib/server/arena/`              | Are.na transport (SDK wrapper), Zod schemas for Are.na payloads, pagination, rate-limit handling                                                                           |
-| `src/lib/server/indexing/`           | normalization, channel filter, channel manifest, sync orchestration, `vision/` and `progress/`; the committed `channel-manifest.json` and `vision-cache.jsonl`             |
-| `src/lib/server/search/`             | request parsing, env config, `executeArchiveSearch` (dedupe, paging), `SearchRepository` (read path), result mapping, the Turbopuffer write client and schema, eval cases  |
-| `src/lib/server/rate-limit.ts`       | edge rate limiting, invoked from `src/hooks.server.ts`                                                                                                                     |
-| `src/lib/components/`, `src/routes/` | presentation and composition                                                                                                                                               |
-| `src/styles/`                        | fonts and the role-based colour tokens, imported by `src/routes/layout.css`                                                                                                |
-| `scripts/`                           | `sync.ts` and `evaluate-search.ts`, the manual CLIs; `fixtures/search-cases.json`; `worktree.sh`                                                                           |
+| Path                                 | Owns                                                                                                                                                                                            |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/domain/`                    | `search.ts`: the URL grammar, modes, `SearchResult`, shared with the browser. `archive.ts`: `ArchiveBlock`, `SearchDocument`, `toSearchDocument` (server-only in practice)                      |
+| `src/lib/server/arena/`              | Are.na transport (SDK wrapper), Zod schemas for Are.na payloads, pagination, rate-limit handling                                                                                                |
+| `src/lib/server/indexing/`           | normalization, channel filter, channel manifest, sync orchestration, `colour/`, `vision/` and `progress/`; the committed `channel-manifest.json`, `colour-cache.jsonl` and `vision-cache.jsonl` |
+| `src/lib/server/search/`             | request parsing, env config, `executeArchiveSearch` (dedupe, paging), `SearchRepository` (read path), result mapping, the Turbopuffer write client and schema, eval cases                       |
+| `src/lib/server/rate-limit.ts`       | edge rate limiting, invoked from `src/hooks.server.ts`                                                                                                                                          |
+| `src/lib/components/`, `src/routes/` | presentation and composition                                                                                                                                                                    |
+| `src/styles/`                        | fonts and the role-based colour tokens, imported by `src/routes/layout.css`                                                                                                                     |
+| `scripts/`                           | `sync.ts` and `evaluate-search.ts`, the manual CLIs; `fixtures/search-cases.json`; `worktree.sh`                                                                                                |
 
 ## Why this data-access model
 
@@ -93,6 +94,7 @@ Turbopuffer cannot change an attribute's type in place. A breaking change needs 
 | `vision_ocr`         | string, unindexed                                                  | text read from the image (never shown)     |
 | `vision_medium`      | string, filterable                                                 | generated medium; unreliable, not read     |
 | `vision_tags`        | `[]string`, filterable                                             | generated tags; not read back yet          |
+| `colour_<name>`      | uint, filterable; one per colour, 12 in all                        | colour filter and colour browse order      |
 
 `connection_count` is how many synced channels hold the block. `connected_at` is set per channel, so a block in several channels keeps the newest one.
 
@@ -139,7 +141,9 @@ Hybrid mode sends one Turbopuffer `multiQuery`:
 
 RRF runs inside Turbopuffer, never in our code. It merges two ranked lists without comparing their raw scores.
 
-**Filters.** Only three fields are filtered: `block_type` (`In`), `channel_slugs` (`ContainsAny`) and `connected_at` (`Gte` and `Lte`). Repeated `channel` or `type` values are ORed. Different filters are ANDed. A date covers its whole UTC day.
+**Filters.** Only these fields are filtered: `block_type` (`In`), `channel_slugs` (`ContainsAny`), `connected_at` (`Gte` and `Lte`) and the `colour_*` weights (`Gte` a per-colour threshold in `src/lib/server/search/colour-filter.ts`). Repeated `channel` or `type` values are ORed. Repeated `colour` values are ANDed: `?colour=blue&colour=orange` is blocks with both. Different filters are ANDed. A date covers its whole UTC day.
+
+**Colour order.** Browse with colours sorts by the first colour's weight, then each further colour's, then `connection_count`, `connected_at` and `id`. With a text query, relevance keeps the order and colours only filter. A `Sum` of the weights would rank several colours better, but Turbopuffer leaves the order of equal scores undefined and it shifts with `limit`, which paging re-fetches with every page; ending a plain sort on `id` makes it a total order. Turbopuffer sorts on at most 8 attributes, so a request carries at most 5 colours.
 
 **Mode.** With no `mode` and a non-empty `q`, the request is hybrid. With nothing at all, it is browse. The UI offers three choices: Best match (hybrid), Exact words (lexical) and Related ideas (semantic). Browse is an empty query.
 
@@ -150,6 +154,7 @@ RRF runs inside Turbopuffer, never in our code. It merges two ranked lists witho
 - `q` is at most 400 characters. It is required unless `mode` is `browse`.
 - At most 20 `channel` values and 20 `type` values.
 - `type` must be `Image`, `Link`, `Text`, `Attachment` or `Embed`.
+- `colour` must be one of the twelve colours, at most 5 of them. A repeated colour counts once.
 - `mode` must be one of the four modes.
 - `from` and `to` must look like `YYYY-MM-DD`. `to` cannot be before `from`.
 - A blank value counts as missing. A form sends every field, so `?q=&from=` is the same as `/`.
@@ -179,11 +184,12 @@ RRF runs inside Turbopuffer, never in our code. It merges two ranked lists witho
 1. **Check settings.** The script needs `ARENA_ACCESS_TOKEN`, `TURBOPUFFER_API_KEY` and `TURBOPUFFER_REGION`. It also needs `OPENROUTER_API_KEY`, unless `--no-vision` is set. It rejects unknown flags, because a default run writes to Are.na.
 2. **Find and fetch channels.** Look up the token's owner and list their channels. Drop ignored and private ones. Fetch each remaining channel's pages in turn. If the first 3 channels all fail, stop: that is a token problem. Any other failed channel is logged and skipped. A reply that does not match the expected schema stops the run.
 3. **Normalize and merge.** Turn blocks into documents. Merge duplicates by Are.na block ID and combine their channels. A block in several channels keeps its newest `connected_at`. Every other field comes from the block itself.
-4. **Describe.** Unless `--no-vision` is set, the vision stage describes the blocks. See [Vision indexing](#vision-indexing). With `--no-vision`, the existing cache is used as is.
-5. **Write back.** Unless `--no-push-arena` is set, send generated titles and descriptions to Are.na. This uses the cache, so with `--no-vision` it sends what earlier runs made. A block that fails is recorded and the run goes on. If the first 5 writes all fail, the sync stops here, before anything is indexed. This run indexes the titles it fetched; the written titles reach the index on the next sync.
-6. **Upsert.** Write documents in batches of 200, with generated text folded into `search_text`. Running it again is safe.
-7. **Prune.** List every document id in the namespace. That is ids only, ordered by `id`, 10,000 per page. Delete ids that are not in this sync, in batches of 1,000. Pruning runs after the upsert. A failure leaves extra documents, never a half-built index. It also removes blocks from channels that are now ignored or private. A block still in any synced channel is never pruned.
-8. **Save and report.** Write the merged vision cache, but only if the vision stage ran. Write the channel manifest. Print a summary of channels, blocks, upserts, prunes, and vision and write-back counts.
+4. **Measure colour.** Unless `--no-colour` is set, the colour stage measures the blocks. See [Colour indexing](#colour-indexing). With `--no-colour`, the existing colour cache is used as is.
+5. **Describe.** Unless `--no-vision` is set, the vision stage describes the blocks. See [Vision indexing](#vision-indexing). With `--no-vision`, the existing cache is used as is.
+6. **Write back.** Unless `--no-push-arena` is set, send generated titles and descriptions to Are.na. This uses the cache, so with `--no-vision` it sends what earlier runs made. A block that fails is recorded and the run goes on. If the first 5 writes all fail, the sync stops here, before anything is indexed. This run indexes the titles it fetched; the written titles reach the index on the next sync.
+7. **Upsert.** Write documents in batches of 200, with generated text folded into `search_text` and colour weights as attributes. Running it again is safe.
+8. **Prune.** List every document id in the namespace. That is ids only, ordered by `id`, 10,000 per page. Delete ids that are not in this sync, in batches of 1,000. Pruning runs after the upsert. A failure leaves extra documents, never a half-built index. It also removes blocks from channels that are now ignored or private. A block still in any synced channel is never pruned.
+9. **Save and report.** Write the merged colour and vision caches, each only if its stage ran. Write the channel manifest. Print a summary of channels, blocks, upserts, prunes, and vision and write-back counts.
 
 Pruning is skipped, with the reason shown, in these cases:
 
@@ -223,7 +229,7 @@ It runs only during sync. Search itself uses no model, and a result is always th
 - `title`: at most 70 characters, and never the title we supplied.
 - `description`: 200 to 500 characters.
 - `ocr`: every readable word.
-- `palette`: 3 to 5 hex colours. It is cached but not used.
+- `palette`: 3 to 5 hex colours. It is cached but not used: it has no weights, so colour comes from the pixels instead (see [Colour indexing](#colour-indexing)).
 - `medium`: one of nine values.
 - `tags`: 3 to 8.
 
@@ -246,6 +252,19 @@ When the cache is merged, entries for blocks that left the archive are dropped. 
 - Writes are paced at 500 ms, because the free tier allows 120 a minute. A rate-limited block waits as long as Are.na asks, up to 3 times. Any other error fails that block without a retry.
 - If the first 5 writes all fail, the sync stops before indexing. This almost always means a read-only token.
 - There is no preview and no cap on how many blocks one run writes.
+
+## Colour indexing
+
+The colour stage (`src/lib/server/indexing/colour/`) measures how much of each image is each colour. It runs only during sync, uses no model, and costs nothing but downloads. The decision and its alternatives are in [ADR 0001](./decisions/0001-colour-from-pixels.md); calibration is in [the colour filter spec](./specs/colour-filter.md#calibration).
+
+- **Input.** A still is fetched as a 128px Are.na rendition (`rendition.ts`); an animation on the CDN has no rendition, so its original is fetched. Every download is capped at 64 MB, by `content-length` and again while streaming. Video attachments and embeds are measured from their poster or thumbnail. Formats the vision stage skips are skipped here too.
+- **Nothing touches disk.** The bytes are piped to ffmpeg on stdin, which writes 64 × 64 RGBA frames to stdout: the first frame, then one a second, up to 8. Both buffers are dropped once weighed. `runFfmpeg` (`src/lib/server/indexing/ffmpeg.ts`) is shared with `video.ts`.
+- **Weights.** Each opaque pixel is classified in OKLCH (`classify.ts`): low chroma is black, grey or white by lightness; the rest go by hue band, with dark or muted warm hues as brown. A weight is that colour's share of the opaque pixels, in per-mille. `mono` is 1000 minus the chromatic share. A block with no image or no measurement weighs 0 everywhere and never matches.
+- **Cache.** `colour-cache.jsonl` is committed, one entry per block, fixed key order, sorted by block id. An entry is reused when block id, `image_src_hash` and `COLOUR_VERSION` match; bump the version when the classifier changes. Merge rules match the vision cache: entries for blocks that left are dropped unless a channel failed or the run was aborted, and a failure keeps the old entry. The CLI checkpoints every 25 entries.
+- **Running it.** 4 workers. A failed or skipped block gets no entry and is retried next run. ffmpeg must be on `PATH`; without it every block fails with a message naming ffmpeg and `--no-colour`.
+- **Calibrating.** `bun run calibrate:colour` lists blocks from Turbopuffer, measures a stable sample and writes a contact sheet outside the repo. It is read-only.
+
+Turbopuffer fails a query that filters or sorts on an attribute it has never had. The `colour_*` attributes are never requested in results, so only a `colour` request is affected, and only until the first sync that writes them. Sync before deploying code that sends `colour`.
 
 ## Sources checked
 

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import {
 	ARCHIVE_BLOCK_TYPES,
+	ARCHIVE_COLOURS,
+	ARCHIVE_MAX_COLOURS,
 	ARCHIVE_MAX_OFFSET,
 	ARCHIVE_PAGE_PARAM,
 	ARCHIVE_RESULT_LIMIT,
@@ -18,6 +20,7 @@ const searchRequestSchema = z
 		query: z.string().trim().max(400),
 		channelSlugs: z.array(z.string().trim().min(1)).max(20),
 		blockTypes: z.array(z.enum(ARCHIVE_BLOCK_TYPES)).max(20),
+		colours: z.array(z.enum(ARCHIVE_COLOURS)).max(ARCHIVE_MAX_COLOURS),
 		from: z.iso.date().optional(),
 		to: z.iso.date().optional(),
 		offset: z
@@ -82,6 +85,8 @@ export function parseArchiveSearchRequest(searchParams: URLSearchParams): Archiv
 		query,
 		channelSlugs: repeatedParams(searchParams, ARCHIVE_SEARCH_PARAM.channel),
 		blockTypes: repeatedParams(searchParams, ARCHIVE_SEARCH_PARAM.type),
+		// Each colour becomes a sort key, and a repeated key is not a different order.
+		colours: [...new Set(repeatedParams(searchParams, ARCHIVE_SEARCH_PARAM.colour))],
 		from: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.from),
 		to: optionalParam(searchParams, ARCHIVE_SEARCH_PARAM.to),
 		offset: optionalParam(searchParams, ARCHIVE_PAGE_PARAM.offset)

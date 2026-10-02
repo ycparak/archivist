@@ -185,8 +185,9 @@ What the sheet showed:
 
 ## Sync run
 
-After the index slice lands, this measures every image and writes the attributes, with no model
-calls and no Are.na write-back. Agents may run it (see `AGENTS.md`):
+This measures every image and writes the attributes, with no model calls and no Are.na write-back.
+Agents may run it (see `AGENTS.md`). It first ran on 2 October 2026: 2,542 measured, 1 SVG skipped,
+no failures.
 
 ```sh
 bun run sync --no-vision --no-push-arena
