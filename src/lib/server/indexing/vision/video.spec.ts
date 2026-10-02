@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { FfmpegMissingError } from '../ffmpeg';
 import {
 	cleanupStaleTranscodes,
-	FfmpegMissingError,
 	isAnimated,
 	MAX_SOURCE_BYTES,
 	transcodeToVideoDataUrl

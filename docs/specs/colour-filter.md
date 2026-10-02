@@ -23,34 +23,37 @@ that colour. This spec covers the data and query side only; the UI comes later.
 For each block with an image, the sync measures the share of the image in each colour, as a
 per-mille `uint` (0-1000).
 
-- Decode to a small RGB raster (about 64 × 64) and classify each pixel in OKLCH. Low chroma is
-  neutral, split by lightness into `black` / `grey` / `white`. Chromatic pixels go by hue, with
-  `brown` taken from the orange-yellow hues at low lightness. All boundaries are calibrated, not
-  guessed (see [Calibration](#calibration)).
+- Decode to a 64 × 64 RGBA raster and classify each opaque pixel in OKLCH
+  (`colour/classify.ts`). Chroma under 0.045 is neutral, split by lightness into `black` (under
+  0.33), `white` (over 0.93) and `grey`. Chromatic pixels go by hue band. `brown` takes the warm
+  hues (30-85°) when they are dark (lightness under 0.6) or muted (chroma under 0.09), which also
+  catches tan and beige. Transparent pixels are ignored.
 - `mono` = 1000 − the total chromatic share, so a fully black-and-white image scores 1000.
 - A block with no image, or one that could not be measured, has every weight at 0 and never
   matches a colour filter.
 
 ### Media
 
-| Block                                | Measured from                                                                                                   |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Still image (JPEG, PNG, WebP)        | A small Are.na resizer rendition via `rendition.ts`; a non-resizer URL is fetched as is, with the 5 MB cap      |
-| Animated GIF                         | The original (Are.na publishes no smaller rendition, 64 MB cap as in `video.ts`), about 8 frames sampled evenly |
-| Video attachment                     | Its poster, `image_url`; the video file itself is not downloaded                                                |
-| Link / Embed / Attachment with image | Its thumbnail or screenshot, `image_url`                                                                        |
-| SVG, other types                     | Skipped, as in the vision stage                                                                                 |
+| Block                                | Measured from                                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Still image (JPEG, PNG, WebP)        | A 128px Are.na resizer rendition via `rendition.ts`; a non-resizer URL is fetched as is           |
+| Animated GIF                         | The original (Are.na publishes no smaller rendition): the first frame, then one a second, up to 8 |
+| Video attachment                     | Its poster, `image_url`; the video file itself is not downloaded                                  |
+| Link / Embed / Attachment with image | Its thumbnail or screenshot, `image_url`                                                          |
+| SVG, other types                     | Skipped, as in the vision stage                                                                   |
+
+Every download is capped at 64 MB, the same ceiling `video.ts` uses, checked against
+`content-length` and again while streaming.
 
 ### Nothing touches disk
 
-The image is fetched into memory, piped to `ffmpeg` on stdin, and the raw `rgb24` raster is read
-back from stdout (`-f rawvideo -pix_fmt rgb24 pipe:1`). No file is written, so there is nothing
+The image is fetched into memory, piped to `ffmpeg` on stdin, and the raw RGBA raster is read
+back from stdout (`-f rawvideo -pix_fmt rgba pipe:1`). No file is written, so there is nothing
 to delete and no scratch folder to sweep. The fetched bytes and the raster go out of scope as soon
 as the weights are computed.
 
-`video.ts` only runs ffmpeg file-to-file today. Its `runFfmpeg` moves to a shared
-`src/lib/server/indexing/ffmpeg.ts` and gains stdin/stdout piping. `FfmpegMissingError` stops
-naming `--no-vision` as the only way out.
+`runFfmpeg` lives in `src/lib/server/indexing/ffmpeg.ts`, shared with `video.ts`, and pipes stdin
+and stdout. Its `FfmpegMissingError` names both `--no-vision` and `--no-colour`.
 
 ## Colour cache
 
@@ -64,8 +67,8 @@ naming `--no-vision` as the only way out.
   was aborted.
 - Saved every 25 entries, and only when the stage ran.
 
-Entry: `block_id`, `image_src_hash`, `colour_version`, `input_mode` (`image` | `animation`),
-`generated_at`, and `weights` (one per-mille value per colour).
+Entry: `block_id`, `image_src_hash`, `colour_version`, `frames` (1 for a still),
+`measured_at`, and `weights` (one per-mille value per colour, all twelve required).
 
 ## Sync stage
 
@@ -132,10 +135,34 @@ Read-only queries against `arena-blocks-v1`, 2 October 2026, with `connection_co
 
 ## Calibration
 
-A read-only script lists blocks and their `image_url` from Turbopuffer, measures a sample of a few
-hundred, and writes an HTML contact sheet (not committed) of the top 20 blocks per colour by weight,
-plus blocks just above and below each threshold. It settles the OKLCH boundaries, the thresholds,
-and whether `black` / `white` are worth showing. Measuring the whole archive is left to the sync.
+`bun run calibrate:colour [--sample 300] [--out path]` is read-only. It lists blocks and their
+`image_url` from Turbopuffer, measures a stable sample the way the sync does, and writes an HTML
+contact sheet outside the repo: the 20 strongest blocks per colour, and the blocks either side of
+each threshold.
+
+Run on 400 blocks, 2 October 2026, with the thresholds in `colour-filter.ts`:
+
+| Colour | Threshold | Match | Colour | Threshold | Match |
+| ------ | --------- | ----- | ------ | --------- | ----- |
+| red    | 50‰       | 3%    | pink   | 50‰       | 1%    |
+| orange | 50‰       | 1%    | brown  | 50‰       | 18%   |
+| yellow | 50‰       | 6%    | grey   | 150‰      | 52%   |
+| green  | 50‰       | 6%    | black  | 150‰      | 36%   |
+| blue   | 50‰       | 11%   | white  | 150‰      | 56%   |
+| purple | 50‰       | 4%    | mono   | 995‰      | 39%   |
+
+What the sheet showed:
+
+- The strongest results for green, yellow, blue, brown and mono are what the name promises:
+  green products and forests, yellow packaging, wood interiors, genuinely black-and-white pages.
+- Shares are small. The archive is mostly screenshots on white or black, so a strongly red image
+  is 10-15% red. That is why chromatic thresholds sit at 5%.
+- Skin in flash photographs counts towards red. Accepted: ranking puts genuinely red images first.
+- Mono at 980‰ let in images with a clear accent (a red tag, purple UI); 995‰ (about 20 of 4,096
+  pixels) keeps them out.
+- Dark yellow first read as brown and put yellow bottles in brown; brown's hues now stop at 85°.
+- White and black are dominated by UI screenshots, as predicted. Whether to show them is a UI
+  decision.
 
 ## Rule and doc changes
 
@@ -156,10 +183,10 @@ and whether `black` / `white` are worth showing. Measuring the whole archive is 
 - `toSearchDocument`: weights present, absent, partial.
 - Grammar round-trip, request validation, `buildSearchFilters`, browse `rank_by` with colours.
 
-## Maintainer run
+## Sync run
 
-After the index slice lands, run this to measure every image and write the attributes, with no
-model calls and no Are.na write-back:
+After the index slice lands, this measures every image and writes the attributes, with no model
+calls and no Are.na write-back. Agents may run it (see `AGENTS.md`):
 
 ```sh
 bun run sync --no-vision --no-push-arena
