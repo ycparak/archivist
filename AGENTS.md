@@ -61,7 +61,7 @@ in `./docs/decisions/`.
 - Update [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) when completing user-visible work.
 - Load only docs relevant to the current task and scope.
 - If a behavior or rule changes in practice, update the owning doc in the same task.
-- Never run `bun run sync` (or any command that writes to the live Turbopuffer namespace or calls the maintainer's Are.na account). A plain `bun run sync` does all of it: it calls OpenRouter, writes titles back to Are.na, and upserts and prunes the namespace. `--no-vision` and `--no-push-arena` skip the first two, never the third. When a task needs a sync or re-index after the code changes, finish the code and tests, then hand back and ask the maintainer to run it, saying which command and why. Read-only commands such as `bun run evaluate:search` are fine.
+- Never run a plain `bun run sync`. It does three things: it calls OpenRouter (which costs money), writes titles back to the maintainer's Are.na account, and upserts and prunes the live Turbopuffer namespace. Agents may run `bun run sync --no-vision`, `bun run sync --no-push-arena`, or both together, when a task needs the index refreshed. Know what each one still does: every variant upserts and prunes the live namespace; `--no-vision` alone still writes cached titles and descriptions to Are.na; `--no-push-arena` alone still calls OpenRouter for any block without a cached description. Use both flags unless the task needs one of those stages. Run it only after the code and tests are done, and say in the handoff which command you ran and why. Read-only commands such as `bun run evaluate:search` are fine.
 - In autonomous/loop mode, complete exactly one task at a time and commit immediately. Do not batch unless the user explicitly asks.
 - When coding or reviewing, follow the Engineering Guardrails and Product/Search rules below and the guidelines in linked docs.
 
@@ -72,7 +72,7 @@ Archivist is a public gallery and search surface for one maintainer's Are.na arc
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
 - There is no auth, accounts, analytics, background queue, chat/agent UI, or link crawling. Do not install Mastra or add agent behavior.
 - Query time is LLM-free. The one use of a model is the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
-- Sync is manual and maintainer-only. Public requests query Turbopuffer only; they must never proxy to Are.na.
+- Sync is manual. A plain `bun run sync` is maintainer-only; agents may run the flagged variants described under Hard Rules. Public requests query Turbopuffer only; they must never proxy to Are.na.
 
 ## Search Invariants
 
