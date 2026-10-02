@@ -34,16 +34,19 @@
 		onnavigate: (href: ArchiveSearchHref) => void;
 	} = $props();
 
-	const SWATCHES: Partial<Record<ArchiveColour, string>> = {
-		red: 'bg-red',
-		orange: 'bg-paprika',
-		yellow: 'bg-yellow',
-		green: 'bg-green',
-		blue: 'bg-blue',
-		purple: 'bg-lilac',
-		brown: 'bg-brown',
-		grey: 'bg-gray-500',
-		mono: 'border border-foreground-detail bg-[linear-gradient(135deg,black_50%,white_50%)]'
+	const SWATCHES: Partial<Record<ArchiveColour, { fill: string; ring: string }>> = {
+		red: { fill: 'bg-red', ring: 'ring-red' },
+		orange: { fill: 'bg-paprika', ring: 'ring-paprika' },
+		yellow: { fill: 'bg-yellow', ring: 'ring-yellow' },
+		green: { fill: 'bg-green', ring: 'ring-green' },
+		blue: { fill: 'bg-blue', ring: 'ring-blue' },
+		purple: { fill: 'bg-lilac', ring: 'ring-lilac' },
+		brown: { fill: 'bg-brown', ring: 'ring-brown' },
+		grey: { fill: 'bg-gray-500', ring: 'ring-gray-500' },
+		mono: {
+			fill: 'border border-foreground-detail bg-[linear-gradient(135deg,black_50%,white_50%)]',
+			ring: 'ring-foreground-strong'
+		}
 	};
 
 	let channelColumns = $state.raw<ChannelManifestEntry[][]>([]);
@@ -145,16 +148,18 @@
 				{@render list('Block type', blockTypeOptions(search))}
 				<div class="flex shrink-0 flex-col gap-2.5">
 					<h2 class="font-bold">Colours</h2>
-					<ul class="m-0 grid list-none grid-cols-9 gap-1 p-0">
+					<ul class="m-0 grid list-none grid-cols-9 gap-1.75 p-0">
 						{#each colourOptions(search) as colour (colour.key)}
 							<li>
 								{#if colour.href}
 									<a
 										class={[
 											'block aspect-square rounded-full',
-											SWATCHES[colour.key as ArchiveColour],
-											colour.active &&
-												'ring-1 ring-foreground-strong ring-offset-2 ring-offset-background'
+											SWATCHES[colour.key as ArchiveColour]?.fill,
+											colour.active && [
+												'ring-1 ring-offset-2 ring-offset-background',
+												SWATCHES[colour.key as ArchiveColour]?.ring
+											]
 										]}
 										href={resolve(colour.href)}
 										aria-label={colour.label}
@@ -167,7 +172,7 @@
 									<span
 										class={[
 											'block aspect-square rounded-full opacity-30',
-											SWATCHES[colour.key as ArchiveColour]
+											SWATCHES[colour.key as ArchiveColour]?.fill
 										]}
 										role="img"
 										aria-label="{colour.label} (at most five colours)"
