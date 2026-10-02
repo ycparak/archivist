@@ -12,14 +12,14 @@ This is an **agent router**: concise context loaded every session, read by both 
 
 Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, Turbopuffer (search datastore), Are.na V3 (source of truth for content).
 
-- `src/lib/domain/`: framework-free domain types and transformations. `search.ts` (the URL grammar, `SearchResult`, `ArchiveSearchState`) ships to the browser, so it must stay free of Zod schemas, provider shapes, and any runtime validation library. `archive.ts` (`ArchiveBlock`, `SearchDocument`, `toSearchDocument`) is imported only from `src/lib/server/` and does use Zod; never import it from a component or route markup. Provider validation and provider shapes live under `src/lib/server/`.
+- `src/lib/domain/`: framework-free domain types and transformations. `titles.ts` decides which Are.na titles carry no information; write-back and captions both use it. `search.ts` (the URL grammar, `SearchResult`, `ArchiveSearchState`) ships to the browser, so it must stay free of Zod schemas, provider shapes, and any runtime validation library. `archive.ts` (`ArchiveBlock`, `SearchDocument`, `toSearchDocument`) is imported only from `src/lib/server/` and does use Zod; never import it from a component or route markup. Provider validation and provider shapes live under `src/lib/server/`.
 - `src/lib/server/arena/`: Are.na transport, payload schemas, and pagination only.
 - `src/lib/server/indexing/`: normalization, channel filtering, the channel manifest, sync orchestration, the colour stage (`colour/`), the vision stage (`vision/`), and CLI progress reporting (`progress/`). It also holds the three committed files the sync writes: `channel-manifest.json`, `colour-cache.jsonl` and `vision-cache.jsonl`.
 - `src/lib/server/search/`: search request validation, env config, `executeArchiveSearch` (dedupe and paging), the read-side `SearchRepository`, result mapping, the evaluation-case schema, and the Turbopuffer write client and schema the sync uses.
 - `src/lib/server/rate-limit.ts`: edge rate limiting, wired in through `src/hooks.server.ts`.
 - `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
 - `src/routes/`: HTTP and UI composition only. Provider calls and ranking expressions do not belong in route files.
-- `src/styles/`: fonts and the role-based colour tokens.
+- `src/styles/`: fonts, Tailwind theme tokens and the semantic colour roles.
 - `scripts/`: the manual CLIs (`sync.ts`, `evaluate-search.ts`, `calibrate-colour.ts`), the search evaluation fixture, and `worktree.sh`.
 
 Full technical detail: [docs/architecture.md](./docs/architecture.md).
@@ -79,7 +79,7 @@ Archivist is a public gallery and search surface for one maintainer's Are.na arc
 - Use the `search_text` schema in `docs/architecture.md` for both BM25 and native embeddings.
 - `src/lib/domain/search.ts` owns the URL search grammar (parameter names, the implicit-mode rule, the date format). The server parser and the UI both consume it; do not restate a parameter name anywhere else.
 - Hybrid means one Turbopuffer `multiQuery` with BM25 + native ANN and `rerank_by: ['RRF']`; do not implement ad-hoc score arithmetic in the UI.
-- Filter only `block_type`, `channel_slugs`, `connected_at`, and the `colour_*` weights. Colour browse sorts on the weights with an `id` tiebreak, never on a `Sum` expression, because expression ties have no stable order across pages. See [Retrieval behavior](./docs/architecture.md#retrieval-behavior).
+- Filter only `block_type`, `channel_slugs`, `connected_at`, and the `colour_*` weights. `sort` changes the browse order only; a text query always ranks by relevance. Colour browse sorts on the weights with an `id` tiebreak, never on a `Sum` expression, because expression ties have no stable order across pages. See [Retrieval behavior](./docs/architecture.md#retrieval-behavior).
 - Schema changes that alter an existing Turbopuffer attribute's type require a new versioned namespace. Record that migration as an ADR in `docs/decisions/`.
 
 ## Engineering Guardrails

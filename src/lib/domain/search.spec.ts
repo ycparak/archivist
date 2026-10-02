@@ -32,6 +32,14 @@ describe('toArchiveSearchHref', () => {
 		expect(toArchiveSearchHref(state({ query: '', mode: 'semantic' }))).toBe('/');
 	});
 
+	it('keeps a browse order other than the default, and drops it once a query ranks instead', () => {
+		expect(toArchiveSearchHref(state({ sort: 'newest' }))).toBe('/?sort=newest');
+		expect(toArchiveSearchHref(state({ sort: 'connections' }))).toBe('/');
+		expect(toArchiveSearchHref(state({ query: 'felt', mode: 'hybrid', sort: 'oldest' }))).toBe(
+			'/?q=felt'
+		);
+	});
+
 	it('repeats colours in the order they were chosen', () => {
 		expect(toArchiveSearchHref(state({ colours: ['orange', 'blue'] }))).toBe(
 			'/?colour=orange&colour=blue'
@@ -61,6 +69,7 @@ describe('readArchiveSearchState', () => {
 			state({ query: 'felt', mode: 'semantic', channelSlugs: ['materials'] }),
 			state({ blockTypes: ['Image'], from: '2024-01-02', to: '2024-01-31' }),
 			state({ colours: ['blue', 'mono'] }),
+			state({ colours: ['blue'], sort: 'oldest' }),
 			state({
 				query: 'archival',
 				mode: 'lexical',
@@ -81,6 +90,11 @@ describe('readArchiveSearchState', () => {
 	it('falls back to the implied mode for an unknown or blank one', () => {
 		expect(readArchiveSearchState(new URLSearchParams('q=felt&mode=fuzzy')).mode).toBe('hybrid');
 		expect(readArchiveSearchState(new URLSearchParams('mode=')).mode).toBe('browse');
+	});
+
+	it('falls back to the default browse order for an unknown sort', () => {
+		expect(readArchiveSearchState(new URLSearchParams('sort=random')).sort).toBe('connections');
+		expect(readArchiveSearchState(new URLSearchParams('sort=newest')).sort).toBe('newest');
 	});
 
 	it('collapses duplicate filter values so keyed rendering cannot break', () => {

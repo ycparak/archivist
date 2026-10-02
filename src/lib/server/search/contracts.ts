@@ -5,6 +5,7 @@ import {
 	ARCHIVE_MAX_COLOURS,
 	ARCHIVE_MAX_OFFSET,
 	ARCHIVE_SEARCH_MODES,
+	ARCHIVE_SORTS,
 	type SearchResult,
 	type SearchTimings
 } from '$lib/domain/search';
@@ -39,6 +40,7 @@ export const archiveSearchInputSchema = z.object({
 	colours: z.array(z.enum(ARCHIVE_COLOURS)).max(ARCHIVE_MAX_COLOURS).default([]),
 	from: z.coerce.date().optional(),
 	to: z.coerce.date().optional(),
+	sort: z.enum(ARCHIVE_SORTS).default('connections'),
 	limit: z.number().int().min(1).max(48).default(24),
 	offset: z.number().int().min(0).max(ARCHIVE_MAX_OFFSET).default(0)
 });
@@ -57,4 +59,8 @@ export interface SearchResponse {
 
 export interface SearchRepository {
 	search(input: ArchiveSearchInput): Promise<SearchResponse>;
+}
+
+export interface ArchiveSizeSource {
+	countBlocks(): Promise<number>;
 }

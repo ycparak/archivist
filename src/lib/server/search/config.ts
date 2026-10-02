@@ -1,4 +1,4 @@
-import type { SearchRepository } from './contracts';
+import type { ArchiveSizeSource, SearchRepository } from './contracts';
 import { DEFAULT_NAMESPACE } from './namespace';
 import { TurbopufferSearchRepository } from './repository';
 import type { TurbopufferConfig } from './turbopuffer-client';
@@ -23,6 +23,6 @@ export function resolveSearchConfig(
 export function createSearchRepository(
 	platformEnv: SearchEnvironment | undefined,
 	fallbackEnv: SearchEnvironment
-): SearchRepository {
+): SearchRepository & ArchiveSizeSource {
 	return new TurbopufferSearchRepository(resolveSearchConfig(platformEnv, fallbackEnv));
 }

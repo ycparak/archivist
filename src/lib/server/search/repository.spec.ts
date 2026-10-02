@@ -15,6 +15,7 @@ function input(overrides: Partial<ArchiveSearchInput> = {}): ArchiveSearchInput 
 		channelSlugs: [],
 		blockTypes: [],
 		colours: [],
+		sort: 'connections',
 		limit: 24,
 		offset: 0,
 		...overrides
@@ -260,6 +261,34 @@ describe('TurbopufferSearchRepository', () => {
 		expect(hybrid.timings).toMatchObject({ queryMs: 40, rerankMs: 15 });
 	});
 
+	it('counts the blocks in the namespace with one aggregate query', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					aggregations: { blocks: 2546 },
+					billing: { billable_logical_bytes_queried: 0, billable_logical_bytes_returned: 0 },
+					performance: {
+						cache_hit_ratio: 1,
+						cache_temperature: 'hot',
+						server_total_ms: 1,
+						query_execution_ms: 1,
+						exhaustive_search_count: 0,
+						approx_namespace_size: 2546
+					}
+				}),
+				{ status: 200, headers: { 'content-type': 'application/json' } }
+			)
+		);
+
+		expect(await repository(fetchFn).countBlocks()).toBe(2546);
+		expect(requestedBody(fetchFn)).toEqual({ aggregate_by: { blocks: ['Count'] } });
+	});
+
+	it('reports a count it cannot read as unavailable', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await expect(repository(fetchFn).countBlocks()).rejects.toBeInstanceOf(SearchUnavailableError);
+	});
+
 	it('over-fetches by one row past the requested page so the server can tell whether more exist', async () => {
 		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
 		await repository(fetchFn).search(input({ offset: 48 }));
@@ -287,6 +316,24 @@ describe('TurbopufferSearchRepository', () => {
 			['colour_blue', 'desc'],
 			['connection_count', 'desc'],
 			['connected_at', 'desc'],
+			['id', 'asc']
+		]);
+	});
+
+	it('orders a date browse by the date alone, ending on id, with colours only filtering', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ sort: 'newest', colours: ['blue'] }));
+		const body = requestedBody(fetchFn);
+		expect(body.rank_by).toEqual([
+			['connected_at', 'desc'],
+			['id', 'asc']
+		]);
+		expect(JSON.stringify(body.filters)).toContain('colour_blue');
+
+		const oldestFetch = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(oldestFetch).search(input({ sort: 'oldest' }));
+		expect(requestedBody(oldestFetch).rank_by).toEqual([
+			['connected_at', 'asc'],
 			['id', 'asc']
 		]);
 	});
