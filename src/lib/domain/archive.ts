@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ARCHIVE_COLOURS, type ArchiveColour } from './search';
+import { ARCHIVE_COLOURS, type ArchiveBlockType, type ArchiveColour } from './search';
 
 export const blockTypeSchema = z.string().trim().min(1);
 
@@ -61,6 +61,8 @@ export type SearchDocument = {
 	id: string;
 	search_text: string;
 	block_type: string;
+	/** What the block is to a reader (`ARCHIVE_BLOCK_TYPES`); the gallery's Block type filter reads this. */
+	kind: ArchiveBlockType | null;
 	channel_slugs: string[];
 	connection_count: number;
 	connected_at: string | null;
@@ -181,6 +183,7 @@ export function toSearchDocument(
 		id: `block:${block.id}`,
 		search_text: searchText,
 		block_type: block.type,
+		kind: blockKind(block),
 		channel_slugs: channels.map((channel) => channel.slug).sort(),
 		connection_count: channels.length,
 		connected_at: block.connectedAt?.toISOString() ?? null,
@@ -203,6 +206,31 @@ export function toSearchDocument(
 		vision_tags: normalizeTags(vision?.tags),
 		...colourAttributes(colours)
 	};
+}
+
+export function isAnimatedImage(contentType: string | null | undefined): boolean {
+	return contentType?.toLowerCase().trim() === 'image/gif';
+}
+
+const ARENA_TYPE_KINDS: Record<string, ArchiveBlockType> = {
+	Image: 'Image',
+	Link: 'Web',
+	Text: 'Text',
+	Attachment: 'Attachment',
+	Embed: 'Embed'
+};
+
+/**
+ * A playable file makes a block a Video and a GIF image makes it a GIF, whichever Are.na block
+ * holds them; otherwise Are.na's type decides, with a Link called Web. Null for a type the gallery
+ * does not filter by.
+ */
+export function blockKind(
+	block: Pick<ArchiveBlock, 'type' | 'videoUrl' | 'imageContentType'>
+): ArchiveBlockType | null {
+	if (block.videoUrl) return 'Video';
+	if (isAnimatedImage(block.imageContentType) && block.type !== 'Link') return 'GIF';
+	return ARENA_TYPE_KINDS[block.type] ?? null;
 }
 
 function colourAttributes(colours: BlockColourWeights | null | undefined) {

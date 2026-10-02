@@ -6,6 +6,11 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Added
 
+- Added a Created filter, a month slider from February 2014, beside Connected. Takes effect after `bun run sync`.
+- Added Video and GIF to Block type, under Image, and renamed Link to Web. Block type now filters a new `kind` attribute. Takes effect after `bun run sync`.
+- Added six browse orders: newest and oldest created, newest and oldest connected, and most and least connected. `?sort=` takes the new names.
+- Added `bun run check:classes`, part of `bun run lint`, which fails on any Tailwind class not written in its canonical form.
+
 - Added the number of blocks in the archive to the footer, beside the number of channels. It replaces the results sentence and Turbopuffer timings, which screen readers still hear.
 - Added a Sort by filter for browsing: most connected (the default), newest or oldest, as `?sort=`. A search term still ranks by relevance.
 - Added colour swatches and a connected-date slider to the filters, so the colour filter finally has a control.
@@ -34,6 +39,9 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Changed
 
+- Changed Search type so it can be chosen before typing a query; the choice stays in the URL and ranks the next search. A request without a query now browses whatever `mode` says, instead of being rejected.
+- Changed channel covers to show the channel's symbol, or "Are.na" when it has none, and the search placeholder to `foreground-elevated`. Page padding is 16px.
+
 - Changed the whole UI to a horizontal library modelled on Seth Thompson's: one sideways-scrolling sheet with the filters as columns of links on the left, and results on a grey shelf, grouped by channel behind a channel cover, captioned above and below with the date and the matched words. Shelves slide in as they scroll into view, a search glides the sheet to the shelf, and dark mode follows the system.
 - Changed the colour swatches to nine that fill the column: pink, black and white are no longer offered, even from a URL.
 - Changed the shelf to a pale grey band with pages a fifth shorter than their row, closer in height to the reference. Channel names lose their leading symbols, black and white are no longer offered as colours, all filters sit in the first column, and captions use one weight with black headings over grey text.
@@ -57,6 +65,9 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 - Removed the `/about` page and its sidebar link.
 
 ### Fixed
+
+- Fixed the first filter column clipping the selected colour's ring and the slider's right thumb.
+- Fixed the search caret and selection sitting off-centre from the text: Newsreader's metrics now centre its capitals in the line.
 
 - Fixed clamped captions and channel covers that showed the top of a hidden line or cut off descenders, and the search clear button sitting below the search text.
 

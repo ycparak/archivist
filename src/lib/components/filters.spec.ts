@@ -25,8 +25,11 @@ describe('toggled', () => {
 });
 
 describe('searchTypeOptions', () => {
-	it('offers nothing to choose without a query', () => {
-		expect(searchTypeOptions(state()).every((option) => !option.href && !option.active)).toBe(true);
+	it('lets a ranking be chosen before there is a query, with Best match in force by default', () => {
+		const options = searchTypeOptions(state());
+
+		expect(options.find((option) => option.active)?.label).toBe('Best match');
+		expect(options.find((option) => option.key === 'semantic')?.href).toBe('/?mode=semantic');
 	});
 
 	it('marks the ranking in force and links to the others', () => {
@@ -40,11 +43,18 @@ describe('searchTypeOptions', () => {
 describe('sortOptions', () => {
 	it('links each order while browsing and none once a query ranks', () => {
 		expect(
-			sortOptions(state({ sort: 'oldest' })).map((option) => [option.href, option.active])
+			sortOptions(state({ sort: 'oldest-created' })).map((option) => [
+				option.label,
+				option.href,
+				option.active
+			])
 		).toEqual([
-			['/', false],
-			['/?sort=newest', false],
-			['/?sort=oldest', true]
+			['Newest created', '/?sort=newest-created', false],
+			['Newest connected', '/?sort=newest-connected', false],
+			['Oldest created', '/?sort=oldest-created', true],
+			['Oldest connected', '/?sort=oldest-connected', false],
+			['Most connected', '/', false],
+			['Least connected', '/?sort=least-connected', false]
 		]);
 		expect(
 			sortOptions(state({ query: 'felt', mode: 'hybrid' })).some((option) => option.href)

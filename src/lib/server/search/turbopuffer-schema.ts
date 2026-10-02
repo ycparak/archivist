@@ -13,10 +13,13 @@ export const archiveNamespaceSchema = {
 		embed: { model: 'nvidia/nemotron-3-embed-8b', dims: 1024 }
 	},
 	block_type: { type: 'string', filterable: true },
+	/** The gallery's Block type: `ARCHIVE_BLOCK_TYPES`, derived at sync by `blockKind`. */
+	kind: { type: 'string', filterable: true },
 	channel_slugs: { type: '[]string', filterable: true },
 	connection_count: { type: 'uint', filterable: true },
 	connected_at: { type: 'datetime', filterable: true },
-	created_at: { type: 'datetime', filterable: false },
+	/** Filterable for the Created filter and sorts; flipped from false in place, which needs no new namespace. */
+	created_at: { type: 'datetime', filterable: true },
 	title: { type: 'string', filterable: false },
 	description: { type: 'string', filterable: false },
 	source_url: { type: 'string', filterable: false },
