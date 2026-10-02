@@ -6,3 +6,7 @@ bun.lockb
 
 /static/
 worker-configuration.d.ts
+
+# Third-party agent skills, kept byte-for-byte as installed
+/.agents/
+skills-lock.json
