@@ -2,7 +2,7 @@ import type { ArchiveBlock } from '$lib/domain/archive';
 import { ArenaRateLimitError, type ArenaBlockUpdate } from '$lib/server/arena/client';
 import type { VisionCache, VisionCacheEntry } from './cache';
 import { PROMPT_VERSION } from './prompt';
-import { lowQualityTitleReason, type LowQualityTitleReason } from './titles';
+import { lowQualityTitleReason, type LowQualityTitleReason } from '$lib/domain/titles';
 
 /**
  * Pushing generated text back to Are.na, which is the one part of this feature that writes to the

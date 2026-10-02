@@ -17,24 +17,24 @@ Maintainer CLI (bun run sync, manual)
   -> channel-manifest.json, vision-cache.jsonl, colour-cache.jsonl (committed)
 
 Public SvelteKit app on Cloudflare Workers
-  -> GET /?q=&mode=&channel=&type=&colour=&from=&to= (SSR gallery)
+  -> GET /?q=&mode=&channel=&type=&colour=&from=&to=&sort= (SSR gallery)
   -> GET /api/search?...&offset=                     (JSON, used for infinite scroll)
   -> executeArchiveSearch -> SearchRepository -> Turbopuffer multiQuery / query
-  -> typed original-block result cards
+  -> original blocks shelved by channel
 ```
 
 Code layout:
 
-| Path                                 | Owns                                                                                                                                                                                            |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/lib/domain/`                    | `search.ts`: the URL grammar, modes, `SearchResult`, shared with the browser. `archive.ts`: `ArchiveBlock`, `SearchDocument`, `toSearchDocument` (server-only in practice)                      |
-| `src/lib/server/arena/`              | Are.na transport (SDK wrapper), Zod schemas for Are.na payloads, pagination, rate-limit handling                                                                                                |
-| `src/lib/server/indexing/`           | normalization, channel filter, channel manifest, sync orchestration, `colour/`, `vision/` and `progress/`; the committed `channel-manifest.json`, `colour-cache.jsonl` and `vision-cache.jsonl` |
-| `src/lib/server/search/`             | request parsing, env config, `executeArchiveSearch` (dedupe, paging), `SearchRepository` (read path), result mapping, the Turbopuffer write client and schema, eval cases                       |
-| `src/lib/server/rate-limit.ts`       | edge rate limiting, invoked from `src/hooks.server.ts`                                                                                                                                          |
-| `src/lib/components/`, `src/routes/` | presentation and composition                                                                                                                                                                    |
-| `src/styles/`                        | fonts and the role-based colour tokens, imported by `src/routes/layout.css`                                                                                                                     |
-| `scripts/`                           | `sync.ts` and `evaluate-search.ts`, the manual CLIs; `fixtures/search-cases.json`; `worktree.sh`                                                                                                |
+| Path                                 | Owns                                                                                                                                                                                                                       |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/domain/`                    | `search.ts`: the URL grammar, modes, `SearchResult`, shared with the browser. `titles.ts`: which titles carry no information. `archive.ts`: `ArchiveBlock`, `SearchDocument`, `toSearchDocument` (server-only in practice) |
+| `src/lib/server/arena/`              | Are.na transport (SDK wrapper), Zod schemas for Are.na payloads, pagination, rate-limit handling                                                                                                                           |
+| `src/lib/server/indexing/`           | normalization, channel filter, channel manifest, sync orchestration, `colour/`, `vision/` and `progress/`; the committed `channel-manifest.json`, `colour-cache.jsonl` and `vision-cache.jsonl`                            |
+| `src/lib/server/search/`             | request parsing, env config, `executeArchiveSearch` (dedupe, paging), `SearchRepository` (read path), result mapping, the Turbopuffer write client and schema, eval cases                                                  |
+| `src/lib/server/rate-limit.ts`       | edge rate limiting, invoked from `src/hooks.server.ts`                                                                                                                                                                     |
+| `src/lib/components/`, `src/routes/` | presentation and composition                                                                                                                                           |
+| `src/styles/`                        | fonts, Tailwind theme tokens and the semantic colour roles, imported by `src/routes/layout.css`                                                                                                                            |
+| `scripts/`                           | `sync.ts` and `evaluate-search.ts`, the manual CLIs; `fixtures/search-cases.json`; `worktree.sh`                                                                                                                           |
 
 ## Why this data-access model
 
@@ -143,7 +143,9 @@ RRF runs inside Turbopuffer, never in our code. It merges two ranked lists witho
 
 **Filters.** Only these fields are filtered: `block_type` (`In`), `channel_slugs` (`ContainsAny`), `connected_at` (`Gte` and `Lte`) and the `colour_*` weights (`Gte` a per-colour threshold in `src/lib/server/search/colour-filter.ts`). Repeated `channel` or `type` values are ORed. Repeated `colour` values are ANDed: `?colour=blue&colour=orange` is blocks with both. Different filters are ANDed. A date covers its whole UTC day.
 
-**Colour order.** Browse with colours sorts by the first colour's weight, then each further colour's, then `connection_count`, `connected_at` and `id`. With a text query, relevance keeps the order and colours only filter. A `Sum` of the weights would rank several colours better, but Turbopuffer leaves the order of equal scores undefined and it shifts with `limit`, which paging re-fetches with every page; ending a plain sort on `id` makes it a total order. Turbopuffer sorts on at most 8 attributes, so a request carries at most 5 colours.
+**Sort.** `sort` sets the browse order: `connections` (the default, never written to a URL), `newest` or `oldest`. `newest` and `oldest` sort by `connected_at`, then `id`; colours then only filter. A text query ranks by relevance, so `sort` beside a ranking mode is a 400, and the UI drops it from any URL with a query.
+
+**Colour order.** Browse with colours and the default sort sorts by the first colour's weight, then each further colour's, then `connection_count`, `connected_at` and `id`. With a text query, relevance keeps the order and colours only filter. A `Sum` of the weights would rank several colours better, but Turbopuffer leaves the order of equal scores undefined and it shifts with `limit`, which paging re-fetches with every page; ending a plain sort on `id` makes it a total order. Turbopuffer sorts on at most 8 attributes, so a request carries at most 5 colours.
 
 **Mode.** With no `mode` and a non-empty `q`, the request is hybrid. With nothing at all, it is browse. The UI offers three choices: Best match (hybrid), Exact words (lexical) and Related ideas (semantic). Browse is an empty query.
 
@@ -156,14 +158,17 @@ RRF runs inside Turbopuffer, never in our code. It merges two ranked lists witho
 - `type` must be `Image`, `Link`, `Text`, `Attachment` or `Embed`.
 - `colour` must be one of the twelve colours, at most 5 of them. A repeated colour counts once.
 - `mode` must be one of the four modes.
+- `sort` must be `connections`, `newest` or `oldest`, and only with browse.
 - `from` and `to` must look like `YYYY-MM-DD`. `to` cannot be before `from`.
 - A blank value counts as missing. A form sends every field, so `?q=&from=` is the same as `/`.
-- A blank value still counts toward "at most once" for `q`, `mode`, `from`, `to` and `offset`. `?from=&from=2024-01-02` is a 400.
+- A blank value still counts toward "at most once" for `q`, `mode`, `from`, `to`, `sort` and `offset`. `?from=&from=2024-01-02` is a 400.
 - Any other bad value is a 400. It never silently returns nothing.
 
 **Results.** Results are de-duplicated by block id in `executeArchiveSearch`, keeping the first, highest-ranked occurrence, so a block never appears twice.
 
 `/api/search` returns `{ results, hasMore }`, or 400 `{ error }`, or 503 `{ error, correlationId }`. The gallery page shows a search failure as page content with HTTP 200. That keeps the form and its values on screen. Any page that is not `ok` is sent with `cache-control: no-store`, so an outage is never cached.
+
+**Archive size.** The home page also asks Turbopuffer for one `Count` aggregate of the namespace, for the footer. It is cached for ten minutes per Worker isolate (`src/lib/server/search/archive-size.ts`); a failure is logged as `archive_size_unavailable` and the page renders without the count.
 
 **Channel filter list.** The UI cannot list channels by querying Turbopuffer, and a visitor's request may never call Are.na. So `bun run sync` writes the channels it synced to `src/lib/server/indexing/channel-manifest.json`, sorted by slug. The file is committed and bundled at build time. The Channel filter lists every channel in the archive, at no cost per request. The list includes channels that failed in that run, since they may have blocks from an earlier run. It is only written when a sync finishes.
 
@@ -243,7 +248,7 @@ When the cache is merged, entries for blocks that left the archive are dropped. 
 
 **Running it.** Concurrency is fixed at 32. A description takes 20 to 160 seconds, and speed per worker stays about flat as workers are added. A failed or skipped block is logged and gets no cache entry, so the next run tries it again. The script saves the cache every 25 entries, so an interrupted run loses at most that many.
 
-**Write-back** (`writeback.ts`, `titles.ts`). This is the only code that writes to the maintainer's archive. It is on by default. `--no-push-arena` skips it.
+**Write-back** (`writeback.ts`, and `src/lib/domain/titles.ts`, which the gallery captions also use to skip titles with no information). This is the only code that writes to the maintainer's archive. It is on by default. `--no-push-arena` skips it.
 
 - It only touches blocks the token's owner made. Are.na rejects edits to anyone else's.
 - A title is replaced only if it has no information: a filename, a hash, a bare URL, platform boilerplate (`… on X: "…"`, a `(1) ` prefix, `- YouTube`, Instagram), or a title over 80 characters that contains the opening of the description.
