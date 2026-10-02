@@ -36,6 +36,7 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 ### Changed
 
 - Changed the whole UI to a horizontal library modelled on Seth Thompson's: one sideways-scrolling sheet with the filters as columns of links on the left, and results on a grey shelf, grouped by channel behind a channel cover, captioned above and below with the date and the matched words. Shelves slide in as they scroll into view, a search glides the sheet to the shelf, and dark mode follows the system.
+- Changed the colour swatches to nine that fill the column: pink, black and white are no longer offered, even from a URL.
 - Changed the shelf to a pale grey band with pages a fifth shorter than their row, closer in height to the reference. Channel names lose their leading symbols, black and white are no longer offered as colours, all filters sit in the first column, and captions use one weight with black headings over grey text.
 - Changed all text to trim to cap height and baseline, on a 14px line height, with spacing set to keep a baseline grid.
 - Changed the type to ABC Areal at 14–15px for the app, with Newsreader for the search box, the wordmark and channel covers.
@@ -57,6 +58,8 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 - Removed the `/about` page and its sidebar link.
 
 ### Fixed
+
+- Fixed clamped captions and channel covers that showed the top of a hidden line or cut off descenders, and the search clear button sitting below the search text.
 
 - Fixed browsing so a block can no longer appear twice, or never, while scrolling. 104 blocks share both their connection count and the time they were added with another block, and Turbopuffer may return such ties in a different order on each page; browse now breaks ties by block id.
 - Fixed the `bun run sync` summary counting an animation that could not be downloaded as "media too large". It now has its own line.

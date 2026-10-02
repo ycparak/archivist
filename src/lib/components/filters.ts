@@ -169,13 +169,11 @@ const COLOUR_LABELS: Record<ArchiveColour, string> = {
 	mono: 'Black & white'
 };
 
-/** Black and white are left off the swatches; a URL may still ask for them, and then they show so they can be removed. */
-const HIDDEN_COLOURS: readonly ArchiveColour[] = ['black', 'white'];
+/** Colours the swatches never offer, even when a URL asks for one; the URL still filters by it. */
+const HIDDEN_COLOURS: readonly ArchiveColour[] = ['pink', 'black', 'white'];
 
 export function colourOptions(state: ArchiveSearchState): FilterOption[] {
-	const offered = ARCHIVE_COLOURS.filter(
-		(colour) => !HIDDEN_COLOURS.includes(colour) || state.colours.includes(colour)
-	);
+	const offered = ARCHIVE_COLOURS.filter((colour) => !HIDDEN_COLOURS.includes(colour));
 	return offered.map((colour) => ({
 		key: colour,
 		label: COLOUR_LABELS[colour],

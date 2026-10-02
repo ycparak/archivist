@@ -53,13 +53,21 @@ describe('sortOptions', () => {
 });
 
 describe('colourOptions', () => {
-	it('leaves black and white off unless the search already uses one', () => {
+	it('never offers pink, black or white, even when the search uses one', () => {
 		const keys = (search: ArchiveSearchState) => colourOptions(search).map((option) => option.key);
 
-		expect(keys(state())).not.toContain('black');
-		expect(keys(state())).not.toContain('white');
-		expect(keys(state())).toContain('mono');
-		expect(keys(state({ colours: ['white'] }))).toContain('white');
+		expect(keys(state())).toEqual([
+			'red',
+			'orange',
+			'yellow',
+			'green',
+			'blue',
+			'purple',
+			'brown',
+			'grey',
+			'mono'
+		]);
+		expect(keys(state({ colours: ['white', 'pink'] }))).not.toContain('white');
 	});
 
 	it('keeps chosen colours removable once the limit is reached, and offers no more', () => {
@@ -68,7 +76,7 @@ describe('colourOptions', () => {
 		expect(options.find((option) => option.key === 'red')?.href).toBe(
 			'/?colour=orange&colour=yellow&colour=green&colour=blue'
 		);
-		expect(options.find((option) => option.key === 'pink')?.href).toBeUndefined();
+		expect(options.find((option) => option.key === 'brown')?.href).toBeUndefined();
 	});
 });
 

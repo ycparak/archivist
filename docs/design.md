@@ -55,11 +55,20 @@ measured from ink, and has to be set to keep a baseline grid:
   not trim, so a stack must be a block.
 - **Separate boxes** in a flex column are spaced with `gap-(--gap-line)` (`1lh − 1cap`) to read as
   the next line, or `gap-(--gap-paragraph)` (`2lh − 1cap`) for one blank line between.
-- **Clamped text** uses `clamp-<n>`, not `line-clamp-<n>`: it clips with `overflow: clip` and a 0.2em
-  `overflow-clip-margin`, so ascenders and descenders outside the trimmed box are not cut. Any
-  other clipped text box uses `clip-trimmed` for the same reason.
+- **Clamped text** uses `clamp-<n>`, not `line-clamp-<n>`. A clamped box keeps its last visible
+  line box whole, so the utility trims only the start, cuts later lines with a `clip-path` at that
+  line box's bottom (where descenders end and the next line has not begun), lets ascenders above
+  the trimmed top show, and pulls the following content up by `--line-below-baseline` so the box
+  lays out as if trimmed to its baseline. Overflow clipping with a margin cannot do this: at 14px
+  Areal leaves about 1.5px between one line's descenders and the next line's capitals.
+- **Other clipped text** uses `clip-trimmed`, which clips at the same place below the baseline.
+- `--line-below-baseline` comes from each font's metrics: `0.5lh − 0.335em` for Areal (ascent
+  0.88em, descent 0.21em) and `0.5lh − 0.24em` for Newsreader (0.74em, 0.26em), set by
+  `font-serif`. A new typeface needs its own value.
 - `mark`, the search form and its textarea keep `text-box: normal`: a highlight paints its whole
-  line, and trimming the line that holds a field only shifts the field.
+  line, and trimming the line that holds a field only shifts the field. The search text's 2rem line
+  puts its cap top about 12px down, level with the top-row captions, and the clear button sits at
+  `top-0` so its icon is centred on the capitals.
 
 ## Colour
 
@@ -85,9 +94,9 @@ raw ramp, except for the fixed swatch and page colours noted below.
 - The keyword highlight is `mark`: yellow at 30% under black text.
 - Selection is blue with white text.
 - Swatches use the palette tokens: `red`, `paprika` (orange), `yellow`, `green`, `blue`, `lilac`
-  (purple), `pink`, `brown`, `gray-500` (grey) and a black-and-white diagonal with a
-  `foreground-detail` outline for mono. Black and white are not offered; a URL that already asks for
-  one shows its swatch so it can be removed.
+  (purple), `brown`, `gray-500` (grey) and a black-and-white diagonal with a `foreground-detail`
+  outline for mono. They sit in a nine-column grid, `gap-1`, filling the column's width. Pink, black
+  and white are never offered, even when a URL asks for one; the URL still filters by it.
 
 ## Layout
 
