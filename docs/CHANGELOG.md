@@ -6,6 +6,9 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Added
 
+- Added a colour filter to search. `?colour=blue` lists blocks with enough blue, and browsing with a colour puts the most strongly coloured first; repeat `colour` for blocks with every colour named. The colours are red, orange, yellow, green, blue, purple, pink, brown, grey, black, white and `mono` for black and white. There is no control for it in the gallery yet. Takes effect after `bun run sync`.
+- Added a colour stage to `bun run sync`, which measures how much of each image is each colour with ffmpeg, in memory, and caches the result in `colour-cache.jsonl`. Skip it with `--no-colour`.
+- Added `bun run calibrate:colour`, which writes a read-only contact sheet of measured colours for checking the colour boundaries by eye.
 - Added a favicon, with an `.ico` next to the SVG for browsers that cannot show an SVG icon.
 - Added search over the tags the vision model makes, such as `cyberpunk` and `dark mode`. Tags match without regard to case or hyphens, so `web design` and `web-design` are the same. Takes effect after `bun run sync`.
 - Added video playback in the gallery. Video blocks play muted, looping and inline, only while visible, and stay still when reduced motion is on. Takes effect after `bun run sync`.
@@ -27,6 +30,7 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Changed
 
+- Changed the sync rules so agents may run `bun run sync` with `--no-vision`, `--no-push-arena` or both. A plain `bun run sync` is still the maintainer's alone.
 - Changed `bun run sync` to run the vision stage and the Are.na write-back by default. Opt out with `--no-vision` and `--no-push-arena`. It now needs `OPENROUTER_API_KEY` and a read + write Are.na token unless opted out, and it rejects unknown flags.
 - Changed a stalled vision request to retry once instead of four times, so one stuck block no longer holds a worker for twenty minutes. Rate limits and 503s keep the full retry budget.
 - Changed the result status to show Turbopuffer timings, such as `time: 0.85s (query: 0.02s, rerank: 0.00s)`. Screen readers still hear the sentence it replaced.

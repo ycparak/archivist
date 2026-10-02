@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ARCHIVE_COLOURS, type ArchiveColour } from './search';
 
 export const blockTypeSchema = z.string().trim().min(1);
 
@@ -47,6 +48,15 @@ export type BlockVisionText = {
 	tags: string[];
 };
 
+/** Per-mille share of the image in each colour, structurally matching a colour cache entry's weights. */
+export type BlockColourWeights = Record<ArchiveColour, number>;
+
+export type ColourAttribute = `colour_${ArchiveColour}`;
+
+export function colourAttribute(colour: ArchiveColour): ColourAttribute {
+	return `colour_${colour}`;
+}
+
 export type SearchDocument = {
 	id: string;
 	search_text: string;
@@ -71,7 +81,7 @@ export type SearchDocument = {
 	vision_ocr: string | null;
 	vision_medium: string | null;
 	vision_tags: string[];
-};
+} & Record<ColourAttribute, number>;
 
 /**
  * OCR had no bound while `description` has had one since the first live call, and the asymmetry
@@ -140,10 +150,14 @@ const normalizeTags = (tags: readonly string[] | null | undefined): string[] =>
  * `vision` is the generated description for this block, when one exists. It is appended to
  * `search_text` after the block's own metadata so a block that already describes itself keeps
  * leading the corpus, and omitted entirely when absent.
+ *
+ * `colours` are the block's measured colour weights. A block without them, including every block
+ * without an image, weighs zero in every colour and so never matches a colour filter.
  */
 export function toSearchDocument(
 	block: ArchiveBlock,
-	vision?: BlockVisionText | null
+	vision?: BlockVisionText | null,
+	colours?: BlockColourWeights | null
 ): SearchDocument {
 	const channels = [...new Map(block.channels.map((channel) => [channel.slug, channel])).values()];
 	const searchText = [
@@ -186,6 +200,13 @@ export function toSearchDocument(
 		vision_description: normalizeText(vision?.description) || null,
 		vision_ocr: normalizeText(clampOcr(vision?.ocr ?? '')) || null,
 		vision_medium: normalizeText(vision?.medium) || null,
-		vision_tags: normalizeTags(vision?.tags)
+		vision_tags: normalizeTags(vision?.tags),
+		...colourAttributes(colours)
 	};
+}
+
+function colourAttributes(colours: BlockColourWeights | null | undefined) {
+	return Object.fromEntries(
+		ARCHIVE_COLOURS.map((colour) => [colourAttribute(colour), colours?.[colour] ?? 0])
+	) as Record<ColourAttribute, number>;
 }

@@ -20,11 +20,15 @@ export const ARCHIVE_COLOURS = [
 
 export type ArchiveColour = (typeof ARCHIVE_COLOURS)[number];
 
+/** Colours combine with AND; each one also sorts browse results, and Turbopuffer sorts on at most 8. */
+export const ARCHIVE_MAX_COLOURS = 5;
+
 export const ARCHIVE_SEARCH_PARAM = {
 	query: 'q',
 	mode: 'mode',
 	channel: 'channel',
 	type: 'type',
+	colour: 'colour',
 	from: 'from',
 	to: 'to'
 } as const;
@@ -72,6 +76,7 @@ export type ArchiveSearchState = {
 	mode: ArchiveSearchMode;
 	channelSlugs: string[];
 	blockTypes: ArchiveBlockType[];
+	colours: ArchiveColour[];
 	from: string;
 	to: string;
 };
@@ -81,6 +86,7 @@ export const emptyArchiveSearchState: ArchiveSearchState = {
 	mode: 'browse',
 	channelSlugs: [],
 	blockTypes: [],
+	colours: [],
 	from: '',
 	to: ''
 };
@@ -101,6 +107,7 @@ export function toArchiveSearchHref(state: ArchiveSearchState): ArchiveSearchHre
 	}
 	for (const slug of state.channelSlugs) params.append(ARCHIVE_SEARCH_PARAM.channel, slug);
 	for (const blockType of state.blockTypes) params.append(ARCHIVE_SEARCH_PARAM.type, blockType);
+	for (const colour of state.colours) params.append(ARCHIVE_SEARCH_PARAM.colour, colour);
 	if (state.from) params.set(ARCHIVE_SEARCH_PARAM.from, state.from);
 	if (state.to) params.set(ARCHIVE_SEARCH_PARAM.to, state.to);
 
@@ -135,6 +142,10 @@ function isArchiveBlockType(value: string): value is ArchiveBlockType {
 	return (ARCHIVE_BLOCK_TYPES as readonly string[]).includes(value);
 }
 
+function isArchiveColour(value: string): value is ArchiveColour {
+	return (ARCHIVE_COLOURS as readonly string[]).includes(value);
+}
+
 function isArchiveSearchMode(value: string): value is ArchiveSearchMode {
 	return (ARCHIVE_SEARCH_MODES as readonly string[]).includes(value);
 }
@@ -148,6 +159,9 @@ export function readArchiveSearchState(searchParams: URLSearchParams): ArchiveSe
 		mode: isArchiveSearchMode(requestedMode) ? requestedMode : defaultSearchMode(query),
 		channelSlugs: readRepeated(searchParams, ARCHIVE_SEARCH_PARAM.channel),
 		blockTypes: readRepeated(searchParams, ARCHIVE_SEARCH_PARAM.type).filter(isArchiveBlockType),
+		colours: readRepeated(searchParams, ARCHIVE_SEARCH_PARAM.colour)
+			.filter(isArchiveColour)
+			.slice(0, ARCHIVE_MAX_COLOURS),
 		from: readDate(searchParams, ARCHIVE_SEARCH_PARAM.from),
 		to: readDate(searchParams, ARCHIVE_SEARCH_PARAM.to)
 	};
@@ -162,5 +176,11 @@ export function readArchiveSearchStateFromEntries(
 }
 
 export function hasActiveFilters(state: ArchiveSearchState): boolean {
-	return Boolean(state.channelSlugs.length || state.blockTypes.length || state.from || state.to);
+	return Boolean(
+		state.channelSlugs.length ||
+		state.blockTypes.length ||
+		state.colours.length ||
+		state.from ||
+		state.to
+	);
 }

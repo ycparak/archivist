@@ -27,6 +27,7 @@ const PHASE_LABELS: Record<SyncPhase, string> = {
 	starting: 'starting',
 	discovering: 'discovering',
 	fetching: 'fetching',
+	measuring: 'measuring colour',
 	describing: 'describing',
 	'writing-back': 'writing back',
 	upserting: 'upserting',

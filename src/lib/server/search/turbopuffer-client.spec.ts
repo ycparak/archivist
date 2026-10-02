@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SearchDocument } from '$lib/domain/archive';
+import { colourAttribute, type ColourAttribute, type SearchDocument } from '$lib/domain/archive';
+import { ARCHIVE_COLOURS } from '$lib/domain/search';
 import {
 	deleteSearchDocuments,
 	listDocumentIds,
@@ -30,7 +31,11 @@ function document(id: string): SearchDocument {
 		vision_description: null,
 		vision_ocr: null,
 		vision_medium: null,
-		vision_tags: []
+		vision_tags: [],
+		...(Object.fromEntries(ARCHIVE_COLOURS.map((colour) => [colourAttribute(colour), 0])) as Record<
+			ColourAttribute,
+			number
+		>)
 	};
 }
 

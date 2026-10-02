@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import {
 	ARCHIVE_BLOCK_TYPES,
+	ARCHIVE_COLOURS,
+	ARCHIVE_MAX_COLOURS,
 	ARCHIVE_MAX_OFFSET,
 	ARCHIVE_SEARCH_MODES,
 	type SearchResult,
@@ -34,6 +36,7 @@ export const archiveSearchInputSchema = z.object({
 	query: z.string().trim().max(400).default(''),
 	channelSlugs: z.array(z.string().trim().min(1)).max(20).default([]),
 	blockTypes: z.array(z.enum(ARCHIVE_BLOCK_TYPES)).max(20).default([]),
+	colours: z.array(z.enum(ARCHIVE_COLOURS)).max(ARCHIVE_MAX_COLOURS).default([]),
 	from: z.coerce.date().optional(),
 	to: z.coerce.date().optional(),
 	limit: z.number().int().min(1).max(48).default(24),

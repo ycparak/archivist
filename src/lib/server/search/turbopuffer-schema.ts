@@ -1,4 +1,6 @@
 import type Turbopuffer from '@turbopuffer/turbopuffer';
+import { colourAttribute, type ColourAttribute } from '$lib/domain/archive';
+import { ARCHIVE_COLOURS } from '$lib/domain/search';
 
 /** Turbopuffer requires this on every write once a namespace has a vector attribute. */
 export const archiveDistanceMetric: Turbopuffer.DistanceMetric = 'cosine_distance';
@@ -36,5 +38,9 @@ export const archiveNamespaceSchema = {
 	 * Filterable for a future tag facet. Nothing reads it back yet: an attribute named in
 	 * `include_attributes` before a sync has written it fails the whole query with a 400.
 	 */
-	vision_tags: { type: '[]string', filterable: true }
+	vision_tags: { type: '[]string', filterable: true },
+	/** Per-mille share of the image in each colour: filtered on a threshold, and sorted on in browse. */
+	...(Object.fromEntries(
+		ARCHIVE_COLOURS.map((colour) => [colourAttribute(colour), { type: 'uint', filterable: true }])
+	) as Record<ColourAttribute, Turbopuffer.AttributeSchema>)
 } satisfies Record<string, Turbopuffer.AttributeSchema>;
