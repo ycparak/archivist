@@ -18,13 +18,16 @@ export const SHELF = {
 	maxBlocksPerGroup: 12
 } as const;
 
+/** A channel as the shelf shows it: its title without the leading symbol, which the cover shows apart. */
+export type ShelfChannel = ChannelManifestEntry & { symbol?: string | null };
+
 export type ShelfItem =
 	| { kind: 'cover'; id: string; ratio: number }
 	| { kind: 'block'; id: string; ratio: number; result: SearchResult };
 
 export type ShelfGroup = {
 	id: string;
-	channel: ChannelManifestEntry | null;
+	channel: ShelfChannel | null;
 	blocks: SearchResult[];
 	items: ShelfItem[];
 	width: number;
@@ -47,9 +50,9 @@ export function blockRatio(result: SearchResult): number {
  */
 export function shelfChannel(
 	result: SearchResult,
-	channels: ReadonlyMap<string, ChannelManifestEntry>,
+	channels: ReadonlyMap<string, ShelfChannel>,
 	activeSlugs: readonly string[]
-): ChannelManifestEntry | null {
+): ShelfChannel | null {
 	const slug =
 		result.channelSlugs.find((candidate) => activeSlugs.includes(candidate)) ??
 		result.channelSlugs.find((candidate) => channels.has(candidate)) ??
@@ -70,13 +73,10 @@ function groupWidth(items: ShelfItem[]): number {
  */
 export function groupResults(
 	results: readonly SearchResult[],
-	channels: ReadonlyMap<string, ChannelManifestEntry>,
+	channels: ReadonlyMap<string, ShelfChannel>,
 	activeSlugs: readonly string[]
 ): ShelfGroup[] {
-	const byChannel = new Map<
-		string,
-		{ channel: ChannelManifestEntry | null; blocks: SearchResult[] }
-	>();
+	const byChannel = new Map<string, { channel: ShelfChannel | null; blocks: SearchResult[] }>();
 	for (const result of results) {
 		const channel = shelfChannel(result, channels, activeSlugs);
 		const key = channel?.slug ?? '';
@@ -109,7 +109,7 @@ export function groupResults(
  */
 export function layoutShelves(
 	pages: readonly (readonly SearchResult[])[],
-	channels: ReadonlyMap<string, ChannelManifestEntry>,
+	channels: ReadonlyMap<string, ShelfChannel>,
 	activeSlugs: readonly string[]
 ): ShelfLayout {
 	const rowWidths = Array.from({ length: SHELF.rowCount }, () => 0);

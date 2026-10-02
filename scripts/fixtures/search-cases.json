@@ -54,7 +54,7 @@
 		"mode": "hybrid",
 		"q": "website analytics",
 		"channel": ["landing-pages-hqvprxehiyi"],
-		"type": ["Link"],
+		"type": ["Web"],
 		"expectedBlockIds": ["block:50207334"]
 	},
 	{

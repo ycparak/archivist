@@ -15,7 +15,7 @@ function input(overrides: Partial<ArchiveSearchInput> = {}): ArchiveSearchInput 
 		channelSlugs: [],
 		blockTypes: [],
 		colours: [],
-		sort: 'connections',
+		sort: 'most-connected',
 		limit: 24,
 		offset: 0,
 		...overrides
@@ -177,7 +177,7 @@ describe('buildSearchFilters', () => {
 		expect(
 			buildSearchFilters(
 				input({
-					blockTypes: ['Image', 'Link'],
+					blockTypes: ['Image', 'Web'],
 					channelSlugs: ['materials', 'photography'],
 					from: new Date('2024-01-01T00:00:00.000Z'),
 					to: new Date('2024-01-31T23:59:59.999Z')
@@ -186,7 +186,7 @@ describe('buildSearchFilters', () => {
 		).toEqual([
 			'And',
 			[
-				['block_type', 'In', ['Image', 'Link']],
+				['kind', 'In', ['Image', 'Web']],
 				['channel_slugs', 'ContainsAny', ['materials', 'photography']],
 				['connected_at', 'Gte', '2024-01-01T00:00:00.000Z'],
 				['connected_at', 'Lte', '2024-01-31T23:59:59.999Z']
@@ -322,7 +322,7 @@ describe('TurbopufferSearchRepository', () => {
 
 	it('orders a date browse by the date alone, ending on id, with colours only filtering', async () => {
 		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
-		await repository(fetchFn).search(input({ sort: 'newest', colours: ['blue'] }));
+		await repository(fetchFn).search(input({ sort: 'newest-connected', colours: ['blue'] }));
 		const body = requestedBody(fetchFn);
 		expect(body.rank_by).toEqual([
 			['connected_at', 'desc'],
@@ -331,10 +331,56 @@ describe('TurbopufferSearchRepository', () => {
 		expect(JSON.stringify(body.filters)).toContain('colour_blue');
 
 		const oldestFetch = vi.fn().mockResolvedValue(queryResponse([]));
-		await repository(oldestFetch).search(input({ sort: 'oldest' }));
+		await repository(oldestFetch).search(input({ sort: 'oldest-connected' }));
 		expect(requestedBody(oldestFetch).rank_by).toEqual([
 			['connected_at', 'asc'],
 			['id', 'asc']
+		]);
+	});
+
+	it.each([
+		[
+			'newest-created',
+			[
+				['created_at', 'desc'],
+				['id', 'asc']
+			]
+		],
+		[
+			'oldest-created',
+			[
+				['created_at', 'asc'],
+				['id', 'asc']
+			]
+		],
+		[
+			'least-connected',
+			[
+				['connection_count', 'asc'],
+				['connected_at', 'desc'],
+				['id', 'asc']
+			]
+		]
+	] as const)('orders a %s browse by its own key, ending on id', async (sort, order) => {
+		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+		await repository(fetchFn).search(input({ sort, colours: ['blue'] }));
+		expect(requestedBody(fetchFn).rank_by).toEqual(order);
+	});
+
+	it('filters the created date inclusively, beside the connected date', () => {
+		expect(
+			buildSearchFilters(
+				input({
+					createdFrom: new Date('2019-01-01T00:00:00.000Z'),
+					createdTo: new Date('2020-12-31T23:59:59.999Z')
+				})
+			)
+		).toEqual([
+			'And',
+			[
+				['created_at', 'Gte', '2019-01-01T00:00:00.000Z'],
+				['created_at', 'Lte', '2020-12-31T23:59:59.999Z']
+			]
 		]);
 	});
 
@@ -402,8 +448,8 @@ describe('TurbopufferSearchRepository', () => {
 					? body.queries.map((query: { filters: unknown }) => query.filters)
 					: [body.filters];
 			expect(filters).toEqual(
-				[['And', [['block_type', 'In', ['Image']]]]].concat(
-					mode === 'hybrid' ? [['And', [['block_type', 'In', ['Image']]]]] : []
+				[['And', [['kind', 'In', ['Image']]]]].concat(
+					mode === 'hybrid' ? [['And', [['kind', 'In', ['Image']]]]] : []
 				)
 			);
 		}

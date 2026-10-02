@@ -28,16 +28,20 @@ describe('toArchiveSearchHref', () => {
 		);
 	});
 
-	it('drops a ranking mode that cannot apply without a query', () => {
-		expect(toArchiveSearchHref(state({ query: '', mode: 'semantic' }))).toBe('/');
+	it('remembers a chosen ranking without a query, so it applies to the next one', () => {
+		expect(toArchiveSearchHref(state({ query: '', mode: 'semantic' }))).toBe('/?mode=semantic');
+		expect(toArchiveSearchHref(state({ query: '', mode: 'hybrid' }))).toBe('/');
 	});
 
 	it('keeps a browse order other than the default, and drops it once a query ranks instead', () => {
-		expect(toArchiveSearchHref(state({ sort: 'newest' }))).toBe('/?sort=newest');
-		expect(toArchiveSearchHref(state({ sort: 'connections' }))).toBe('/');
-		expect(toArchiveSearchHref(state({ query: 'felt', mode: 'hybrid', sort: 'oldest' }))).toBe(
-			'/?q=felt'
+		expect(toArchiveSearchHref(state({ sort: 'newest-created' }))).toBe('/?sort=newest-created');
+		expect(toArchiveSearchHref(state({ sort: 'most-connected' }))).toBe('/');
+		expect(toArchiveSearchHref(state({ mode: 'lexical', sort: 'least-connected' }))).toBe(
+			'/?mode=lexical&sort=least-connected'
 		);
+		expect(
+			toArchiveSearchHref(state({ query: 'felt', mode: 'hybrid', sort: 'oldest-connected' }))
+		).toBe('/?q=felt');
 	});
 
 	it('repeats colours in the order they were chosen', () => {
@@ -51,12 +55,12 @@ describe('toArchiveSearchHref', () => {
 			toArchiveSearchHref(
 				state({
 					channelSlugs: ['materials', 'type'],
-					blockTypes: ['Image', 'Link'],
+					blockTypes: ['Image', 'Web'],
 					from: '2024-01-02',
 					to: '2024-01-31'
 				})
 			)
-		).toBe('/?channel=materials&channel=type&type=Image&type=Link&from=2024-01-02&to=2024-01-31');
+		).toBe('/?channel=materials&channel=type&type=Image&type=Web&from=2024-01-02&to=2024-01-31');
 	});
 });
 
@@ -69,12 +73,14 @@ describe('readArchiveSearchState', () => {
 			state({ query: 'felt', mode: 'semantic', channelSlugs: ['materials'] }),
 			state({ blockTypes: ['Image'], from: '2024-01-02', to: '2024-01-31' }),
 			state({ colours: ['blue', 'mono'] }),
-			state({ colours: ['blue'], sort: 'oldest' }),
+			state({ colours: ['blue'], sort: 'oldest-created' }),
+			state({ mode: 'lexical', createdFrom: '2020-01-01', createdTo: '2021-12-31' }),
+			state({ blockTypes: ['Video', 'GIF', 'Web'] }),
 			state({
 				query: 'archival',
 				mode: 'lexical',
 				channelSlugs: ['materials', 'type'],
-				blockTypes: ['Image', 'Link'],
+				blockTypes: ['Image', 'Web'],
 				from: '2024-01-02',
 				to: '2024-01-31'
 			})
@@ -93,8 +99,10 @@ describe('readArchiveSearchState', () => {
 	});
 
 	it('falls back to the default browse order for an unknown sort', () => {
-		expect(readArchiveSearchState(new URLSearchParams('sort=random')).sort).toBe('connections');
-		expect(readArchiveSearchState(new URLSearchParams('sort=newest')).sort).toBe('newest');
+		expect(readArchiveSearchState(new URLSearchParams('sort=random')).sort).toBe('most-connected');
+		expect(readArchiveSearchState(new URLSearchParams('sort=oldest-created')).sort).toBe(
+			'oldest-created'
+		);
 	});
 
 	it('collapses duplicate filter values so keyed rendering cannot break', () => {
@@ -137,7 +145,7 @@ describe('search state transitions', () => {
 		query: 'felt',
 		mode: 'lexical',
 		channelSlugs: ['materials', 'type'],
-		blockTypes: ['Image', 'Link'],
+		blockTypes: ['Image', 'Web'],
 		from: '2024-01-02',
 		to: '2024-01-31'
 	});
@@ -146,6 +154,7 @@ describe('search state transitions', () => {
 		expect(hasActiveFilters(state({ query: 'felt' }))).toBe(false);
 		expect(hasActiveFilters(state({ to: '2024-01-31' }))).toBe(true);
 		expect(hasActiveFilters(state({ colours: ['mono'] }))).toBe(true);
+		expect(hasActiveFilters(state({ createdFrom: '2020-01-01' }))).toBe(true);
 		expect(hasActiveFilters(active)).toBe(true);
 	});
 });

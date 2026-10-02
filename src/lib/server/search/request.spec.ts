@@ -31,16 +31,20 @@ describe('every href the UI can build is a request the server accepts', () => {
 			{ mode: 'browse', query: 'felt' }
 		],
 		['ranking dropped without a query', state({ mode: 'semantic' }), { mode: 'browse', query: '' }],
-		['a browse order', state({ sort: 'newest' }), { mode: 'browse', sort: 'newest' }],
+		[
+			'a browse order',
+			state({ sort: 'newest-connected' }),
+			{ mode: 'browse', sort: 'newest-connected' }
+		],
 		[
 			'a browse order dropped once a query ranks',
-			state({ query: 'felt', mode: 'hybrid', sort: 'oldest' }),
-			{ mode: 'hybrid', sort: 'connections' }
+			state({ query: 'felt', mode: 'hybrid', sort: 'oldest-connected' }),
+			{ mode: 'hybrid', sort: 'most-connected' }
 		],
 		[
 			'a browse order kept for an explicit browse with a query',
-			state({ query: 'felt', mode: 'browse', sort: 'oldest' }),
-			{ mode: 'browse', sort: 'oldest' }
+			state({ query: 'felt', mode: 'browse', sort: 'oldest-connected' }),
+			{ mode: 'browse', sort: 'oldest-connected' }
 		],
 		[
 			'filters only',
@@ -53,7 +57,7 @@ describe('every href the UI can build is a request the server accepts', () => {
 				query: 'archival',
 				mode: 'semantic',
 				channelSlugs: ['materials', 'type'],
-				blockTypes: ['Image', 'Link'],
+				blockTypes: ['Image', 'Web'],
 				from: '2024-01-02',
 				to: '2024-01-31'
 			}),
@@ -61,7 +65,7 @@ describe('every href the UI can build is a request the server accepts', () => {
 				mode: 'semantic',
 				query: 'archival',
 				channelSlugs: ['materials', 'type'],
-				blockTypes: ['Image', 'Link'],
+				blockTypes: ['Image', 'Web'],
 				from: new Date('2024-01-02T00:00:00.000Z'),
 				to: new Date('2024-01-31T23:59:59.999Z')
 			}
@@ -84,7 +88,7 @@ describe('parseArchiveSearchRequest', () => {
 			channelSlugs: [],
 			blockTypes: [],
 			colours: [],
-			sort: 'connections',
+			sort: 'most-connected',
 			offset: 0,
 			limit: 24
 		});
@@ -100,7 +104,7 @@ describe('parseArchiveSearchRequest', () => {
 	it('parses repeated filters and inclusive date-only bounds', () => {
 		const input = parseArchiveSearchRequest(
 			new URLSearchParams(
-				'q=archival&mode=lexical&channel=materials&channel=type&type=Image&type=Link&from=2024-01-02&to=2024-01-31'
+				'q=archival&mode=lexical&channel=materials&channel=type&type=Image&type=Web&from=2024-01-02&to=2024-01-31'
 			)
 		);
 
@@ -108,7 +112,7 @@ describe('parseArchiveSearchRequest', () => {
 			mode: 'lexical',
 			query: 'archival',
 			channelSlugs: ['materials', 'type'],
-			blockTypes: ['Image', 'Link'],
+			blockTypes: ['Image', 'Web'],
 			from: new Date('2024-01-02T00:00:00.000Z'),
 			to: new Date('2024-01-31T23:59:59.999Z')
 		});
@@ -118,11 +122,14 @@ describe('parseArchiveSearchRequest', () => {
 		expect(parseArchiveSearchRequest(new URLSearchParams('mode=browse&limit=1')).limit).toBe(24);
 	});
 
-	it.each(['lexical', 'semantic', 'hybrid'])('rejects an empty %s query', (mode) => {
-		expect(() => parseArchiveSearchRequest(new URLSearchParams(`mode=${mode}&q=%20`))).toThrow(
-			SearchRequestValidationError
-		);
-	});
+	it.each(['lexical', 'semantic', 'hybrid'])(
+		'browses an empty query even with %s ranking chosen, and keeps a browse order beside it',
+		(mode) => {
+			expect(
+				parseArchiveSearchRequest(new URLSearchParams(`mode=${mode}&q=%20&sort=oldest-created`))
+			).toMatchObject({ mode: 'browse', query: '', sort: 'oldest-created' });
+		}
+	);
 
 	it('treats blank values as omitted so a plain form submission is valid', () => {
 		expect(parseArchiveSearchRequest(new URLSearchParams('q=&mode=&from=&to='))).toEqual({
@@ -131,7 +138,7 @@ describe('parseArchiveSearchRequest', () => {
 			channelSlugs: [],
 			blockTypes: [],
 			colours: [],
-			sort: 'connections',
+			sort: 'most-connected',
 			offset: 0,
 			limit: 24
 		});
@@ -194,6 +201,22 @@ describe('parseArchiveSearchRequest', () => {
 		expect(() => parseArchiveSearchRequest(new URLSearchParams('from=&from=2024-01-02'))).toThrow(
 			SearchRequestValidationError
 		);
+	});
+
+	it('parses an inclusive created-date range and rejects a reversed one', () => {
+		expect(
+			parseArchiveSearchRequest(
+				new URLSearchParams('created_from=2019-01-01&created_to=2020-12-31')
+			)
+		).toMatchObject({
+			createdFrom: new Date('2019-01-01T00:00:00.000Z'),
+			createdTo: new Date('2020-12-31T23:59:59.999Z')
+		});
+		expect(() =>
+			parseArchiveSearchRequest(
+				new URLSearchParams('created_from=2021-01-01&created_to=2020-12-31')
+			)
+		).toThrow(SearchRequestValidationError);
 	});
 
 	it('rejects a browse order alongside a ranking it cannot apply to', () => {

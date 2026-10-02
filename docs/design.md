@@ -57,18 +57,27 @@ measured from ink, and has to be set to keep a baseline grid:
   the next line, or `gap-(--gap-paragraph)` (`2lh − 1cap`) for one blank line between.
 - **Clamped text** uses `clamp-<n>`, not `line-clamp-<n>`. A clamped box keeps its last visible
   line box whole, so the utility trims only the start, cuts later lines with a `clip-path` at that
-  line box's bottom (where descenders end and the next line has not begun), lets ascenders above
-  the trimmed top show, and pulls the following content up by `--line-below-baseline` so the box
-  lays out as if trimmed to its baseline. Overflow clipping with a margin cannot do this: at 14px
+  line box's bottom, moved to `--clip-below-baseline` (below the deepest descender, above where
+  the next line's letters begin), lets ascenders above the trimmed top show, and pulls the
+  following content up by `--line-below-baseline` so the box lays out as if trimmed to its
+  baseline. Overflow clipping with a margin cannot do this: at 14px
   Areal leaves about 1.5px between one line's descenders and the next line's capitals.
-- **Other clipped text** uses `clip-trimmed`, which clips at the same place below the baseline.
-- `--line-below-baseline` comes from each font's metrics: `0.5lh − 0.335em` for Areal (ascent
-  0.88em, descent 0.21em) and `0.5lh − 0.24em` for Newsreader (0.74em, 0.26em), set by
-  `font-serif`. A new typeface needs its own value.
+- **Other clipped text** uses `clip-trimmed`, which clips at the same place below the baseline,
+  and only at the bottom: a column of controls is never clipped at all, so focus rings, selected
+  swatch rings and slider thumbs can reach past it.
+- Both variables come from each font's metrics. Areal: ascent 0.88em, descent 0.21em, so
+  `--line-below-baseline` is `0.5lh − 0.335em` and `--clip-below-baseline` 0.27em. Newsreader, as
+  overridden: ascent 0.98em, descent 0.26em, so `0.5lh − 0.36em` and 0.3em, both set by
+  `font-serif`. A new typeface needs its own values.
+- **Newsreader's metrics are overridden** in `fonts.css` (`ascent-override: 98%`,
+  `descent-override: 26%`) so its capitals sit centred in the line box: ascent minus cap height
+  equals descent. A caret and a selection then centre on the text. Trimmed text does not move,
+  since trimming measures from cap height and baseline.
 - `mark`, the search form and its textarea keep `text-box: normal`: a highlight paints its whole
-  line, and trimming the line that holds a field only shifts the field. The search text's 2rem line
-  puts its cap top about 12px down, level with the top-row captions, and the clear button sits at
-  `top-0` so its icon is centred on the capitals.
+  line, and trimming the line that holds a field only shifts the field. The field is lowered by
+  `annotation padding − (1lh − 1cap) ÷ 2`, so its cap height lands on the annotation padding,
+  level with the top-row captions. The clear button is one line tall in the same type, with the
+  same offset, so its icon centres on the capitals.
 
 ## Colour
 
@@ -80,10 +89,10 @@ raw ramp, except for the fixed swatch and page colours noted below.
 | `background`                  | white    | black    | Page                                                           |
 | `backdrop`                    | gray-100 | gray-900 | Reserved for raised surfaces                                   |
 | `foreground-secondary-detail` | gray-300 | gray-800 | Hairlines: cover-caption rule, search-field edge, slider track |
-| `foreground-secondary`        | gray-400 | gray-750 | Unavailable options, placeholder                               |
+| `foreground-secondary`        | gray-400 | gray-750 | Unavailable options                                            |
 | `foreground-detail`           | gray-500 | gray-650 | Column rules, swatch outlines                                  |
 | `foreground`                  | gray-550 | gray-600 | Default text: filters, caption text, messages                  |
-| `foreground-elevated`         | gray-600 | gray-550 | Icons (the clear button)                                       |
+| `foreground-elevated`         | gray-600 | gray-550 | Icons (the clear button), the search placeholder               |
 | `foreground-strong`           | black    | white    | Active filters, hover, caption headings, query, wordmark       |
 | `band`                        | gray-100 | gray-100 | The shelf band, in both schemes                                |
 
@@ -133,7 +142,7 @@ raw ramp, except for the fixed swatch and page colours noted below.
 | `--column-gap`             | 4rem                                                                      |
 | `--column-width`           | `(100cqi − 2 × gutter − (count − 1) × gap) ÷ count`                       |
 | `--annotation-area-height` | 10rem                                                                     |
-| `--annotation-padding`     | 12px                                                                      |
+| `--annotation-padding`     | 16px: the page's vertical padding (search, captions, footer)              |
 
 Breakpoint rems in media queries resolve against the browser's 16px, not the root size.
 
@@ -143,11 +152,15 @@ Breakpoint rems in media queries resolve against the browser's 16px, not the roo
   border, `pt-3 mt-1`), and stacks lists `gap-(--gap-paragraph)` apart, one blank line.
 - A list is a bold `foreground` heading over its options. An option is a link: `foreground`, black
   on hover, black and `aria-current="true"` when active. An option that cannot apply to the
-  current search (ranking with no query, browse order with one, a sixth colour) is a non-link span
-  in `foreground-secondary` with `aria-disabled`.
-- **Arrangement.** Search type, Sort by, Connected, Block type and Colours share the first column.
-  The `spread:` variant (viewports under 46rem tall) splits Block type and Colours into a second
-  column, so nothing is clipped.
+  current search (browse order beside a query, a sixth colour) is a non-link span in
+  `foreground-secondary` with `aria-disabled`. Search type is always choosable: without a query
+  the choice is kept in the URL for the next search, and Best match shows as active by default.
+- **Filters, in order:** Search type (Best match, Exact words, Related ideas); Sort by (Newest
+  created, Newest connected, Oldest created, Oldest connected, Most connected, Least connected);
+  Connected and Created, each a two-thumb month slider (`DateRangeSlider`); Block type (Image,
+  Video, GIF, Web, Text, Attachment, Embed); Colours.
+- **Arrangement.** All of them share the first column. The `spread:` variant (viewports under
+  56rem tall) moves Block type and Colours to a second column, so nothing overflows.
 - **Channels** flow sideways into as many columns as the viewport height needs, each headed
   "Channel". The split is computed with pretext (below), so no title is ever cut mid-entry.
 - **Channel names** drop the symbols the maintainer prefixes them with on Are.na (`✦`, `❋`, `𖤛`,
@@ -185,6 +198,9 @@ the server. The constants live in `SHELF` in `src/lib/components/shelf.ts`.
   The bottom row starts `(column − 4rem) ÷ 2` in. The band is at least the sheet's width.
 - **Pages** are `bg-white` with `shadow-page` (2px 2px 2px rgb(0 0 0 / 0.25)). Images and video
   fill the page with `object-cover`; ratios clamp to 0.5–3.
+- **Covers** show the channel title in Newsreader at the top, and at the bottom the channel's
+  symbol (the `✦`, `❋`, `𖤛` its Are.na title starts with), or "Are.na" when it has none, beside
+  the block count.
 
 ### Captions
 
@@ -250,16 +266,16 @@ trimmed stack is a little shorter, so packing by it errs on the safe side.
 
 ## Components
 
-| Component                  | Role                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------ |
-| `SearchField.svelte`       | The serif search box: debounced live search, Enter submits, clear button, overlap hairline |
-| `ArchiveIndex.svelte`      | Filter columns, colour swatches, channel fitting, footer                                   |
-| `ConnectedAtSlider.svelte` | Two native range inputs over whole months from June 2024 to now                            |
-| `Shelf.svelte`             | The band, scale bar, shelves, captions, reveal and infinite load                           |
-| `ShelfCover.svelte`        | A channel cover                                                                            |
-| `ShelfBlock.svelte`        | One block as a page: image, muted looping video, or a page of text                         |
-| `CaptionText.svelte`       | Clamped caption words with marks and the pretext lead-in                                   |
-| `ArchiveMessage.svelte`    | Empty, invalid and unavailable states, set inside the band                                 |
+| Component                | Role                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| `SearchField.svelte`     | The serif search box: debounced live search, Enter submits, clear button, overlap hairline |
+| `ArchiveIndex.svelte`    | Filter columns, colour swatches, channel fitting, footer                                   |
+| `DateRangeSlider.svelte` | Two native range inputs over whole months; Connected starts June 2024, Created Feb 2014    |
+| `Shelf.svelte`           | The band, scale bar, shelves, captions, reveal and infinite load                           |
+| `ShelfCover.svelte`      | A channel cover                                                                            |
+| `ShelfBlock.svelte`      | One block as a page: image, muted looping video, or a page of text                         |
+| `CaptionText.svelte`     | Clamped caption words with marks and the pretext lead-in                                   |
+| `ArchiveMessage.svelte`  | Empty, invalid and unavailable states, set inside the band                                 |
 
 Copy that depends on state lives in tested functions (`filters.ts`, `caption.ts`, `format.ts`), not
 in markup.
@@ -267,7 +283,8 @@ in markup.
 ## Accessibility
 
 - Filters are links with `aria-current`, swatches have `aria-label` and `title`, the slider thumbs
-  are labelled "Connected from" and "Connected until" with month `aria-valuetext`.
+  are labelled "Connected from", "Connected until", "Created from" and "Created until" with month
+  `aria-valuetext`.
 - Focus is a 2px `foreground-strong` outline offset 2px; pages offset it 4px.
 - A `role="status"` live region outside the busy subtree announces each result.
 - Every block page is a link to Are.na named by its title; every cover is a link named "Show only

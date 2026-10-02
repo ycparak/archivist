@@ -29,15 +29,20 @@
 		if (!debounceTimer) draft = undefined;
 	});
 
-	/** Filters a submit without JavaScript must carry. Mode and sort are left out: each is invalid
-	 *  beside the other kind of query, and this submit cannot know which kind it will be. */
+	/** What a submit without JavaScript must carry. Sort is left out: it is invalid beside a query,
+	 *  and this submit cannot know whether it will have one. */
 	const hidden = $derived.by(() => {
 		const fields: [string, string][] = [];
+		if (search.mode === 'lexical' || search.mode === 'semantic') {
+			fields.push([ARCHIVE_SEARCH_PARAM.mode, search.mode]);
+		}
 		for (const slug of search.channelSlugs) fields.push([ARCHIVE_SEARCH_PARAM.channel, slug]);
 		for (const type of search.blockTypes) fields.push([ARCHIVE_SEARCH_PARAM.type, type]);
 		for (const colour of search.colours) fields.push([ARCHIVE_SEARCH_PARAM.colour, colour]);
 		if (search.from) fields.push([ARCHIVE_SEARCH_PARAM.from, search.from]);
 		if (search.to) fields.push([ARCHIVE_SEARCH_PARAM.to, search.to]);
+		if (search.createdFrom) fields.push([ARCHIVE_SEARCH_PARAM.createdFrom, search.createdFrom]);
+		if (search.createdTo) fields.push([ARCHIVE_SEARCH_PARAM.createdTo, search.createdTo]);
 		return fields;
 	});
 
@@ -48,7 +53,7 @@
 
 	function submitQuery(query: string) {
 		cancelPending();
-		const mode = !query.trim() ? 'browse' : search.mode === 'browse' ? 'hybrid' : search.mode;
+		const mode = search.mode === 'browse' ? 'hybrid' : search.mode;
 		const href = toArchiveSearchHref({ ...search, query, mode });
 		if (href === (requestedHref ?? toArchiveSearchHref(search))) return;
 		requestedHref = href;
@@ -137,7 +142,7 @@
 </script>
 
 <form
-	class="group relative z-20 h-12 w-full shrink-0 bg-background px-(--page-gutter) py-2 after:pointer-events-none after:absolute after:top-(--annotation-padding) after:right-0 after:bottom-(--annotation-padding) after:w-px after:bg-foreground-secondary-detail after:opacity-0 after:transition-opacity after:duration-(--duration-fast) data-[overlapping=true]:after:opacity-100 sm:absolute sm:top-0 sm:left-0 sm:h-(--annotation-area-height) sm:w-[calc(100%/var(--column-count))] sm:max-w-full"
+	class="group relative z-20 h-12 w-full shrink-0 bg-background px-(--page-gutter) after:pointer-events-none after:absolute after:top-(--annotation-padding) after:right-0 after:bottom-(--annotation-padding) after:w-px after:bg-foreground-secondary-detail after:opacity-0 after:transition-opacity after:duration-(--duration-fast) data-[overlapping=true]:after:opacity-100 sm:absolute sm:top-0 sm:left-0 sm:h-(--annotation-area-height) sm:w-[calc(100%/var(--column-count))] sm:max-w-full"
 	method="GET"
 	action="/"
 	role="search"
@@ -151,7 +156,7 @@
 		id="archive-query"
 		name={ARCHIVE_SEARCH_PARAM.query}
 		rows="1"
-		class="block [field-sizing:content] max-h-[1lh] min-h-[1lh] w-[calc(100%-0.5rem)] resize-none overflow-hidden bg-transparent font-serif text-2xl text-foreground-strong outline-none sm:max-h-none"
+		class="search-line block field-sizing-content max-h-lh min-h-lh w-[calc(100%-0.5rem)] resize-none overflow-hidden bg-transparent font-serif text-2xl text-foreground-strong outline-none sm:max-h-none"
 		placeholder="Search..."
 		autocomplete="off"
 		spellcheck="false"
@@ -165,7 +170,7 @@
 		<button
 			type="button"
 			aria-label="Clear search"
-			class="absolute top-0 right-0 grid place-items-center p-1 text-foreground-elevated opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground-strong focus-visible:opacity-100 pointer-coarse:opacity-100"
+			class="search-line absolute right-0 grid h-lh place-items-center px-1 font-serif text-2xl text-foreground-elevated opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground-strong focus-visible:opacity-100 pointer-coarse:opacity-100"
 			onclick={clear}
 		>
 			<svg
@@ -184,3 +189,16 @@
 		</button>
 	{/if}
 </form>
+
+<style>
+	/* Newsreader's metrics are overridden so its capitals sit centred in the line box; this lowers
+	   the field until the cap height lands on the annotation padding, where top-row captions start,
+	   and puts the clear button on the same line. */
+	.search-line {
+		margin-block-start: calc(var(--annotation-padding) - (1lh - 1cap) / 2);
+	}
+
+	button.search-line {
+		top: 0;
+	}
+</style>

@@ -71,3 +71,20 @@ Not run: a sync. No index change was needed.
   `lines` stack, `--gap-line`, `--gap-paragraph` and `clamp-<n>` keeping a baseline grid. Checked
   in the browser: stacked index lines measure exactly 14px apart, the first and last trimmed.
 - Captions use weight 400 only: black headings, `foreground` text.
+
+## Third pass
+
+- `bun run check:classes` (in `bun run lint`) loads the Tailwind design system and fails on any
+  class with a canonical spelling, the IntelliSense `suggestCanonicalClasses` rule; AGENTS.md says so.
+- Sort has six orders (`newest-created` … `least-connected`); Search type is choosable without a
+  query and a request without one browses whatever `mode` says.
+- Block type filters a new `kind` attribute (Image, Video, GIF, Web, Text, Attachment, Embed) set
+  by `blockKind`; `created_at` became filterable for the Created slider and sorts. Ran
+  `bun run sync --no-vision --no-push-arena` to write both: 2,546 documents upserted, 11 images
+  measured, 5 stale documents pruned. Read back: every document has a kind (832 Image, 46 Video,
+  88 GIF, 1,523 Web, 2 Text, 12 Attachment, 43 Embed); the oldest block was created February 2014.
+  `bun run evaluate:search` passes all 15 cases.
+- Covers show the channel's symbol; the placeholder is `foreground-elevated`; the annotation
+  padding is 16px; the first column no longer clips rings or thumbs.
+- Newsreader's ascent and descent are overridden so its capitals centre in the line box; measured,
+  the search cap top is 16.4px and the clear icon sits within 0.5px of the cap centre.

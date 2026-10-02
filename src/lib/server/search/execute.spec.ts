@@ -52,7 +52,9 @@ describe('executeArchiveSearch', () => {
 				colours: [],
 				from: '',
 				to: '',
-				sort: 'connections'
+				createdFrom: '',
+				createdTo: '',
+				sort: 'most-connected'
 			},
 			results: [result()],
 			hasMore: false,
@@ -132,7 +134,7 @@ describe('executeArchiveSearch', () => {
 		const createCorrelationId = vi.fn();
 
 		const outcome = await executeArchiveSearch(
-			new URLSearchParams('mode=lexical&q=%20&channel=materials'),
+			new URLSearchParams('mode=lexical&channel=materials&from=2024-02-01&to=2024-01-31'),
 			createRepository,
 			createCorrelationId,
 			silent
@@ -146,9 +148,11 @@ describe('executeArchiveSearch', () => {
 				channelSlugs: ['materials'],
 				blockTypes: [],
 				colours: [],
-				from: '',
-				to: '',
-				sort: 'connections'
+				from: '2024-02-01',
+				to: '2024-01-31',
+				createdFrom: '',
+				createdTo: '',
+				sort: 'most-connected'
 			}
 		});
 		expect(createRepository).not.toHaveBeenCalled();

@@ -12,6 +12,7 @@ function document(id: string): SearchDocument {
 		id,
 		search_text: `text for ${id}`,
 		block_type: 'Text',
+		kind: 'Text',
 		channel_slugs: ['a'],
 		connection_count: 1,
 		connected_at: '2024-01-01T00:00:00.000Z',
