@@ -28,10 +28,29 @@ Side observation, out of scope: today's browse sort, `connection_count` then `co
 no unique final key, so two blocks with identical `connected_at` could in principle straddle a page
 edge.
 
-## Task 2: Measure and calibrate
+## Task 2: Measure and calibrate (done)
 
-_(in progress)_
+- `indexing/ffmpeg.ts`: `runFfmpeg` moved out of `vision/video.ts`, now pipes stdin and stdout
+  with an output cap. `video.ts` uses it unchanged in behaviour.
+- `indexing/pool.ts`: the vision stage's worker pool, now shared.
+- `domain/search.ts`: `ARCHIVE_COLOURS` (the vocabulary only; the URL grammar is task 3).
+- `indexing/colour/`: `classify.ts` (OKLCH pixel classifier, per-mille weights), `extract.ts`
+  (capped fetch of a 128px rendition, ffmpeg `select` sampling to 64 × 64 RGBA, all in memory),
+  `cache.ts` (`colour-cache.jsonl` format and merge rules), `index.ts` (the stage, 4 workers).
+- `search/colour-filter.ts`: per-colour thresholds, read by the calibration sheet now and by the
+  filter in task 3.
+- `scripts/calibrate-colour.ts` (`bun run calibrate:colour`): read-only contact sheet.
+
+`fps=1` drops the only frame of a still read from a pipe; a `select` on
+`prev_selected_t` keeps the first frame and one per second after it, for stills and GIFs alike.
+
+Calibration on 400 blocks, recorded in the spec: green, yellow, blue, brown and mono rank well.
+Two boundary changes came out of it: brown's hues end at 85° (dark yellow was reading as brown),
+and mono's threshold is 995‰ (980‰ let in images with a clear accent).
+
+Tests: classifier, weights, cache, stage (with an injected `measure`), extraction and
+`runFfmpeg` against the real binary (skipped without ffmpeg, asserted present in CI).
 
 ## Task 3: Index and filter
 
-_(not started)_
+_(in progress)_

@@ -6,6 +6,7 @@ import {
 	type VisionCacheKey,
 	type VisionInputMode
 } from './cache';
+import { pool } from '../pool';
 import type { SyncEventSink, VisionOutcome } from '../progress/events';
 import type { VisionClient, VisionMedia } from './client';
 import { imageSourceHash } from './rendition';
@@ -108,19 +109,6 @@ export function planVisionWork(
 	}
 
 	return { withImage, cached, pending };
-}
-
-/** Bounded fan-out over one shared cursor, so a slow block never stalls the others. */
-async function pool<T>(items: T[], size: number, worker: (item: T) => Promise<void>) {
-	let cursor = 0;
-	const runners = Array.from({ length: Math.min(size, items.length) }, async () => {
-		for (;;) {
-			const index = cursor++;
-			if (index >= items.length) return;
-			await worker(items[index]);
-		}
-	});
-	await Promise.all(runners);
 }
 
 /**

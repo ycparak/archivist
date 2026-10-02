@@ -2,6 +2,24 @@ export const ARCHIVE_BLOCK_TYPES = ['Image', 'Link', 'Text', 'Attachment', 'Embe
 
 export type ArchiveBlockType = (typeof ARCHIVE_BLOCK_TYPES)[number];
 
+/** `mono` is the absence of colour, shown as "Black & white"; the rest are measured hues and neutrals. */
+export const ARCHIVE_COLOURS = [
+	'red',
+	'orange',
+	'yellow',
+	'green',
+	'blue',
+	'purple',
+	'pink',
+	'brown',
+	'grey',
+	'black',
+	'white',
+	'mono'
+] as const;
+
+export type ArchiveColour = (typeof ARCHIVE_COLOURS)[number];
+
 export const ARCHIVE_SEARCH_PARAM = {
 	query: 'q',
 	mode: 'mode',
