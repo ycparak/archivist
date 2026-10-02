@@ -31,18 +31,15 @@
 		onnavigate: (href: ArchiveSearchHref) => void;
 	} = $props();
 
-	const SWATCHES: Record<ArchiveColour, string> = {
+	const SWATCHES: Partial<Record<ArchiveColour, string>> = {
 		red: 'bg-red',
 		orange: 'bg-paprika',
 		yellow: 'bg-yellow',
 		green: 'bg-green',
 		blue: 'bg-blue',
 		purple: 'bg-lilac',
-		pink: 'bg-pink',
 		brown: 'bg-brown',
 		grey: 'bg-gray-500',
-		black: 'bg-black',
-		white: 'bg-white',
 		mono: 'border border-foreground-detail bg-[linear-gradient(135deg,black_50%,white_50%)]'
 	};
 
@@ -129,9 +126,9 @@
 				aria-label="Kind"
 			>
 				{@render list('Block type', blockTypeOptions(search))}
-				<div class="@container flex shrink-0 flex-col gap-2.5">
+				<div class="flex shrink-0 flex-col gap-2.5">
 					<h2 class="font-bold">Colours</h2>
-					<ul class="m-0 grid list-none grid-cols-6 gap-1 p-0 @min-[13rem]:grid-cols-12">
+					<ul class="m-0 grid list-none grid-cols-9 gap-1 p-0">
 						{#each colourOptions(search) as colour (colour.key)}
 							<li>
 								{#if colour.href}

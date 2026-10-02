@@ -109,6 +109,9 @@
 	   keep a baseline grid: the next line, or one blank line between. */
 	--gap-line: calc(1lh - 1cap);
 	--gap-paragraph: calc(2lh - 1cap);
+	/* Where a line box ends below its baseline: half the leading plus the font's descent, from the
+	   fonts' own metrics (Areal ascends 0.88em and descends 0.21em; Newsreader 0.74em and 0.26em). */
+	--line-below-baseline: calc(0.5lh - 0.335em);
 	--column-width: calc(
 		(100cqi - 2 * var(--page-gutter) - (var(--column-count) - 1) * var(--column-gap)) /
 			var(--column-count)
@@ -263,6 +266,7 @@
 @utility font-serif {
 	font-family: var(--font-serif);
 	font-optical-sizing: auto;
+	--line-below-baseline: calc(0.5lh - 0.24em);
 }
 
 /* Children keep whole line boxes so lines stack exactly a line height apart; only the outer edges of
@@ -276,17 +280,21 @@
 	}
 }
 
-/* A line clamp that clips with room for the ascenders and descenders a trimmed box leaves outside
-   itself. The margin stays below where the next line's ascenders start. */
+/* A line clamp for trimmed text. A clamped box keeps its last visible line box whole, so only its
+   start is trimmed: the clip-path cuts later lines at that line box's bottom, where Areal's
+   descenders end and the next line's capitals have not begun, and leaves the ascenders above the
+   trimmed top unclipped. The negative margin then lays the box out as if trimmed to the baseline. */
 @utility clamp-* {
 	display: -webkit-box;
 	-webkit-box-orient: vertical;
 	-webkit-line-clamp: --value(integer);
-	overflow: clip;
-	overflow-clip-margin: 0.2em;
+	overflow: visible;
+	text-box-trim: trim-start;
+	clip-path: inset(-1em 0 -0.03em 0);
+	margin-block-end: calc(-1 * var(--line-below-baseline));
 }
 
+/* Clips trimmed text that overflows its box, at the same place a clamp does. */
 @utility clip-trimmed {
-	overflow: clip;
-	overflow-clip-margin: 0.2em;
+	clip-path: inset(-1em 0 calc(-1 * var(--line-below-baseline) - 0.03em) 0);
 }

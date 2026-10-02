@@ -178,7 +178,7 @@ describe('ArchiveIndex markup', () => {
 		expect(stateAt(linkTo(body, 'Black & white')).colours).toEqual(['red', 'mono']);
 
 		const full = index(state({ colours: ['red', 'orange', 'yellow', 'green', 'blue'] }));
-		expect(linksIn(full).some((link) => link.label === 'Pink')).toBe(false);
+		expect(linksIn(full).some((link) => link.label === 'Brown')).toBe(false);
 		expect(stateAt(linkTo(full, 'Red')).colours).toEqual(['orange', 'yellow', 'green', 'blue']);
 	});
 

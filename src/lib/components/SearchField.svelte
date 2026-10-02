@@ -165,7 +165,7 @@
 		<button
 			type="button"
 			aria-label="Clear search"
-			class="absolute top-1 right-0 grid place-items-center p-1 text-foreground-elevated opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground-strong focus-visible:opacity-100 pointer-coarse:opacity-100"
+			class="absolute top-0 right-0 grid place-items-center p-1 text-foreground-elevated opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground-strong focus-visible:opacity-100 pointer-coarse:opacity-100"
 			onclick={clear}
 		>
 			<svg
