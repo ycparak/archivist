@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
 	ARCHIVE_BLOCK_TYPES,
 	ARCHIVE_COLOURS,
+	ARCHIVE_DEFAULT_SORT,
 	ARCHIVE_MAX_COLOURS,
 	ARCHIVE_MAX_OFFSET,
 	ARCHIVE_SEARCH_MODES,
@@ -42,7 +43,7 @@ export const archiveSearchInputSchema = z.object({
 	to: z.coerce.date().optional(),
 	createdFrom: z.coerce.date().optional(),
 	createdTo: z.coerce.date().optional(),
-	sort: z.enum(ARCHIVE_SORTS).default('most-connected'),
+	sort: z.enum(ARCHIVE_SORTS).default(ARCHIVE_DEFAULT_SORT),
 	limit: z.number().int().min(1).max(48).default(24),
 	offset: z.number().int().min(0).max(ARCHIVE_MAX_OFFSET).default(0)
 });

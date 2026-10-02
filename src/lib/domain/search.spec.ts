@@ -34,8 +34,8 @@ describe('toArchiveSearchHref', () => {
 	});
 
 	it('keeps a browse order other than the default, and drops it once a query ranks instead', () => {
-		expect(toArchiveSearchHref(state({ sort: 'newest-created' }))).toBe('/?sort=newest-created');
-		expect(toArchiveSearchHref(state({ sort: 'most-connected' }))).toBe('/');
+		expect(toArchiveSearchHref(state({ sort: 'most-connected' }))).toBe('/?sort=most-connected');
+		expect(toArchiveSearchHref(state({ sort: 'newest-created' }))).toBe('/');
 		expect(toArchiveSearchHref(state({ mode: 'lexical', sort: 'least-connected' }))).toBe(
 			'/?mode=lexical&sort=least-connected'
 		);
@@ -99,7 +99,7 @@ describe('readArchiveSearchState', () => {
 	});
 
 	it('falls back to the default browse order for an unknown sort', () => {
-		expect(readArchiveSearchState(new URLSearchParams('sort=random')).sort).toBe('most-connected');
+		expect(readArchiveSearchState(new URLSearchParams('sort=random')).sort).toBe('newest-created');
 		expect(readArchiveSearchState(new URLSearchParams('sort=oldest-created')).sort).toBe(
 			'oldest-created'
 		);

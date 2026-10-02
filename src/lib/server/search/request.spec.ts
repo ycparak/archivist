@@ -39,7 +39,7 @@ describe('every href the UI can build is a request the server accepts', () => {
 		[
 			'a browse order dropped once a query ranks',
 			state({ query: 'felt', mode: 'hybrid', sort: 'oldest-connected' }),
-			{ mode: 'hybrid', sort: 'most-connected' }
+			{ mode: 'hybrid', sort: 'newest-created' }
 		],
 		[
 			'a browse order kept for an explicit browse with a query',
@@ -88,7 +88,7 @@ describe('parseArchiveSearchRequest', () => {
 			channelSlugs: [],
 			blockTypes: [],
 			colours: [],
-			sort: 'most-connected',
+			sort: 'newest-created',
 			offset: 0,
 			limit: 24
 		});
@@ -138,7 +138,7 @@ describe('parseArchiveSearchRequest', () => {
 			channelSlugs: [],
 			blockTypes: [],
 			colours: [],
-			sort: 'most-connected',
+			sort: 'newest-created',
 			offset: 0,
 			limit: 24
 		});

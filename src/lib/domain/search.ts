@@ -48,7 +48,7 @@ export const ARCHIVE_SEARCH_PARAM = {
 	sort: 'sort'
 } as const;
 
-/** Browse order. `most-connected` is the default and never appears in a URL; a text query ranks by relevance instead. */
+/** Browse order. `newest-created` is the default and never appears in a URL; a text query ranks by relevance instead. */
 export const ARCHIVE_SORTS = [
 	'newest-created',
 	'newest-connected',
@@ -60,7 +60,7 @@ export const ARCHIVE_SORTS = [
 
 export type ArchiveSort = (typeof ARCHIVE_SORTS)[number];
 
-export const ARCHIVE_DEFAULT_SORT: ArchiveSort = 'most-connected';
+export const ARCHIVE_DEFAULT_SORT: ArchiveSort = 'newest-created';
 
 export const ARCHIVE_PAGE_PARAM = { offset: 'offset' } as const;
 
