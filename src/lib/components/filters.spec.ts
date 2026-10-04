@@ -49,13 +49,15 @@ describe('sortOptions', () => {
 				option.active
 			])
 		).toEqual([
-			['Newest created', '/', false],
-			['Newest connected', '/?sort=newest-connected', false],
-			['Oldest created', '/?sort=oldest-created', true],
-			['Oldest connected', '/?sort=oldest-connected', false],
+			['My most connected', '/', false],
+			['My least connected', '/?sort=my-least-connected', false],
+			['My newest connected', '/?sort=my-newest-connected', false],
+			['My oldest connected', '/?sort=my-oldest-connected', false],
 			['Most connected', '/?sort=most-connected', false],
-			['Least connected', '/?sort=least-connected', false]
+			['Newest created', '/?sort=newest-created', false],
+			['Oldest created', '/?sort=oldest-created', true]
 		]);
+		expect(sortOptions(state()).find((option) => option.active)?.label).toBe('My most connected');
 		expect(
 			sortOptions(state({ query: 'felt', mode: 'hybrid' })).some((option) => option.href)
 		).toBe(false);

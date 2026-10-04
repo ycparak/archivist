@@ -16,7 +16,10 @@ export const archiveNamespaceSchema = {
 	/** The gallery's Block type: `ARCHIVE_BLOCK_TYPES`, derived at sync by `blockKind`. */
 	kind: { type: 'string', filterable: true },
 	channel_slugs: { type: '[]string', filterable: true },
+	/** Channels of the maintainer's that hold the block: the `my-` sorts. */
 	connection_count: { type: 'uint', filterable: true },
+	/** Every connection on Are.na, by anyone: the default sort. Added in place, so no new namespace. */
+	total_connection_count: { type: 'uint', filterable: true },
 	connected_at: { type: 'datetime', filterable: true },
 	/** Filterable for the Created filter and sorts; flipped from false in place, which needs no new namespace. */
 	created_at: { type: 'datetime', filterable: true },

@@ -14,7 +14,7 @@ Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, Turbopuffer (sear
 
 - `src/lib/domain/`: framework-free domain types and transformations. `titles.ts` decides which Are.na titles carry no information; write-back and captions both use it. `search.ts` (the URL grammar, `SearchResult`, `ArchiveSearchState`) ships to the browser, so it must stay free of Zod schemas, provider shapes, and any runtime validation library. `archive.ts` (`ArchiveBlock`, `SearchDocument`, `toSearchDocument`) is imported only from `src/lib/server/` and does use Zod; never import it from a component or route markup. Provider validation and provider shapes live under `src/lib/server/`.
 - `src/lib/server/arena/`: Are.na transport, payload schemas, and pagination only.
-- `src/lib/server/indexing/`: normalization, channel filtering, the channel manifest, sync orchestration, the colour stage (`colour/`), the vision stage (`vision/`), and CLI progress reporting (`progress/`). It also holds the three committed files the sync writes: `channel-manifest.json`, `colour-cache.jsonl` and `vision-cache.jsonl`.
+- `src/lib/server/indexing/`: normalization, channel filtering, the channel manifest, sync orchestration, the colour stage (`colour/`), the connections stage (`connections/`), the vision stage (`vision/`), and CLI progress reporting (`progress/`). It also holds the four committed files the sync writes: `channel-manifest.json`, `colour-cache.jsonl`, `connections-cache.jsonl` and `vision-cache.jsonl`.
 - `src/lib/server/search/`: search request validation, env config, `executeArchiveSearch` (dedupe and paging), the read-side `SearchRepository`, result mapping, the evaluation-case schema, and the Turbopuffer write client and schema the sync uses.
 - `src/lib/server/rate-limit.ts`: edge rate limiting, wired in through `src/hooks.server.ts`.
 - `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
@@ -70,7 +70,6 @@ in `./docs/decisions/`.
 Archivist is a public gallery and search surface for one maintainer's Are.na archive. A new plan is being written; until it lands, the points below describe what the code does and are the boundary for changes. Anything beyond them needs the maintainer's explicit go-ahead.
 
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
-- There is no auth, accounts, analytics, background queue, chat/agent UI, or link crawling. Do not install Mastra or add agent behavior.
 - Query time is LLM-free. The one use of a model is the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
 - Sync is manual. A plain `bun run sync` is maintainer-only; agents may run the flagged variants described under Hard Rules. Public requests query Turbopuffer only; they must never proxy to Are.na.
 

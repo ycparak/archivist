@@ -6,6 +6,8 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Added
 
+- Added a Most connected sort that ranks blocks by every connection they have on Are.na, yours and everyone else's, newest created first on a tie. Takes effect after `bun run sync`.
+- Added a connections stage to `bun run sync`, which asks Are.na for each block's total connections and caches them in `connections-cache.jsonl`, recounting a block once its count is a week old. A first run takes about nine minutes. Skip it with `--no-connections`.
 - Added a Created filter, a month slider from February 2014, beside Connected. Takes effect after `bun run sync`.
 - Added Video and GIF to Block type, under Image, and renamed Link to Web. Block type now filters a new `kind` attribute. Takes effect after `bun run sync`.
 - Added six browse orders: newest and oldest created, newest and oldest connected, and most and least connected. `?sort=` takes the new names.
@@ -39,6 +41,9 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Changed
 
+- Changed the default browse order from newest created to My most connected, the blocks held by the most of your channels, newest connected first on a tie. Browsing with a colour puts the strongest colour first, then the most connected.
+- Changed the four orders that count only your own channels to My most connected, My least connected, My newest connected and My oldest connected, as `?sort=my-most-connected`, `my-least-connected`, `my-newest-connected` and `my-oldest-connected`. Their earlier names `newest-connected`, `oldest-connected` and `least-connected` are now rejected, and `?sort=most-connected` means the total on Are.na instead of your channels, so My most connected is the default and never appears in a URL.
+- Changed the Sort by list to run My most connected, My least connected, My newest connected, My oldest connected, Most connected, Newest created, Oldest created.
 - Changed the default browse order to newest created first. Most connected is still a Sort by option, as `?sort=most-connected`.
 - Changed the colour filter to show every image with any of the first colour chosen when browsing in the default order, strongest first, so weaker matches appear further down the scroll instead of not at all. Elsewhere a colour now needs 1% of the image, down from 5%; black and white is unchanged.
 - Changed Search type so it can be chosen before typing a query; the choice stays in the URL and ranks the next search. A request without a query now browses whatever `mode` says, instead of being rejected.

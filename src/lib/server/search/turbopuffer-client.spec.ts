@@ -15,6 +15,7 @@ function document(id: string): SearchDocument {
 		kind: 'Text',
 		channel_slugs: ['a'],
 		connection_count: 1,
+		total_connection_count: 3,
 		connected_at: '2024-01-01T00:00:00.000Z',
 		created_at: '2024-01-01T00:00:00.000Z',
 		title: null,

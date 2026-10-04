@@ -5,6 +5,7 @@ import {
 	type Arena
 } from '@aredotna/sdk';
 import {
+	arenaBlockConnectionsResponseSchema,
 	arenaChannelContentsResponseSchema,
 	arenaMeSchema,
 	arenaOwnedChannelsResponseSchema,
@@ -64,6 +65,12 @@ export type ArenaChannelContentsPage = ArenaChannelContentsResponse & {
 export type ArenaOwnedChannelsPage = ArenaOwnedChannelsResponse & {
 	rateLimit: ArenaRateLimitInfo;
 };
+
+export interface ArenaBlockConnectionCount {
+	/** Every connection to the block on Are.na, by the token's owner and by anyone else. */
+	total: number;
+	rateLimit: ArenaRateLimitInfo;
+}
 
 export class ArenaRequestError extends Error {
 	readonly status: number;
@@ -229,6 +236,20 @@ export class ArenaClient {
 		}
 	}
 
+	/** One request per block: a page of one connection, read only for the total in its meta. */
+	async fetchBlockConnectionCount(
+		blockId: number,
+		{ signal }: { signal?: AbortSignal } = {}
+	): Promise<ArenaBlockConnectionCount> {
+		try {
+			const body = await this.arena.blocks.connections(blockId, { per: 1 }, { signal });
+			const parsed = arenaBlockConnectionsResponseSchema.parse(body);
+			return { total: parsed.meta.total_count, rateLimit: this.latestRateLimit() };
+		} catch (error) {
+			throw mapSdkError(error, `counting connections of block ${blockId}`);
+		}
+	}
+
 	async fetchOwnedChannelsPage(
 		userId: number,
 		{ page = 1, per = 50, signal }: FetchOwnedChannelsPageOptions = {}
@@ -360,4 +381,40 @@ export function paginateOwnedChannels(
 		(page, per, signal) => client.fetchOwnedChannelsPage(userId, { page, per, signal }),
 		options
 	);
+}
+
+export interface CountBlockConnectionsOptions {
+	signal?: AbortSignal;
+	maxRetries?: number;
+	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
+	/** Requests left in the window at which to wait for it to reset; set above the number in flight. */
+	rateLimitSafetyMargin?: number;
+}
+
+/**
+ * `fetchBlockConnectionCount` for many blocks at once: waits out a 429, and waits for the window
+ * to reset before the bucket runs dry, so concurrent callers stop short of the limit instead of
+ * running into it.
+ */
+export async function countBlockConnections(
+	client: ArenaClient,
+	blockId: number,
+	{
+		signal,
+		maxRetries = DEFAULT_MAX_RETRIES_PER_PAGE,
+		delayFn = delay,
+		rateLimitSafetyMargin = DEFAULT_RATE_LIMIT_SAFETY_MARGIN
+	}: CountBlockConnectionsOptions = {}
+): Promise<number> {
+	for (let attempt = 0; ; attempt += 1) {
+		try {
+			const { total, rateLimit } = await client.fetchBlockConnectionCount(blockId, { signal });
+			const waitMs = computeProactiveWaitMs(rateLimit, rateLimitSafetyMargin);
+			if (waitMs > 0) await delayFn(waitMs, signal);
+			return total;
+		} catch (error) {
+			if (!(error instanceof ArenaRateLimitError) || attempt >= maxRetries) throw error;
+			await delayFn(error.retryAfterMs, signal);
+		}
+	}
 }
