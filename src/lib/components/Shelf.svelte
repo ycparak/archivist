@@ -56,22 +56,10 @@
 >
 	<h2 id="shelf-heading" class="sr-only">Results</h2>
 	<div class="relative row-start-2 bg-band" aria-busy={busy}>
-		<div
-			class="absolute z-10 flex h-1.5 transition-[width] duration-(--duration-reveal) ease-out-expo"
-			style:left="var(--shelf-padding)"
-			style:top="var(--shelf-padding)"
-			style:width="calc({SHELF.scaleWidth} * {h})"
-			aria-hidden="true"
-		>
-			{#each { length: SHELF.scaleSegments }, index (index)}
-				<span class={['flex-1', index % 2 === 0 ? 'bg-black' : 'bg-white']}></span>
-			{/each}
-		</div>
-
 		{#if message}
 			<div
 				class="absolute max-w-64"
-				style:left="calc(var(--shelf-padding) + var(--top-row-inset))"
+				style:left="calc(var(--shelf-padding) + var(--row-inset))"
 				style:top="var(--shelf-padding)"
 			>
 				{@render message()}
@@ -90,7 +78,7 @@
 				<ul
 					class="m-0 flex list-none p-0"
 					style:height="calc({SHELF.rowHeight} * {h})"
-					style:margin-left={rowIndex === 0 ? 'var(--top-row-inset)' : 'var(--bottom-row-inset)'}
+					style:margin-left="var(--row-inset)"
 					style:gap="calc({SHELF.groupGap} * {h})"
 				>
 					{#each row as group, groupIndex (`${requestKey}:${group.id}`)}
@@ -188,8 +176,7 @@
 	.shelf {
 		--shelf-h: calc(100cqh - 2 * var(--annotation-area-height));
 		--shelf-padding: calc(var(--shelf-h) * 0.05);
-		--top-row-inset: calc(100cqi / var(--column-count));
-		--bottom-row-inset: calc((100cqi / var(--column-count) - 4rem) / 2);
+		--row-inset: calc((100cqi / var(--column-count) - 4rem) / 2);
 	}
 
 	.shelf-group {
