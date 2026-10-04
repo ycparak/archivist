@@ -195,12 +195,20 @@ the server. The constants live in `SHELF` in `src/lib/components/shelf.ts`.
   channel, rank order holds. A block's channel is the first one the reader filtered by, else the
   first in the manifest. A channel with more than 12 blocks is split. Every shelf opens with its
   channel's cover, which links to that channel's filter.
-- **Rows.** Each shelf goes onto whichever row is shorter. Later pages are grouped on their own and
-  appended, so loading more never moves a shelf already on screen.
+- **Rows.** Each shelf goes onto whichever row is shorter, judged by its estimated width: every
+  image page counts as 4 : 3, whatever the image is. The rows are two flex lists, so the browser
+  lays the shelves out, not script. Later pages are grouped on their own and appended, so loading
+  more never moves a shelf already on screen.
 - **Insets.** The top row starts one column (`100cqi ÷ column-count`) in, clear of the search field.
   The bottom row starts `(column − 4rem) ÷ 2` in. The band is at least the sheet's width.
-- **Pages** are `bg-white` with `shadow-page` (2px 2px 2px rgb(0 0 0 / 0.25)). Images and video
-  fill the page with `object-cover`; ratios clamp to 0.5–3.
+- **Pages** are `bg-white` with `shadow-page` (2px 2px 2px rgb(0 0 0 / 0.25)). An image or video
+  page is `0.34h` tall and as wide as the image's own aspect ratio makes it, so nothing is cropped,
+  however wide or narrow it gets. No width is computed: the media is `h-full w-auto`, and its
+  `width` and `height` attributes give the browser the ratio before the file loads. A block Are.na
+  has no size for starts at 4 : 3 (`aspect-[auto_4/3]`), and `auto` hands over to the file's own
+  ratio once it loads, which also corrects a size Are.na has wrong. That moves the shelves after
+  it. Covers and text pages are the only pages with a fixed width, from `cover` and `text page`
+  above.
 - **Covers** show the channel title in Newsreader at the top, and at the bottom the channel's
   symbol (the `✦`, `❋`, `𖤛` its Are.na title starts with), or "Are.na" when it has none, beside
   the block count.

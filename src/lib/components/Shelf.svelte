@@ -7,7 +7,7 @@
 	import ShelfCover from './ShelfCover.svelte';
 	import { blockCount, captionText, connectedYears, formatConnectedDate } from './caption';
 	import { reveal } from './reveal';
-	import { SHELF, rowTop, type ShelfLayout } from './shelf';
+	import { SHELF, type ShelfLayout } from './shelf';
 
 	let {
 		layout,
@@ -36,19 +36,8 @@
 	} = $props();
 
 	const h = 'var(--shelf-h)';
-	const width = $derived.by(() => {
-		if (!layout.groups.length) return undefined;
-		const [top, bottom] = layout.rowWidths;
-		return `calc(max(${top} * ${h} + var(--top-row-inset), ${bottom} * ${h} + var(--bottom-row-inset)) + ${SHELF.padding * 2} * ${h})`;
-	});
-
-	function groupLeft(row: number, x: number): string {
-		const inset = row === 0 ? 'var(--top-row-inset)' : 'var(--bottom-row-inset)';
-		return `calc(${SHELF.padding + x} * ${h} + ${inset})`;
-	}
-
 	const watchEnd: Attachment<HTMLElement> = (node) => {
-		void layout.groups.length;
+		void layout.rows;
 		if (!hasMore || loadFailed) return;
 		const observer = new IntersectionObserver(
 			(entries) => {
@@ -63,7 +52,6 @@
 
 <section
 	class="shelf grid h-full min-w-[calc(100cqi-var(--page-gutter))] flex-none grid-rows-[var(--annotation-area-height)_minmax(0,1fr)_var(--annotation-area-height)]"
-	style:width
 	aria-labelledby="shelf-heading"
 >
 	<h2 id="shelf-heading" class="sr-only">Results</h2>
@@ -90,80 +78,96 @@
 			</div>
 		{/if}
 
-		<ul
+		<div
 			class={[
-				'm-0 list-none p-0 transition-opacity duration-(--duration-fast)',
+				'flex w-max flex-col items-start transition-opacity duration-(--duration-fast)',
 				busy && 'opacity-50'
 			]}
+			style:padding="calc({SHELF.padding} * {h})"
+			style:gap="calc({SHELF.rowGap} * {h})"
 		>
-			{#each layout.groups as group, groupIndex (`${requestKey}:${group.id}`)}
-				<li
-					class="shelf-group absolute flex"
-					data-reveal
-					style:--row={group.row}
-					style:left={groupLeft(group.row, group.x)}
-					style:top="calc({rowTop(group.row)} * {h})"
+			{#each layout.rows as row, rowIndex (rowIndex)}
+				<ul
+					class="m-0 flex list-none p-0"
 					style:height="calc({SHELF.rowHeight} * {h})"
-					style:gap="calc({SHELF.itemGap} * {h})"
-					{@attach reveal}
+					style:margin-left={rowIndex === 0 ? 'var(--top-row-inset)' : 'var(--bottom-row-inset)'}
+					style:gap="calc({SHELF.groupGap} * {h})"
 				>
-					{#each group.items as item, itemIndex (item.id)}
-						<div
-							class="relative h-full flex-none"
-							style:width="calc({SHELF.pageHeight * item.ratio} * {h})"
+					{#each row as group, groupIndex (`${requestKey}:${group.id}`)}
+						<li
+							class="shelf-group flex h-full flex-none"
+							data-reveal
+							style:--row={rowIndex}
+							style:gap="calc({SHELF.itemGap} * {h})"
+							{@attach reveal}
 						>
-							<div
-								class={[
-									'shelf-caption absolute left-0 h-[calc(var(--annotation-area-height)-2*var(--annotation-padding))] w-full text-foreground',
-									group.row === 0
-										? 'bottom-[calc(100%+var(--shelf-padding)+var(--annotation-padding))]'
-										: 'top-[calc(100%+var(--shelf-padding)+var(--annotation-padding))]'
-								]}
-								data-top-annotation={group.row === 0 ? '' : undefined}
-							>
-								{#if item.kind === 'cover' && group.channel}
+							{#each group.items as item, itemIndex (item.id)}
+								<div
+									class="relative h-full flex-none"
+									style:width={item.ratio !== null
+										? `calc(${SHELF.pageHeight * item.ratio} * ${h})`
+										: undefined}
+								>
 									<div
 										class={[
-											'flex h-full flex-col border-l border-foreground-secondary-detail pl-2',
-											group.row === 1 && 'justify-end'
+											'shelf-caption absolute left-0 h-[calc(var(--annotation-area-height)-2*var(--annotation-padding))] w-full text-foreground',
+											rowIndex === 0
+												? 'bottom-[calc(100%+var(--shelf-padding)+var(--annotation-padding))]'
+												: 'top-[calc(100%+var(--shelf-padding)+var(--annotation-padding))]'
 										]}
+										data-top-annotation={rowIndex === 0 ? '' : undefined}
 									>
-										<p class="clamp-7">
-											<span class="text-foreground-strong">{group.channel.title}</span><br
-											/>{blockCount(group.blocks.length)}<br />{connectedYears(group.blocks)}
-										</p>
+										{#if item.kind === 'cover' && group.channel}
+											<div
+												class={[
+													'flex h-full flex-col border-l border-foreground-secondary-detail pl-2',
+													rowIndex === 1 && 'justify-end'
+												]}
+											>
+												<p class="clamp-7">
+													<span class="text-foreground-strong">{group.channel.title}</span><br
+													/>{blockCount(group.blocks.length)}<br />{connectedYears(group.blocks)}
+												</p>
+											</div>
+										{:else if item.kind === 'block'}
+											<div
+												class={[
+													'flex h-full max-w-56 flex-col',
+													rowIndex === 1 && 'flex-col-reverse'
+												]}
+											>
+												<div class="flex flex-col gap-(--gap-paragraph)">
+													<p class="text-foreground-strong">
+														{formatConnectedDate(item.result.connectedAt)}
+													</p>
+													<CaptionText text={captionText(item.result, query)} {query} />
+												</div>
+											</div>
+										{/if}
 									</div>
-								{:else if item.kind === 'block'}
-									<div
-										class={['flex h-full max-w-56 flex-col', group.row === 1 && 'flex-col-reverse']}
-									>
-										<div class="flex flex-col gap-(--gap-paragraph)">
-											<p class="text-foreground-strong">
-												{formatConnectedDate(item.result.connectedAt)}
-											</p>
-											<CaptionText text={captionText(item.result, query)} {query} />
-										</div>
-									</div>
-								{/if}
-							</div>
 
-							<div class="@container-size w-full" style:height="calc({SHELF.pageHeight} * {h})">
-								{#if item.kind === 'cover' && group.channel}
-									<ShelfCover
-										channel={group.channel}
-										count={group.blocks.length}
-										href={coverHref(group.channel)}
-										active={isActiveChannel(group.channel)}
-									/>
-								{:else if item.kind === 'block'}
-									<ShelfBlock result={item.result} eager={groupIndex < 2 && itemIndex < 6} />
-								{/if}
-							</div>
-						</div>
+									<div
+										class={[item.ratio !== null && '@container-size w-full']}
+										style:height="calc({SHELF.pageHeight} * {h})"
+									>
+										{#if item.kind === 'cover' && group.channel}
+											<ShelfCover
+												channel={group.channel}
+												count={group.blocks.length}
+												href={coverHref(group.channel)}
+												active={isActiveChannel(group.channel)}
+											/>
+										{:else if item.kind === 'block'}
+											<ShelfBlock result={item.result} eager={groupIndex < 1 && itemIndex < 6} />
+										{/if}
+									</div>
+								</div>
+							{/each}
+						</li>
 					{/each}
-				</li>
+				</ul>
 			{/each}
-		</ul>
+		</div>
 
 		{#if hasMore}
 			<div class="absolute top-0 right-0 h-full w-px" {@attach watchEnd}></div>

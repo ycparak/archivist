@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChannelManifestEntry, SearchResult } from '$lib/domain/search';
-import { SHELF, blockRatio, groupResults, layoutShelves, shelfChannel } from './shelf';
+import { SHELF, groupResults, layoutShelves, shelfChannel } from './shelf';
 
 function result(id: string, overrides: Partial<SearchResult> = {}): SearchResult {
 	return {
@@ -45,10 +45,19 @@ describe('shelfChannel', () => {
 	});
 });
 
-describe('blockRatio', () => {
-	it('uses the image shape, and a portrait page for text', () => {
-		expect(blockRatio(result('1', { imageWidth: 800, imageHeight: 400 }))).toBe(2);
-		expect(blockRatio(result('1', { imageUrl: null }))).toBe(SHELF.textRatio);
+describe('page shapes', () => {
+	it('leaves an image page to its image, and gives a text page and a cover a fixed shape', () => {
+		const [group] = groupResults(
+			[result('a'), result('b', { imageUrl: null, blockType: 'Text' })],
+			manifest,
+			[]
+		);
+
+		expect(group.items.map((item) => item.ratio)).toEqual([
+			SHELF.coverRatio,
+			null,
+			SHELF.textRatio
+		]);
 	});
 });
 
@@ -80,28 +89,53 @@ describe('groupResults', () => {
 		expect(groups.every((group) => group.items[0].kind === 'cover')).toBe(true);
 		expect(new Set(groups.map((group) => group.id)).size).toBe(2);
 	});
-
-	it('sizes a shelf from its pages and the gaps between them', () => {
-		const [group] = groupResults([result('a'), result('b')], manifest, []);
-		const ratios = SHELF.coverRatio + 1 + 1;
-
-		expect(group.width).toBeCloseTo(ratios * SHELF.pageHeight + 2 * SHELF.itemGap);
-	});
 });
 
 describe('layoutShelves', () => {
-	it('places each shelf on the shortest row, gapped from the shelf before it', () => {
+	const ids = (layout: ReturnType<typeof layoutShelves>) =>
+		layout.rows.map((row) => row.map((group) => group.id));
+
+	it('places each shelf on the shortest row', () => {
 		const layout = layoutShelves(
-			[[result('a'), result('b', { channelSlugs: ['type'] }), result('c', { channelSlugs: [] })]],
+			[
+				[
+					result('a'),
+					result('b', { channelSlugs: ['type'] }),
+					result('c', { channelSlugs: ['third'] }),
+					result('d', { channelSlugs: ['fourth'] })
+				]
+			],
 			manifest,
 			[]
 		);
-		const [first, second, third] = layout.groups;
 
-		expect([first.row, first.x]).toEqual([0, 0]);
-		expect([second.row, second.x]).toEqual([1, 0]);
-		expect(third.row).toBe(second.width < first.width ? 1 : 0);
-		expect(third.x).toBeCloseTo((third.row === 0 ? first.width : second.width) + SHELF.groupGap);
+		expect(ids(layout)).toEqual([
+			['a', 'c'],
+			['b', 'd']
+		]);
+	});
+
+	it('puts a long shelf on one row and the next two on the other', () => {
+		const long = Array.from({ length: 6 }, (_, index) => result(`long-${index}`));
+		const layout = layoutShelves(
+			[[...long, result('x', { channelSlugs: ['type'] }), result('y', { channelSlugs: [] })]],
+			manifest,
+			[]
+		);
+
+		expect(ids(layout)).toEqual([['long-0'], ['x', 'y']]);
+	});
+
+	it('balances rows without reading the size Are.na stored for an image', () => {
+		const page = (width: number | null, height: number | null) => [
+			result('a', { imageWidth: width, imageHeight: height }),
+			result('b', { channelSlugs: ['type'], imageWidth: width, imageHeight: height }),
+			result('c', { channelSlugs: [], imageWidth: width, imageHeight: height })
+		];
+
+		expect(ids(layoutShelves([page(10000, 100)], manifest, []))).toEqual(
+			ids(layoutShelves([page(null, null)], manifest, []))
+		);
 	});
 
 	it('appends a later page without moving any shelf already placed', () => {
@@ -109,7 +143,8 @@ describe('layoutShelves', () => {
 		const before = layoutShelves([firstPage], manifest, []);
 		const after = layoutShelves([firstPage, [result('c')]], manifest, []);
 
-		expect(after.groups.slice(0, 2)).toEqual(before.groups);
-		expect(after.groups[2].channel?.slug).toBe('materials');
+		expect(after.rows.map((row) => row.slice(0, before.rows[0].length))[0]).toEqual(before.rows[0]);
+		expect(after.rows[1].slice(0, before.rows[1].length)).toEqual(before.rows[1]);
+		expect(after.rows.flat()).toHaveLength(3);
 	});
 });
