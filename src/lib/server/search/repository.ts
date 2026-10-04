@@ -122,24 +122,29 @@ function coloursLeadOrder(input: ArchiveSearchInput): boolean {
 
 function sortKeys(sort: ArchiveSearchInput['sort']): RankByAttribute[] {
 	switch (sort) {
-		case 'newest-created':
-			return [['created_at', 'desc']];
-		case 'newest-connected':
-			return [['connected_at', 'desc']];
-		case 'oldest-created':
-			return [['created_at', 'asc']];
-		case 'oldest-connected':
-			return [['connected_at', 'asc']];
-		case 'most-connected':
+		case 'my-most-connected':
 			return [
 				['connection_count', 'desc'],
 				['connected_at', 'desc']
 			];
-		case 'least-connected':
+		case 'my-least-connected':
 			return [
 				['connection_count', 'asc'],
 				['connected_at', 'desc']
 			];
+		case 'my-newest-connected':
+			return [['connected_at', 'desc']];
+		case 'my-oldest-connected':
+			return [['connected_at', 'asc']];
+		case 'most-connected':
+			return [
+				['total_connection_count', 'desc'],
+				['created_at', 'desc']
+			];
+		case 'newest-created':
+			return [['created_at', 'desc']];
+		case 'oldest-created':
+			return [['created_at', 'asc']];
 	}
 }
 

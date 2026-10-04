@@ -124,12 +124,13 @@ export function searchTypeOptions(state: ArchiveSearchState): FilterOption[] {
 }
 
 const SORTS: { sort: ArchiveSort; label: string }[] = [
-	{ sort: 'newest-created', label: 'Newest created' },
-	{ sort: 'newest-connected', label: 'Newest connected' },
-	{ sort: 'oldest-created', label: 'Oldest created' },
-	{ sort: 'oldest-connected', label: 'Oldest connected' },
+	{ sort: 'my-most-connected', label: 'My most connected' },
+	{ sort: 'my-least-connected', label: 'My least connected' },
+	{ sort: 'my-newest-connected', label: 'My newest connected' },
+	{ sort: 'my-oldest-connected', label: 'My oldest connected' },
 	{ sort: 'most-connected', label: 'Most connected' },
-	{ sort: 'least-connected', label: 'Least connected' }
+	{ sort: 'newest-created', label: 'Newest created' },
+	{ sort: 'oldest-created', label: 'Oldest created' }
 ];
 
 /** Order only applies to browse; a query ranks by relevance. */

@@ -48,19 +48,24 @@ export const ARCHIVE_SEARCH_PARAM = {
 	sort: 'sort'
 } as const;
 
-/** Browse order. `newest-created` is the default and never appears in a URL; a text query ranks by relevance instead. */
+/**
+ * Browse order, in the order the gallery lists it. The `my-` orders count only the maintainer's
+ * channels; `most-connected` counts every connection on Are.na. `my-most-connected` is the default,
+ * so it never appears in a URL. A text query ranks by relevance instead.
+ */
 export const ARCHIVE_SORTS = [
-	'newest-created',
-	'newest-connected',
-	'oldest-created',
-	'oldest-connected',
+	'my-most-connected',
+	'my-least-connected',
+	'my-newest-connected',
+	'my-oldest-connected',
 	'most-connected',
-	'least-connected'
+	'newest-created',
+	'oldest-created'
 ] as const;
 
 export type ArchiveSort = (typeof ARCHIVE_SORTS)[number];
 
-export const ARCHIVE_DEFAULT_SORT: ArchiveSort = 'newest-created';
+export const ARCHIVE_DEFAULT_SORT: ArchiveSort = 'my-most-connected';
 
 export const ARCHIVE_PAGE_PARAM = { offset: 'offset' } as const;
 

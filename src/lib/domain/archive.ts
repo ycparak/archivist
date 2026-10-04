@@ -64,7 +64,10 @@ export type SearchDocument = {
 	/** What the block is to a reader (`ARCHIVE_BLOCK_TYPES`); the gallery's Block type filter reads this. */
 	kind: ArchiveBlockType | null;
 	channel_slugs: string[];
+	/** How many of the maintainer's synced channels hold the block. */
 	connection_count: number;
+	/** Every connection to the block on Are.na, by the maintainer and anyone else. */
+	total_connection_count: number;
 	connected_at: string | null;
 	created_at: string | null;
 	title: string | null;
@@ -155,11 +158,16 @@ const normalizeTags = (tags: readonly string[] | null | undefined): string[] =>
  *
  * `colours` are the block's measured colour weights. A block without them, including every block
  * without an image, weighs zero in every colour and so never matches a colour filter.
+ *
+ * `totalConnections` is Are.na's count of every connection to the block. It is never recorded
+ * below the maintainer's own channels, which are a subset of it: that keeps a block whose count
+ * failed, or went stale before it was connected again, ordered by what is known to be true.
  */
 export function toSearchDocument(
 	block: ArchiveBlock,
 	vision?: BlockVisionText | null,
-	colours?: BlockColourWeights | null
+	colours?: BlockColourWeights | null,
+	totalConnections?: number | null
 ): SearchDocument {
 	const channels = [...new Map(block.channels.map((channel) => [channel.slug, channel])).values()];
 	const searchText = [
@@ -186,6 +194,7 @@ export function toSearchDocument(
 		kind: blockKind(block),
 		channel_slugs: channels.map((channel) => channel.slug).sort(),
 		connection_count: channels.length,
+		total_connection_count: Math.max(totalConnections ?? 0, channels.length),
 		connected_at: block.connectedAt?.toISOString() ?? null,
 		created_at: block.createdAt?.toISOString() ?? null,
 		title: normalizeText(block.title) || null,

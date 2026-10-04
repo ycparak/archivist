@@ -33,18 +33,18 @@ describe('every href the UI can build is a request the server accepts', () => {
 		['ranking dropped without a query', state({ mode: 'semantic' }), { mode: 'browse', query: '' }],
 		[
 			'a browse order',
-			state({ sort: 'newest-connected' }),
-			{ mode: 'browse', sort: 'newest-connected' }
+			state({ sort: 'my-newest-connected' }),
+			{ mode: 'browse', sort: 'my-newest-connected' }
 		],
 		[
 			'a browse order dropped once a query ranks',
-			state({ query: 'felt', mode: 'hybrid', sort: 'oldest-connected' }),
-			{ mode: 'hybrid', sort: 'newest-created' }
+			state({ query: 'felt', mode: 'hybrid', sort: 'my-oldest-connected' }),
+			{ mode: 'hybrid', sort: 'my-most-connected' }
 		],
 		[
 			'a browse order kept for an explicit browse with a query',
-			state({ query: 'felt', mode: 'browse', sort: 'oldest-connected' }),
-			{ mode: 'browse', sort: 'oldest-connected' }
+			state({ query: 'felt', mode: 'browse', sort: 'my-oldest-connected' }),
+			{ mode: 'browse', sort: 'my-oldest-connected' }
 		],
 		[
 			'filters only',
@@ -88,7 +88,7 @@ describe('parseArchiveSearchRequest', () => {
 			channelSlugs: [],
 			blockTypes: [],
 			colours: [],
-			sort: 'newest-created',
+			sort: 'my-most-connected',
 			offset: 0,
 			limit: 24
 		});
@@ -138,7 +138,7 @@ describe('parseArchiveSearchRequest', () => {
 			channelSlugs: [],
 			blockTypes: [],
 			colours: [],
-			sort: 'newest-created',
+			sort: 'my-most-connected',
 			offset: 0,
 			limit: 24
 		});

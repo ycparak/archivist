@@ -2,6 +2,7 @@ import { toSearchDocument, type ArchiveBlock } from '$lib/domain/archive';
 import {
 	ArenaClient,
 	ArenaRequestError,
+	countBlockConnections,
 	delay,
 	paginateChannelContents,
 	paginateOwnedChannels
@@ -17,6 +18,17 @@ import type { SyncEventSink } from './progress/events';
 import type { ChannelManifestEntry } from './channel-manifest';
 import { measureBlocks, type ColourStageOptions, type ColourStageSummary } from './colour';
 import { mergeColourCache, type ColourCache, type ColourCacheEntry } from './colour/cache';
+import {
+	CONNECTION_CONCURRENCY,
+	countConnections,
+	type ConnectionStageOptions,
+	type ConnectionStageSummary
+} from './connections';
+import {
+	mergeConnectionCache,
+	type ConnectionCache,
+	type ConnectionCacheEntry
+} from './connections/cache';
 import { toArchiveBlock } from './normalize';
 import { describeBlocks, type VisionStageSummary } from './vision';
 import { mergeVisionCache, type VisionCache, type VisionCacheEntry } from './vision/cache';
@@ -51,6 +63,17 @@ export interface SyncOptions {
 	colourCache?: ColourCache;
 	/** Omit to index the existing colour cache without measuring anything new. */
 	colour?: ColourSyncOptions;
+	/** Every block's total connections to index. Supplied on every run, for the same reason as `visionCache`. */
+	connectionCache?: ConnectionCache;
+	/** Omit to index the existing counts without asking Are.na for any. */
+	connections?: ConnectionsSyncOptions;
+}
+
+export interface ConnectionsSyncOptions {
+	/** Called as each entry lands, so an interrupted run keeps what it counted. */
+	onEntry?: (entry: ConnectionCacheEntry) => void;
+	/** Replaces asking Are.na for a block's total; for tests. */
+	count?: ConnectionStageOptions['count'];
 }
 
 export interface ColourSyncOptions {
@@ -88,6 +111,8 @@ export interface SyncSummary {
 	pruneSkipped: string | null;
 	/** Null when the colour stage did not run. */
 	colour: ColourStageSummary | null;
+	/** Null when the connections stage did not run. */
+	connections: ConnectionStageSummary | null;
 	/** Null when the vision stage did not run. */
 	vision: VisionStageSummary | null;
 	/** Null when write-back was not requested. */
@@ -142,6 +167,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	channels: ChannelManifestEntry[];
 	visionCache: VisionCacheEntry[] | null;
 	colourCache: ColourCacheEntry[] | null;
+	connectionCache: ConnectionCacheEntry[] | null;
 	summary: SyncSummary;
 }> {
 	const {
@@ -160,7 +186,9 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		vision,
 		pushArena,
 		colourCache: existingColourCache = new Map<string, ColourCacheEntry>(),
-		colour
+		colour,
+		connectionCache: existingConnectionCache = new Map<string, ConnectionCacheEntry>(),
+		connections
 	} = options;
 	const client = new ArenaClient({ accessToken, fetchFn });
 
@@ -179,6 +207,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		documentsDeleted: 0,
 		pruneSkipped: null,
 		colour: null,
+		connections: null,
 		vision: null,
 		writeBack: null
 	};
@@ -284,6 +313,35 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		colourWeights = new Map(colourCache.map((entry) => [entry.block_id, entry]));
 	}
 
+	let connectionCache: ConnectionCacheEntry[] | null = null;
+	let connectionTotals: ConnectionCache = existingConnectionCache;
+	if (connections) {
+		onEvent({ kind: 'phase', phase: 'counting' });
+		const { entries, summary: connectionSummary } = await countConnections(blocks, {
+			cache: existingConnectionCache,
+			count:
+				connections.count ??
+				((blockId, countSignal) =>
+					countBlockConnections(client, blockId, {
+						signal: countSignal,
+						delayFn,
+						rateLimitSafetyMargin: CONNECTION_CONCURRENCY
+					})),
+			concurrency: CONNECTION_CONCURRENCY,
+			log,
+			signal,
+			onEntry: connections.onEntry,
+			onProgress: (done, total) => onEvent({ kind: 'position', done, total })
+		});
+		summary.connections = connectionSummary;
+		connectionCache = mergeConnectionCache(
+			existingConnectionCache,
+			entries,
+			liveIds(existingConnectionCache)
+		);
+		connectionTotals = new Map(connectionCache.map((entry) => [entry.block_id, entry]));
+	}
+
 	// Runs on the deduplicated set, so a block in five channels is described once.
 	let visionCache: VisionCacheEntry[] | null = null;
 	let visionText: VisionCache = existingVisionCache;
@@ -315,7 +373,12 @@ export async function syncArchive(options: SyncOptions): Promise<{
 
 	onEvent({ kind: 'phase', phase: 'upserting' });
 	const documents = blocks.map((block) =>
-		toSearchDocument(block, visionText.get(block.id), colourWeights.get(block.id)?.weights)
+		toSearchDocument(
+			block,
+			visionText.get(block.id),
+			colourWeights.get(block.id)?.weights,
+			connectionTotals.get(block.id)?.total
+		)
 	);
 	const { batches, rowsUpserted } = await upsertSearchDocuments(documents, turbopuffer, {
 		log,
@@ -350,5 +413,5 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	if (summary.pruneSkipped) log(`Skipped pruning: ${summary.pruneSkipped}`);
 
 	onEvent({ kind: 'phase', phase: 'done' });
-	return { blocks, channels, visionCache, colourCache, summary };
+	return { blocks, channels, visionCache, colourCache, connectionCache, summary };
 }
