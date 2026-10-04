@@ -132,6 +132,9 @@ export const arenaChannelContentsResponseSchema = z.object({
 
 export type ArenaChannelContentsResponse = z.infer<typeof arenaChannelContentsResponseSchema>;
 
+/** Only the pagination meta is read: `total_count` is every connection to the block, whoever made it. */
+export const arenaBlockConnectionsResponseSchema = z.object({ meta: paginationMetaSchema });
+
 export const arenaMeSchema = z.object({
 	id: z.number(),
 	slug: z.string()

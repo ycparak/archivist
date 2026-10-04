@@ -78,6 +78,45 @@ describe('toSearchDocument', () => {
 	});
 });
 
+describe('toSearchDocument — connection counts', () => {
+	const block = (channels: { slug: string; title: string }[]) =>
+		archiveBlockSchema.parse({
+			id: 9,
+			type: 'Image',
+			title: 'Brutalist window',
+			arenaUrl: 'https://www.are.na/block/9',
+			channels
+		});
+	const alpha = { slug: 'alpha', title: 'Alpha' };
+	const beta = { slug: 'beta', title: 'Beta' };
+
+	it('keeps the maintainer’s channel count apart from the total on Are.na', () => {
+		const document = toSearchDocument(block([alpha, beta]), null, null, 14);
+		expect(document.connection_count).toBe(2);
+		expect(document.total_connection_count).toBe(14);
+	});
+
+	it('falls back to the channels it can see for a block that was never counted', () => {
+		const document = toSearchDocument(block([alpha, beta]));
+		expect(document.total_connection_count).toBe(2);
+		expect(toSearchDocument(block([alpha]), null, null, null).total_connection_count).toBe(1);
+	});
+
+	it('never records a total below the maintainer’s own channels', () => {
+		expect(toSearchDocument(block([alpha, beta]), null, null, 1).total_connection_count).toBe(2);
+	});
+
+	it('counts a channel once however many times it was merged in', () => {
+		expect(toSearchDocument(block([alpha, alpha]), null, null, 0).total_connection_count).toBe(1);
+	});
+
+	it('keeps the count out of the searchable text', () => {
+		expect(toSearchDocument(block([alpha]), null, null, 14).search_text).toBe(
+			toSearchDocument(block([alpha])).search_text
+		);
+	});
+});
+
 describe('toSearchDocument — colour weights', () => {
 	const block = () =>
 		archiveBlockSchema.parse({

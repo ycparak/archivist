@@ -162,7 +162,7 @@ describe('ArchiveIndex markup', () => {
 		expect(linkTo(browsing, 'Best match').current).toBe(true);
 		expect(stateAt(linkTo(browsing, 'Exact words')).mode).toBe('lexical');
 		expect(stateAt(linkTo(browsing, 'Most connected')).sort).toBe('most-connected');
-		expect(linkTo(browsing, 'Newest created').current).toBe(true);
+		expect(linkTo(browsing, 'My most connected').current).toBe(true);
 
 		const querying = index(state({ query: 'felt', mode: 'hybrid' }));
 		expect(linkTo(querying, 'Best match').current).toBe(true);
@@ -170,8 +170,8 @@ describe('ArchiveIndex markup', () => {
 			query: 'felt',
 			mode: 'semantic'
 		});
-		expect(linksIn(querying).some((link) => link.label === 'Newest created')).toBe(false);
-		expect(querying).toMatch(/aria-disabled="true"[^>]*>Newest created/);
+		expect(linksIn(querying).some((link) => link.label === 'My most connected')).toBe(false);
+		expect(querying).toMatch(/aria-disabled="true"[^>]*>My most connected/);
 	});
 
 	it('toggles block types and colours, and stops offering colours past the limit', () => {

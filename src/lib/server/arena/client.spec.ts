@@ -4,6 +4,7 @@ import {
 	ArenaRateLimitError,
 	ArenaRequestError,
 	computeProactiveWaitMs,
+	countBlockConnections,
 	paginateChannelContents,
 	paginateOwnedChannels,
 	parseRateLimitInfo,
@@ -459,5 +460,119 @@ describe('paginateOwnedChannels', () => {
 
 		expect(channels).toHaveLength(1);
 		expect(delayFn).toHaveBeenCalledWith(1000, undefined);
+	});
+});
+
+describe('ArenaClient.fetchBlockConnectionCount', () => {
+	it('asks for a single connection and reads the total from the meta', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(
+			pageResponse([{ id: 1 }], {
+				per_page: 1,
+				total_pages: 7,
+				total_count: 7,
+				has_more_pages: true
+			})
+		);
+		const client = new ArenaClient({ accessToken: 'secret-token', fetchFn });
+
+		const result = await client.fetchBlockConnectionCount(4242);
+
+		expect(result.total).toBe(7);
+		const [request] = fetchFn.mock.calls[0] as [Request];
+		expect(request.url).toBe('https://api.are.na/v3/blocks/4242/connections?per=1');
+		expect(request.headers.get('Authorization')).toBe('Bearer secret-token');
+	});
+
+	it('reports a block with no connections as zero', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(pageResponse([]));
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+
+		expect((await client.fetchBlockConnectionCount(1)).total).toBe(0);
+	});
+
+	it('maps a missing block to a request error with its status', async () => {
+		const fetchFn = vi
+			.fn()
+			.mockResolvedValue(new Response(JSON.stringify({ error: 'not found' }), { status: 404 }));
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+
+		await expect(client.fetchBlockConnectionCount(1)).rejects.toMatchObject({
+			name: 'ArenaRequestError',
+			status: 404
+		});
+	});
+
+	it('rejects a body that carries no pagination meta', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ data: [] }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+
+		await expect(client.fetchBlockConnectionCount(1)).rejects.toThrow();
+	});
+});
+
+describe('countBlockConnections', () => {
+	const rateLimited = () => new Response('{}', { status: 429, headers: { 'Retry-After': '3' } });
+
+	it('waits out a rate limit and tries the block again', async () => {
+		const fetchFn = vi
+			.fn()
+			.mockResolvedValueOnce(rateLimited())
+			.mockResolvedValueOnce(pageResponse([], { total_count: 5 }));
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+		const delayFn = vi.fn().mockResolvedValue(undefined);
+
+		await expect(countBlockConnections(client, 9, { delayFn })).resolves.toBe(5);
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+		expect(delayFn).toHaveBeenCalledWith(3000, undefined);
+	});
+
+	it('gives up once the retries are spent', async () => {
+		const fetchFn = vi.fn().mockImplementation(async () => rateLimited());
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+		const delayFn = vi.fn().mockResolvedValue(undefined);
+
+		await expect(
+			countBlockConnections(client, 9, { delayFn, maxRetries: 2 })
+		).rejects.toBeInstanceOf(ArenaRateLimitError);
+		expect(fetchFn).toHaveBeenCalledTimes(3);
+	});
+
+	it('waits for the window to reset before the budget runs out, and not otherwise', async () => {
+		const now = 1_700_000_000_000;
+		vi.spyOn(Date, 'now').mockReturnValue(now);
+		const nearlyOut = pageResponse(
+			[],
+			{},
+			{
+				'X-RateLimit-Remaining': '2',
+				'X-RateLimit-Reset': String(now / 1000 + 10)
+			}
+		);
+		const plenty = pageResponse([], {}, { 'X-RateLimit-Remaining': '200' });
+		const client = (response: Response) =>
+			new ArenaClient({ accessToken: 't', fetchFn: vi.fn().mockResolvedValue(response) });
+		const delayFn = vi.fn().mockResolvedValue(undefined);
+
+		await countBlockConnections(client(plenty), 1, { delayFn, rateLimitSafetyMargin: 4 });
+		expect(delayFn).not.toHaveBeenCalled();
+
+		await countBlockConnections(client(nearlyOut), 1, { delayFn, rateLimitSafetyMargin: 4 });
+		expect(delayFn).toHaveBeenCalledWith(10_000, undefined);
+		vi.restoreAllMocks();
+	});
+
+	it('does not retry a request that failed for any other reason', async () => {
+		const fetchFn = vi.fn().mockResolvedValue(new Response('{}', { status: 500 }));
+		const client = new ArenaClient({ accessToken: 't', fetchFn });
+
+		await expect(
+			countBlockConnections(client, 1, { delayFn: vi.fn().mockResolvedValue(undefined) })
+		).rejects.toBeInstanceOf(ArenaRequestError);
+		expect(fetchFn).toHaveBeenCalledTimes(1);
 	});
 });
