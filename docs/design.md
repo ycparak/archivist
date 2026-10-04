@@ -199,8 +199,8 @@ the server. The constants live in `SHELF` in `src/lib/components/shelf.ts`.
   image page counts as 4 : 3, whatever the image is. The rows are two flex lists, so the browser
   lays the shelves out, not script. Later pages are grouped on their own and appended, so loading
   more never moves a shelf already on screen.
-- **Insets.** The top row starts one column (`100cqi ÷ column-count`) in, clear of the search field.
-  The bottom row starts `(column − 4rem) ÷ 2` in. The band is at least the sheet's width.
+- **Inset.** Both rows start `(column − 4rem) ÷ 2` in, where column is `100cqi ÷ column-count`, so
+  the first shelf on each row lines up. The band is at least the sheet's width.
 - **Pages** are `bg-white` with `shadow-page` (2px 2px 2px rgb(0 0 0 / 0.25)). An image or video
   page is `0.34h` tall and as wide as the image's own aspect ratio makes it, so nothing is cropped,
   however wide or narrow it gets. No width is computed: the media is `h-full w-auto`, and its
