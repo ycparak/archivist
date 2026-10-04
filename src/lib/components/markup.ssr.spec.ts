@@ -243,6 +243,15 @@ describe('Shelf markup', () => {
 		expect(body).toMatch(/<mark[^>]*>felt<\/mark>/);
 	});
 
+	it('fixes the width of a cover or a text page, and leaves an image page to its image', () => {
+		const sized = (body: string) => body.match(/@container-size/g)?.length;
+
+		expect(sized(shelf([result()]))).toBe(1);
+		expect(
+			sized(shelf([result({ imageUrl: null, blockType: 'Text', description: 'Notes' })]))
+		).toBe(2);
+	});
+
 	it('marks only the top row of captions for the search field to watch', () => {
 		const body = shelf([
 			result(),
@@ -273,6 +282,26 @@ describe('ShelfBlock markup', () => {
 		});
 
 		expect(body).toContain('alt="A felt swatch"');
+	});
+
+	it('lets the image set the width of its page from its own aspect ratio', () => {
+		const { body } = render(ShelfBlock, {
+			props: { result: result({ imageWidth: 1800, imageHeight: 1350 }) }
+		});
+
+		expect(body).toContain('width="1800"');
+		expect(body).toContain('height="1350"');
+		expect(body).toMatch(/<img[^>]*class="[^"]*\bh-full w-auto\b/);
+		expect(body).not.toContain('aspect-[auto_4/3]');
+	});
+
+	it('starts a block Are.na has no size for at 4 : 3, until the file shows its own', () => {
+		const { body } = render(ShelfBlock, {
+			props: { result: result({ imageWidth: null, imageHeight: null }) }
+		});
+
+		expect(body).toContain('aspect-[auto_4/3]');
+		expect(body).not.toContain('width="');
 	});
 
 	it('lazy-loads by default and eagerly for the first blocks', () => {
@@ -327,6 +356,15 @@ describe('ShelfBlock markup — video blocks', () => {
 	 */
 	it('carries muted in the server markup, or autoplay is refused outright', () => {
 		expect(render(ShelfBlock, { props: { result: video() } }).body).toContain('muted=""');
+	});
+
+	it('sizes a video page the same way as an image page', () => {
+		const { body } = render(ShelfBlock, {
+			props: { result: video({ imageWidth: 1166, imageHeight: 720 }) }
+		});
+
+		expect(body).toMatch(/<video[^>]*class="[^"]*\bh-full w-auto\b/);
+		expect(body).not.toContain('aspect-[auto_4/3]');
 	});
 
 	it('loops, plays inline, asks for no more than metadata, and shows no controls', () => {
