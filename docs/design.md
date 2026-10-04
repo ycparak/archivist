@@ -157,8 +157,9 @@ Breakpoint rems in media queries resolve against the browser's 16px, not the roo
   current search (browse order beside a query, a sixth colour) is a non-link span in
   `foreground-secondary` with `aria-disabled`. Search type is always choosable: without a query
   the choice is kept in the URL for the next search, and Best match shows as active by default.
-- **Filters, in order:** Search type (Best match, Exact words, Related ideas); Sort by (Newest
-  created, Newest connected, Oldest created, Oldest connected, Most connected, Least connected);
+- **Filters, in order:** Search type (Best match, Exact words, Related ideas); Sort by (My most
+  connected, My least connected, My newest connected, My oldest connected, Most connected, Newest
+  created, Oldest created; the first is the default);
   Connected and Created, each a two-thumb month slider (`DateRangeSlider`); Block type (Image,
   Video, GIF, Web, Text, Attachment, Embed); Colours.
 - **Arrangement.** All of them share the first column. The `spread:` variant (viewports under

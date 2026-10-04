@@ -15,7 +15,7 @@ function input(overrides: Partial<ArchiveSearchInput> = {}): ArchiveSearchInput 
 		channelSlugs: [],
 		blockTypes: [],
 		colours: [],
-		sort: 'newest-created',
+		sort: 'my-most-connected',
 		limit: 24,
 		offset: 0,
 		...overrides
@@ -165,7 +165,7 @@ describe('buildSearchFilters', () => {
 
 	it('requires every chosen colour, each at its own threshold, when colour does not lead', () => {
 		expect(
-			buildSearchFilters(input({ sort: 'most-connected', colours: ['blue', 'mono'] }))
+			buildSearchFilters(input({ sort: 'newest-created', colours: ['blue', 'mono'] }))
 		).toEqual([
 			'And',
 			[
@@ -321,53 +321,36 @@ describe('TurbopufferSearchRepository', () => {
 		expect(requestedBody(fetchFn).limit).toBe(73);
 	});
 
-	it('orders a default browse newest created first, then by id, without a text rank', async () => {
+	it('orders a default browse by the maintainer’s channel count, newest connected on a tie, then id', async () => {
 		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
 		await repository(fetchFn).search(input());
 		const body = requestedBody(fetchFn);
 		expect(body.rank_by).toEqual([
-			['created_at', 'desc'],
+			['connection_count', 'desc'],
+			['connected_at', 'desc'],
 			['id', 'asc']
 		]);
 		expect(body.limit).toBe(25);
 		expect(body.rank_by).not.toContain('search_text');
 	});
 
-	it('orders colour browse by the first colour, then the rest, then a total tiebreak', async () => {
+	it('orders colour browse by the first colour, then the rest, then the default order', async () => {
 		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
 		await repository(fetchFn).search(input({ colours: ['orange', 'blue'] }));
 		expect(requestedBody(fetchFn).rank_by).toEqual([
 			['colour_orange', 'desc'],
 			['colour_blue', 'desc'],
-			['created_at', 'desc'],
-			['id', 'asc']
-		]);
-	});
-
-	it('orders a date browse by the date alone, ending on id, with colours only filtering', async () => {
-		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
-		await repository(fetchFn).search(input({ sort: 'newest-connected', colours: ['blue'] }));
-		const body = requestedBody(fetchFn);
-		expect(body.rank_by).toEqual([
+			['connection_count', 'desc'],
 			['connected_at', 'desc'],
-			['id', 'asc']
-		]);
-		expect(JSON.stringify(body.filters)).toContain('colour_blue');
-
-		const oldestFetch = vi.fn().mockResolvedValue(queryResponse([]));
-		await repository(oldestFetch).search(input({ sort: 'oldest-connected' }));
-		expect(requestedBody(oldestFetch).rank_by).toEqual([
-			['connected_at', 'asc'],
 			['id', 'asc']
 		]);
 	});
 
 	it.each([
 		[
-			'most-connected',
+			'newest-created',
 			[
-				['connection_count', 'desc'],
-				['connected_at', 'desc'],
+				['created_at', 'desc'],
 				['id', 'asc']
 			]
 		],
@@ -379,18 +362,45 @@ describe('TurbopufferSearchRepository', () => {
 			]
 		],
 		[
-			'least-connected',
+			'most-connected',
+			[
+				['total_connection_count', 'desc'],
+				['created_at', 'desc'],
+				['id', 'asc']
+			]
+		],
+		[
+			'my-least-connected',
 			[
 				['connection_count', 'asc'],
 				['connected_at', 'desc'],
 				['id', 'asc']
 			]
+		],
+		[
+			'my-newest-connected',
+			[
+				['connected_at', 'desc'],
+				['id', 'asc']
+			]
+		],
+		[
+			'my-oldest-connected',
+			[
+				['connected_at', 'asc'],
+				['id', 'asc']
+			]
 		]
-	] as const)('orders a %s browse by its own key, ending on id', async (sort, order) => {
-		const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
-		await repository(fetchFn).search(input({ sort, colours: ['blue'] }));
-		expect(requestedBody(fetchFn).rank_by).toEqual(order);
-	});
+	] as const)(
+		'orders a %s browse by its own keys, ending on id, with colours only filtering',
+		async (sort, order) => {
+			const fetchFn = vi.fn().mockResolvedValue(queryResponse([]));
+			await repository(fetchFn).search(input({ sort, colours: ['blue'] }));
+			const body = requestedBody(fetchFn);
+			expect(body.rank_by).toEqual(order);
+			expect(JSON.stringify(body.filters)).toContain('colour_blue');
+		}
+	);
 
 	it('filters the created date inclusively, beside the connected date', () => {
 		expect(

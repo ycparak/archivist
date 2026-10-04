@@ -840,3 +840,217 @@ describe('syncArchive — colour stage', () => {
 		expect(onEvent).toHaveBeenCalledWith({ kind: 'phase', phase: 'measuring' });
 	});
 });
+
+function connectionEntry(blockId: string, total: number, countedAt = new Date().toISOString()) {
+	return { block_id: blockId, total, counted_at: countedAt };
+}
+
+function upsertedRows(fetchFn: ReturnType<typeof okTurbopufferFetch>) {
+	return writeBodies(fetchFn).flatMap((body) => body.upsert_rows ?? []) as Array<{
+		id: string;
+		connection_count: number;
+		total_connection_count: number;
+	}>;
+}
+
+describe('syncArchive — connections stage', () => {
+	it('counts nothing, and reports nothing, when the stage is not requested', async () => {
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {}
+		});
+
+		expect(result.summary.connections).toBeNull();
+		expect(result.connectionCache).toBeNull();
+	});
+
+	it('counts every block once and indexes the total beside the maintainer’s own count', async () => {
+		const fetchFn = okTurbopufferFetch();
+		const count = vi.fn(async (blockId: number) => blockId * 10);
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(fetchFn),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			connections: { count }
+		});
+
+		expect(count.mock.calls.map(([id]) => id).sort()).toEqual([11, 12]);
+		expect(result.summary.connections).toMatchObject({ blocks: 2, counted: 2, failed: [] });
+		expect(result.connectionCache?.map((entry) => [entry.block_id, entry.total])).toEqual([
+			['11', 110],
+			['12', 120]
+		]);
+
+		const rows = upsertedRows(fetchFn);
+		expect(rows.find((row) => row.id === 'block:11')).toMatchObject({
+			connection_count: 1,
+			total_connection_count: 110
+		});
+		expect(rows.find((row) => row.id === 'block:12')?.total_connection_count).toBe(120);
+	});
+
+	it('asks Are.na for each block’s connections when no counter is injected', async () => {
+		const fetchFn = okTurbopufferFetch();
+		const arena = routedFetch({
+			'/v3/me': () => meResponse(7, 'maintainer'),
+			'/v3/users/7/contents': () => contentsResponse([ownedChannel(1, 'alpha', 'Alpha')]),
+			'/v3/channels/alpha/contents': () => contentsResponse([imageBlock(11), textBlock(12)]),
+			'/v3/blocks/11/connections': () => contentsResponse([{}], { total_count: 8 }),
+			'/v3/blocks/12/connections': () => contentsResponse([{}], { total_count: 2 })
+		});
+		await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(fetchFn),
+			fetchFn: arena as unknown as typeof fetch,
+			delayFn: async () => {},
+			connections: {}
+		});
+
+		const rows = upsertedRows(fetchFn);
+		expect(rows.find((row) => row.id === 'block:11')?.total_connection_count).toBe(8);
+		expect(rows.find((row) => row.id === 'block:12')?.total_connection_count).toBe(2);
+	});
+
+	it('indexes cached totals on a run that does not count, and counts nothing for fresh ones', async () => {
+		const fetchFn = okTurbopufferFetch();
+		const count = vi.fn(async () => 99);
+		await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(fetchFn),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			connectionCache: new Map([['11', connectionEntry('11', 42)]])
+		});
+		expect(upsertedRows(fetchFn).find((row) => row.id === 'block:11')?.total_connection_count).toBe(
+			42
+		);
+
+		await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			connectionCache: new Map([
+				['11', connectionEntry('11', 42)],
+				['12', connectionEntry('12', 7)]
+			]),
+			connections: { count }
+		});
+		expect(count).not.toHaveBeenCalled();
+	});
+
+	it('recounts a block whose cached total has gone stale', async () => {
+		const count = vi.fn(async (blockId: number) => (blockId === 11 ? 50 : 0));
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			connectionCache: new Map([
+				['11', connectionEntry('11', 3, '2020-01-01T00:00:00.000Z')],
+				['12', connectionEntry('12', 7)]
+			]),
+			connections: { count }
+		});
+
+		expect(count).toHaveBeenCalledOnce();
+		expect(count.mock.calls[0][0]).toBe(11);
+		expect(result.connectionCache?.map((entry) => [entry.block_id, entry.total])).toEqual([
+			['11', 50],
+			['12', 7]
+		]);
+	});
+
+	it('never indexes a total below the channels it already knows hold the block', async () => {
+		const fetchFn = okTurbopufferFetch();
+		await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(fetchFn),
+			fetchFn: routedFetch({
+				'/v3/me': () => meResponse(7, 'maintainer'),
+				'/v3/users/7/contents': () =>
+					contentsResponse([ownedChannel(1, 'alpha', 'Alpha'), ownedChannel(2, 'beta', 'Beta')]),
+				'/v3/channels/alpha/contents': () => contentsResponse([textBlock(12)]),
+				'/v3/channels/beta/contents': () => contentsResponse([textBlock(12)])
+			}) as unknown as typeof fetch,
+			delayFn: async () => {},
+			connectionCache: new Map([['12', connectionEntry('12', 1)]])
+		});
+
+		const [row] = upsertedRows(fetchFn);
+		expect(row.connection_count).toBe(2);
+		expect(row.total_connection_count).toBe(2);
+	});
+
+	it('indexes a block whose count failed, keeps the failure in the summary, and writes no entry for it', async () => {
+		const fetchFn = okTurbopufferFetch();
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(fetchFn),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			connections: {
+				count: async (blockId) => {
+					if (blockId === 11) throw new Error('Are.na request failed with status 404');
+					return 5;
+				}
+			}
+		});
+
+		expect(result.summary.connections?.failed).toEqual([
+			{ blockId: '11', error: 'Are.na request failed with status 404' }
+		]);
+		expect(result.connectionCache?.map((entry) => entry.block_id)).toEqual(['12']);
+		const failed = upsertedRows(fetchFn).find((row) => row.id === 'block:11');
+		expect(failed?.total_connection_count).toBe(1);
+	});
+
+	it('drops cache entries for blocks that have left the archive', async () => {
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			connectionCache: new Map([['999', connectionEntry('999', 1)]]),
+			connections: { count: async () => 2 }
+		});
+
+		expect(result.connectionCache?.map((entry) => entry.block_id)).toEqual(['11', '12']);
+	});
+
+	it('keeps cache entries for unfetched blocks when a channel failed', async () => {
+		const result = await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: routedFetch({
+				'/v3/me': () => meResponse(7, 'maintainer'),
+				'/v3/users/7/contents': () =>
+					contentsResponse([ownedChannel(1, 'alpha', 'Alpha'), ownedChannel(2, 'beta', 'Beta')]),
+				'/v3/channels/alpha/contents': () => contentsResponse([imageBlock(11)]),
+				'/v3/channels/beta/contents': () => jsonResponse({ error: 'boom' }, { status: 500 })
+			}) as unknown as typeof fetch,
+			delayFn: async () => {},
+			connectionCache: new Map([['999', connectionEntry('999', 1)]]),
+			connections: { count: async () => 2 }
+		});
+
+		expect(result.connectionCache?.map((entry) => entry.block_id)).toEqual(['11', '999']);
+	});
+
+	it('reports a counting phase to the status display', async () => {
+		const onEvent = vi.fn();
+		await syncArchive({
+			accessToken: 't',
+			turbopuffer: turbopufferConfig(),
+			fetchFn: visionFetch() as unknown as typeof fetch,
+			delayFn: async () => {},
+			onEvent,
+			connections: { count: async () => 1 }
+		});
+
+		expect(onEvent).toHaveBeenCalledWith({ kind: 'phase', phase: 'counting' });
+	});
+});

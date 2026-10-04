@@ -77,6 +77,7 @@ opt-outs:
 bun run sync --no-vision          # skip the vision stage; index whatever the cache already holds
 bun run sync --no-push-arena      # never write to Are.na
 bun run sync --no-colour          # skip measuring colour; index whatever the colour cache holds
+bun run sync --no-connections     # skip counting connections; index whatever the cache holds
 ```
 
 Unknown flags are rejected rather than ignored, because a mistyped opt-out would otherwise run the
@@ -205,21 +206,22 @@ a sample, read-only, for judging the colour boundaries and thresholds by eye.
 
 ## Commands
 
-| Command                        | What it does                                            |
-| ------------------------------ | ------------------------------------------------------- |
-| `bun run dev`                  | local dev server                                        |
-| `bun run preview`              | run the built Worker locally with wrangler              |
-| `bun run sync`                 | fetch Are.na, describe images, write titles back, index |
-| `bun run sync --no-vision`     | skip the vision stage; index the existing cache as-is   |
-| `bun run sync --no-push-arena` | do not write generated titles back to Are.na            |
-| `bun run sync --no-colour`     | skip measuring colour; index the existing cache as-is   |
-| `bun run evaluate:search`      | run the search evaluation against your index            |
-| `bun run calibrate:colour`     | write a contact sheet of measured colours, read-only    |
-| `bun run check`                | generate types, then typecheck `src/` and `scripts/`    |
-| `bun run lint`                 | prettier + eslint                                       |
-| `bun run format`               | prettier, writing changes                               |
-| `bun run test`                 | vitest                                                  |
-| `bun run build`                | production build                                        |
+| Command                         | What it does                                              |
+| ------------------------------- | --------------------------------------------------------- |
+| `bun run dev`                   | local dev server                                          |
+| `bun run preview`               | run the built Worker locally with wrangler                |
+| `bun run sync`                  | fetch Are.na, describe images, write titles back, index   |
+| `bun run sync --no-vision`      | skip the vision stage; index the existing cache as-is     |
+| `bun run sync --no-push-arena`  | do not write generated titles back to Are.na              |
+| `bun run sync --no-colour`      | skip measuring colour; index the existing cache as-is     |
+| `bun run sync --no-connections` | skip counting connections; index the existing cache as-is |
+| `bun run evaluate:search`       | run the search evaluation against your index              |
+| `bun run calibrate:colour`      | write a contact sheet of measured colours, read-only      |
+| `bun run check`                 | generate types, then typecheck `src/` and `scripts/`      |
+| `bun run lint`                  | prettier + eslint                                         |
+| `bun run format`                | prettier, writing changes                                 |
+| `bun run test`                  | vitest                                                    |
+| `bun run build`                 | production build                                          |
 
 Run `check`, `lint`, `test` and `build` before opening a pull request.
 

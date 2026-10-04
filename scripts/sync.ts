@@ -9,6 +9,11 @@ import {
 	serializeColourCache,
 	type ColourCacheEntry
 } from '$lib/server/indexing/colour/cache';
+import {
+	parseConnectionCache,
+	serializeConnectionCache,
+	type ConnectionCacheEntry
+} from '$lib/server/indexing/connections/cache';
 import { createSyncReporter } from '$lib/server/indexing/progress/reporter';
 import { syncArchive, type VisionSyncOptions } from '$lib/server/indexing/sync';
 import { createVisionClient } from '$lib/server/indexing/vision/client';
@@ -21,12 +26,16 @@ import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 
 const VISION_CACHE_URL = new URL('../src/lib/server/indexing/vision-cache.jsonl', import.meta.url);
 const COLOUR_CACHE_URL = new URL('../src/lib/server/indexing/colour-cache.jsonl', import.meta.url);
+const CONNECTIONS_CACHE_URL = new URL(
+	'../src/lib/server/indexing/connections-cache.jsonl',
+	import.meta.url
+);
 
 /**
  * Vision and Are.na write-back are on by default, so a mistyped opt-out (`--no-vison`) must not be
  * ignored: it would run the stage, and write to the maintainer's archive, anyway.
  */
-const KNOWN_FLAGS = new Set(['no-vision', 'no-push-arena', 'no-colour']);
+const KNOWN_FLAGS = new Set(['no-vision', 'no-push-arena', 'no-colour', 'no-connections']);
 
 const unknownFlags = process.argv
 	.slice(2)
@@ -87,8 +96,10 @@ const namespace = process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE;
 const vision = resolveVisionOptions();
 const pushArena = !hasFlag('no-push-arena');
 const measureColour = !hasFlag('no-colour');
+const countConnections = !hasFlag('no-connections');
 const visionCache = await readCache(VISION_CACHE_URL, parseVisionCache);
 const colourCache = await readCache(COLOUR_CACHE_URL, parseColourCache);
+const connectionCache = await readCache(CONNECTIONS_CACHE_URL, parseConnectionCache);
 const reporter = createSyncReporter();
 
 // A killed run must not leave the terminal with its cursor still hidden.
@@ -144,14 +155,20 @@ async function writeColourCache(entries: Iterable<ColourCacheEntry>) {
 	await writeFile(COLOUR_CACHE_URL, serializeColourCache(entries));
 }
 
+async function writeConnectionCache(entries: Iterable<ConnectionCacheEntry>) {
+	await writeFile(CONNECTIONS_CACHE_URL, serializeConnectionCache(entries));
+}
+
 const visionWriter = cacheWriter(visionCache, writeVisionCache);
 const colourWriter = cacheWriter(colourCache, writeColourCache);
+const connectionWriter = cacheWriter(connectionCache, writeConnectionCache);
 
 try {
 	const {
 		channels,
 		visionCache: mergedVisionCache,
 		colourCache: mergedColourCache,
+		connectionCache: mergedConnectionCache,
 		summary
 	} = await syncArchive({
 		accessToken,
@@ -163,6 +180,8 @@ try {
 		pushArena,
 		colourCache,
 		colour: measureColour ? { onEntry: colourWriter.onEntry } : undefined,
+		connectionCache,
+		connections: countConnections ? { onEntry: connectionWriter.onEntry } : undefined,
 		channelFilter: {
 			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
 			allowPrivate: parseSlugList(process.env.ARENA_ALLOW_PRIVATE_CHANNELS)
@@ -180,6 +199,11 @@ try {
 	if (mergedColourCache) {
 		await colourWriter.final(mergedColourCache);
 		console.log(`Wrote colour cache: ${mergedColourCache.length} entr(ies)`);
+	}
+
+	if (mergedConnectionCache) {
+		await connectionWriter.final(mergedConnectionCache);
+		console.log(`Wrote connections cache: ${mergedConnectionCache.length} entr(ies)`);
 	}
 
 	const manifest = buildChannelManifest(channels);
@@ -222,6 +246,18 @@ try {
 				console.log(`    - ${failure.blockId}: ${failure.error}`);
 			}
 			if (c.failed.length > 10) console.log(`    ... and ${c.failed.length - 10} more`);
+		}
+	}
+	if (summary.connections) {
+		const n = summary.connections;
+		console.log(`  Connections cached:  ${n.cacheHits} (no request)`);
+		console.log(`  Connections counted: ${n.counted}`);
+		if (n.failed.length) {
+			console.log(`  Connections failed:  ${n.failed.length}`);
+			for (const failure of n.failed.slice(0, 10)) {
+				console.log(`    - ${failure.blockId}: ${failure.error}`);
+			}
+			if (n.failed.length > 10) console.log(`    ... and ${n.failed.length - 10} more`);
 		}
 	}
 	if (summary.vision) {
