@@ -73,6 +73,7 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Fixed
 
+- Fixed blocks being cropped. A page is now exactly as wide as its image needs to show all of it, where before images wider than 3 : 1 or taller than 1 : 2 were trimmed, and GIFs and a few other blocks whose size Are.na lacks or gets wrong were cut to a guessed 4 : 3 or 1 : 1. The browser sizes each page from its image, so nothing is measured in script.
 - Fixed the first filter column clipping the selected colour's ring and the slider's right thumb.
 - Fixed the search caret and selection sitting off-centre from the text: Newsreader's metrics now centre its capitals in the line.
 

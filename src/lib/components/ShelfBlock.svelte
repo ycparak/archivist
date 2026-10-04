@@ -5,6 +5,16 @@
 
 	let { result, eager = false }: { result: SearchResult; eager?: boolean } = $props();
 
+	/**
+	 * The page is as wide as its media's aspect ratio makes it. The width and height attributes give
+	 * the browser that ratio before the file loads, and `auto` hands over to the file's own once it
+	 * has, so a size that is missing or wrong on Are.na costs a reflow rather than a crop.
+	 */
+	const mediaClass = $derived([
+		'block h-full w-auto object-cover',
+		!(result.imageWidth && result.imageHeight) && 'aspect-[auto_4/3]'
+	]);
+
 	const title = $derived(blockDisplayTitle(result.title, result.blockType));
 	const body = $derived(result.description ?? result.title ?? '');
 
@@ -48,7 +58,7 @@
 		<!-- The thumbnail is the poster, so the page looks identical before the first frame paints
 		     and stays correct if the file never loads. No controls: the whole page is a link. -->
 		<video
-			class="block size-full object-cover"
+			class={mediaClass}
 			poster={result.imageUrl ?? undefined}
 			width={result.imageWidth ?? undefined}
 			height={result.imageHeight ?? undefined}
@@ -63,7 +73,7 @@
 		</video>
 	{:else if result.imageUrl}
 		<img
-			class="block size-full object-cover"
+			class={mediaClass}
 			src={result.imageUrl}
 			alt={result.imageAlt ?? ''}
 			width={result.imageWidth ?? undefined}

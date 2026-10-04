@@ -1,5 +1,4 @@
 import type { ChannelManifestEntry, SearchResult } from '$lib/domain/search';
-import { mediaRatio } from './format';
 
 /** Every length here is a fraction of the shelf band's height, so the whole layout scales with the viewport. */
 export const SHELF = {
@@ -13,6 +12,8 @@ export const SHELF = {
 	groupGap: 1 / 3,
 	coverRatio: 0.7,
 	textRatio: 0.75,
+	/** Only evens out the two rows. An image page takes its width from the image, in CSS. */
+	imageRatio: 4 / 3,
 	scaleSegments: 10,
 	scaleWidth: (0.34 * 10) / 12,
 	maxBlocksPerGroup: 12
@@ -21,28 +22,21 @@ export const SHELF = {
 /** A channel as the shelf shows it: its title without the leading symbol, which the cover shows apart. */
 export type ShelfChannel = ChannelManifestEntry & { symbol?: string | null };
 
+/** `ratio` is the fixed shape of a cover or text page; an image page has none, its image sizes it. */
 export type ShelfItem =
 	| { kind: 'cover'; id: string; ratio: number }
-	| { kind: 'block'; id: string; ratio: number; result: SearchResult };
+	| { kind: 'block'; id: string; ratio: number | null; result: SearchResult };
 
 export type ShelfGroup = {
 	id: string;
 	channel: ShelfChannel | null;
 	blocks: SearchResult[];
 	items: ShelfItem[];
-	width: number;
 };
-
-export type PlacedGroup = ShelfGroup & { row: number; x: number };
 
 export type ShelfLayout = {
-	groups: PlacedGroup[];
-	rowWidths: number[];
+	rows: ShelfGroup[][];
 };
-
-export function blockRatio(result: SearchResult): number {
-	return result.imageUrl ? mediaRatio(result) : SHELF.textRatio;
-}
 
 /**
  * The channel a block is shelved under: the first of its channels the reader filtered by, else the
@@ -61,8 +55,9 @@ export function shelfChannel(
 	return channels.get(slug) ?? { slug, title: slug };
 }
 
-function groupWidth(items: ShelfItem[]): number {
-	const ratios = items.reduce((sum, item) => sum + item.ratio, 0);
+/** What a shelf's width is taken to be when choosing its row, as a fraction of the band height. */
+function estimatedWidth(items: ShelfItem[]): number {
+	const ratios = items.reduce((sum, item) => sum + (item.ratio ?? SHELF.imageRatio), 0);
 	return ratios * SHELF.pageHeight + Math.max(0, items.length - 1) * SHELF.itemGap;
 }
 
@@ -93,38 +88,34 @@ export function groupResults(
 			const items: ShelfItem[] = shelved.map((result) => ({
 				kind: 'block',
 				id: result.id,
-				ratio: blockRatio(result),
+				ratio: result.imageUrl ? null : SHELF.textRatio,
 				result
 			}));
 			if (channel) items.unshift({ kind: 'cover', id: `cover:${id}`, ratio: SHELF.coverRatio });
-			groups.push({ id, channel, blocks: shelved, items, width: groupWidth(items) });
+			groups.push({ id, channel, blocks: shelved, items });
 		}
 	}
 	return groups;
 }
 
 /**
- * Places each shelf on whichever row is currently shortest. Pages are grouped separately and
- * placed in order, so loading another page appends shelves without moving any already on screen.
+ * Places each shelf on whichever row is currently shortest, by its estimated width, so the rows
+ * stay about as long as each other without waiting for any image. Pages are grouped separately
+ * and placed in order, so loading another page appends shelves without moving any already on screen.
  */
 export function layoutShelves(
 	pages: readonly (readonly SearchResult[])[],
 	channels: ReadonlyMap<string, ShelfChannel>,
 	activeSlugs: readonly string[]
 ): ShelfLayout {
-	const rowWidths = Array.from({ length: SHELF.rowCount }, () => 0);
-	const groups: PlacedGroup[] = [];
+	const lengths = Array.from({ length: SHELF.rowCount }, () => 0);
+	const rows = lengths.map((): ShelfGroup[] => []);
 	for (const page of pages) {
 		for (const group of groupResults(page, channels, activeSlugs)) {
-			const row = rowWidths.indexOf(Math.min(...rowWidths));
-			const x = rowWidths[row] === 0 ? 0 : rowWidths[row] + SHELF.groupGap;
-			rowWidths[row] = x + group.width;
-			groups.push({ ...group, row, x });
+			const row = lengths.indexOf(Math.min(...lengths));
+			lengths[row] += (rows[row].length ? SHELF.groupGap : 0) + estimatedWidth(group.items);
+			rows[row].push(group);
 		}
 	}
-	return { groups, rowWidths };
-}
-
-export function rowTop(row: number): number {
-	return SHELF.padding + row * (SHELF.rowHeight + SHELF.rowGap);
+	return { rows };
 }

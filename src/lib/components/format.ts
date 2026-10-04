@@ -1,18 +1,4 @@
-import {
-	ARCHIVE_RESULT_LIMIT,
-	type ArchiveSearchState,
-	type SearchResult
-} from '$lib/domain/search';
-
-const FALLBACK_MEDIA_RATIO = 4 / 3;
-const MIN_MEDIA_RATIO = 0.5;
-const MAX_MEDIA_RATIO = 3;
-
-export function mediaRatio(result: Pick<SearchResult, 'imageWidth' | 'imageHeight'>): number {
-	const { imageWidth, imageHeight } = result;
-	if (!imageWidth || !imageHeight) return FALLBACK_MEDIA_RATIO;
-	return Math.min(MAX_MEDIA_RATIO, Math.max(MIN_MEDIA_RATIO, imageWidth / imageHeight));
-}
+import { ARCHIVE_RESULT_LIMIT, type ArchiveSearchState } from '$lib/domain/search';
 
 /** Keyed by Are.na's own block type, which results carry, not the gallery's Block type. */
 const UNTITLED_LABELS: Record<string, string> = {
