@@ -38,6 +38,8 @@ _(none)_
 
 _Newest first._
 
+- [x] **Stabilize Cloudflare local development.** Marked Workers AI as remote, disabled persisted local platform-proxy state, and verified concurrent requests; [worksheet](./history/worksheets/worksheet-cloudflare-local-dev.md).
+
 - [x] **Set up Trigger.dev.** Added a typed hello task, ran it successfully in development, and confirmed it appears in the dashboard; [worksheet](./history/worksheets/worksheet-trigger-dev-setup.md).
 
 - [x] **Align the design system.** Matched Yusufparak sans primitives and ASCII controls while preserving serif styling; [worksheet](./history/worksheets/worksheet-design-system-parity.md).

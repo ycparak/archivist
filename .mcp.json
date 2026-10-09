@@ -1,18 +1,12 @@
 {
-  "mcpServers": {
-    "svelte": {
-      "args": [
-        "-y",
-        "@sveltejs/mcp"
-      ],
-      "command": "npx"
-    },
-    "trigger": {
-      "args": [
-        "trigger.dev@latest",
-        "mcp"
-      ],
-      "command": "npx"
-    }
-  }
+	"mcpServers": {
+		"svelte": {
+			"args": ["-y", "@sveltejs/mcp"],
+			"command": "npx"
+		},
+		"trigger": {
+			"args": ["trigger.dev@latest", "mcp"],
+			"command": "npx"
+		}
+	}
 }
