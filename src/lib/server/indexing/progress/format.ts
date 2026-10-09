@@ -31,8 +31,8 @@ const PHASE_LABELS: Record<SyncPhase, string> = {
 	counting: 'counting connections',
 	describing: 'describing',
 	'writing-back': 'writing back',
-	upserting: 'upserting',
-	pruning: 'pruning',
+	building: 'building',
+	publishing: 'publishing',
 	done: 'done'
 };
 

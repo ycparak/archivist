@@ -15,19 +15,19 @@ These mirror the architecture boundaries in [`AGENTS.md`](../AGENTS.md) — this
 
 - `src/lib/domain/`: plain TypeScript, no Svelte imports, no SvelteKit imports. If a domain file needs `$state`, it belongs somewhere else.
 - `src/lib/server/`: server-only. Never import a `src/lib/server/**` module from a `.svelte` file or any code that ships to the client — SvelteKit's server-only enforcement will fail the build, and that failure is correct, not a false positive to work around.
-- `src/routes/`: composition only. A `+page.svelte` renders `SearchResult`-shaped data from its `load` function; it does not call Turbopuffer, Are.na, or construct ranking expressions itself. Browser builds delegate search/paging to `src/lib/search/` and retain route composition boundaries. A `+page.server.ts` / `+server.ts` calls into `src/lib/server/search/` or `src/lib/server/indexing/` rather than reimplementing adapter logic inline.
+- `src/routes/`: composition only. A `+page.svelte` renders `SearchResult`-shaped data from its `load` function; it does not call search snapshot, Are.na, or construct ranking expressions itself. Browser builds delegate search/paging to `src/lib/search/` and retain route composition boundaries. A `+page.server.ts` / `+server.ts` calls into `src/lib/server/search/` or `src/lib/server/indexing/` rather than reimplementing adapter logic inline.
 - `src/lib/components/`: shared presentation components. Client-safe by definition — never import `$lib/server/**` from one, not even a type. Types the UI needs (`SearchResult`, `ArchiveSearchState`) live in `src/lib/domain/`.
 
 ## Data Loading
 
 - In the browser-search build, prerender only the default bootstrap in `+page.server.ts`; do not read query parameters during prerender. After mount, the browser Web Worker validates URL requests and static assets using the client-safe `src/lib/search/` schemas. The URL remains authoritative, and the URL-observing effect must cancel stale work on navigation/unmount. Never import server modules into that worker.
-- For the legacy build, fetch and validate in `+page.server.ts` / `+server.ts` `load`/handler functions. Validate untrusted input (query params, request bodies) with Zod at that boundary, per the Engineering Guardrails in `AGENTS.md`.
+- For the previous build, fetch and validate in `+page.server.ts` / `+server.ts` `load`/handler functions. Validate untrusted input (query params, request bodies) with Zod at that boundary, per the Engineering Guardrails in `AGENTS.md`.
 - Keep URL search params as the source of truth for browse/search/filter state (`?q=&mode=&channel=&type=&colour=&from=&to=&sort=`) so state survives reload and is linkable. Don't shadow that state in a separate client store that can drift from the URL.
-- Use a plain `<form method="GET">` for URL-backed search state. SvelteKit intercepts GET submissions and navigates client-side, so the same markup works with and without JavaScript.
+- Use a plain `<form method="GET">` for URL-backed search state. SvelteKit intercepts GET submissions and navigates client-side, while browser search requires JavaScript; only the default gallery is prerendered.
   **A GET submit replaces the entire query string with the form's own fields.** Any URL state that is not a control in that form — a `channel` in the URL that is not in the channel manifest, say — must be rendered as a hidden input, or submitting the form silently drops it. `SearchField.svelte` does this. Filters that are links rather than form controls carry the whole state in each `href` instead (`ArchiveIndex.svelte`).
 - `navigating` from `$app/state` is an object whose _properties_ are null when idle; it is never itself null. (`$navigating` from the deprecated `$app/stores` behaves the opposite way — a common miswrite.)
 - SvelteKit does not announce route changes. A page that swaps its content in place owns that announcement: keep a `role="status"` live region in the initial SSR markup, outside any `aria-busy` subtree (changes inside one are not announced), and make its text vary per request — identical text is not re-announced.
-- Return only the fields the UI needs (`SearchResult`, not raw Turbopuffer rows or raw Are.na payloads) from `load` functions.
+- Return only the fields the UI needs (`SearchResult`, not raw search snapshot rows or raw Are.na payloads) from `load` functions.
 
 ## Components
 
