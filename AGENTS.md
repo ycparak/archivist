@@ -2,7 +2,7 @@
 title: AGENTS
 ---
 
-Archivist is a SvelteKit app on Cloudflare Workers: a Spotlight-like search and gallery for one maintainer's Are.na archive, with an opt-in MiniSearch/browser-vector backend and a legacy Turbopuffer backend for hybrid retrieval.
+Archivist is a SvelteKit app on Cloudflare Workers: a Spotlight-like search and gallery for one maintainer's Are.na archive, with MiniSearch and browser vector search for hybrid retrieval.
 
 ## This File
 
@@ -10,13 +10,13 @@ This is an **agent router**: concise context loaded every session, read by both 
 
 ## Architecture (Brief)
 
-Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, Turbopuffer (search datastore), Are.na V3 (source of truth for content).
+Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, MiniSearch and static vector snapshots (search datastore), Are.na V3 (source of truth for content).
 
 - `src/lib/domain/`: framework-free domain types and transformations. `titles.ts` decides which Are.na titles carry no information; write-back and captions both use it. `search.ts` (the URL grammar, `SearchResult`, `ArchiveSearchState`) ships to the browser, so it must stay free of Zod schemas, provider shapes, and any runtime validation library. `archive.ts` (`ArchiveBlock`, `SearchDocument`, `toSearchDocument`) is imported only from `src/lib/server/` and does use Zod; never import it from a component or route markup. Provider validation and provider shapes live under `src/lib/server/`.
 - `src/lib/server/arena/`: Are.na transport, payload schemas, and pagination only.
 - `src/lib/server/indexing/`: normalization, channel filtering, the channel manifest, sync orchestration, the colour stage (`colour/`), the connections stage (`connections/`), the vision stage (`vision/`), and CLI progress reporting (`progress/`). It also holds the four committed files the sync writes: `channel-manifest.json`, `colour-cache.jsonl`, `connections-cache.jsonl` and `vision-cache.jsonl`.
 - `src/lib/search/`: client-safe search validation, snapshot schemas, lexical/vector ranking, RRF, colour thresholds and the browser Web Worker/client. Keep provider normalization and credentials server-only.
-- `src/lib/server/search/`: search request validation, env config, `executeArchiveSearch` (dedupe and paging), the read-side `SearchRepository`, result mapping, the evaluation-case schema, and the Turbopuffer write client and schema the sync uses.
+- `src/lib/server/search/`: public snapshot export, release building, query embedding validation and evaluation schemas.
 - `src/lib/server/rate-limit.ts`: edge rate limiting, wired in through `src/hooks.server.ts`.
 - `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
 - `src/routes/`: HTTP and UI composition only. Provider calls and ranking expressions do not belong in route files.
@@ -33,7 +33,7 @@ in `./docs/decisions/`.
 
 **Product & architecture**
 
-- [docs/architecture.md](./docs/architecture.md) — data access model, Turbopuffer schema, retrieval behavior, sync lifecycle, vision indexing
+- [docs/architecture.md](./docs/architecture.md) — data access model, snapshot schema, retrieval behavior, sync lifecycle, vision indexing
 
 **Workflow**
 
@@ -62,7 +62,7 @@ in `./docs/decisions/`.
 - Update [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) when completing user-visible work.
 - Load only docs relevant to the current task and scope.
 - If a behavior or rule changes in practice, update the owning doc in the same task.
-- Never run a plain `bun run sync`. It does three things: it calls OpenRouter (which costs money), writes titles back to the maintainer's Are.na account, and upserts and prunes the live Turbopuffer namespace. Agents may run `bun run sync --no-vision`, `bun run sync --no-push-arena`, or both together, when a task needs the index refreshed. Know what each one still does: every variant upserts and prunes the live namespace; `--no-vision` alone still writes cached titles and descriptions to Are.na; `--no-push-arena` alone still calls OpenRouter for any block without a cached description. Use both flags unless the task needs one of those stages. Run it only after the code and tests are done, and say in the handoff which command you ran and why. Read-only commands such as `bun run evaluate:search` are fine.
+- Never run a plain `bun run sync`: it calls OpenRouter and writes titles/descriptions to Are.na. Use both `--no-vision --no-push-arena` unless those stages are explicitly needed. Sync always rebuilds public search assets with Workers AI embeddings. `bun run export:search` uses existing caches without vision generation or Are.na write-back. Run only after code/tests and report the command in the handoff.
 - In autonomous/loop mode, complete exactly one task at a time and commit immediately. Do not batch unless the user explicitly asks.
 - When coding or reviewing, follow the Engineering Guardrails and Product/Search rules below and the guidelines in linked docs.
 
@@ -72,16 +72,16 @@ Archivist is a public gallery and search surface for one maintainer's Are.na arc
 
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
 - Query time is free of generative LLMs. Browser search uses Workers AI only to embed queries; the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
-- Sync is manual. A plain `bun run sync` is maintainer-only; agents may run the flagged variants described under Hard Rules. Legacy public requests query Turbopuffer; browser builds download versioned public assets and call a bounded embedding endpoint. Public requests must never proxy to Are.na.
+- Sync is manual. A plain `bun run sync` is maintainer-only; agents may run the flagged variants described under Hard Rules. Public requests download versioned public assets and call a bounded embedding endpoint. Public requests must never proxy to Are.na.
 
 ## Search Invariants
 
 - Use the canonical `search_text` composition in `docs/architecture.md` for lexical indexing and embeddings; browser embeddings use bounded complete-text chunks.
 - `src/lib/domain/search.ts` owns the URL search grammar (parameter names, the implicit-mode rule, the date format). The server parser and the UI both consume it; do not restate a parameter name anywhere else.
 - In browser builds, filter the complete eligible corpus before lexical/vector ranking, aggregate chunk scores to one block, and fuse complete ranked lists with RRF (`k=60`) in `src/lib/search/`, with stable ID ties and release pinning. No raw score arithmetic belongs in UI components.
-- Legacy hybrid means one Turbopuffer `multiQuery` with BM25 + native ANN and `rerank_by: ['RRF']`; do not implement ad-hoc score arithmetic in the UI.
-- Filter only `kind`, `channel_slugs`, `connected_at`, `created_at`, and the `colour_*` weights. `kind` is the gallery's Block type, derived at sync by `blockKind`; `block_type` is Are.na's own type and is not a filter. `sort` changes the browse order only; a text query always ranks by relevance, and without a query every request browses. Colour browse sorts on the weights with an `id` tiebreak, never on a `Sum` expression, because expression ties have no stable order across pages. See [Retrieval behavior](./docs/architecture.md#retrieval-behavior).
-- Schema changes that alter an existing Turbopuffer attribute's type require a new versioned namespace. Record that migration as an ADR in `docs/decisions/`.
+- Hybrid uses ranked-list RRF in the search Worker; ranking never belongs in UI markup.
+- Filters cover kind, channel membership, connected/created dates and colour weights. Query results always rank by relevance; browse sorts use stable ID tiebreaks.
+- Incompatible snapshot or embedding changes require a new release/version.
 
 ## Engineering Guardrails
 
@@ -132,7 +132,7 @@ bun run build   # wrangler types, vite build
 
 - Keep each pull request to one vertical slice.
 - State the changed behavior, test evidence, and any environment/configuration change.
-- Never commit `.env`, local snapshots containing private blocks, or a populated Turbopuffer export.
+- Never commit `.env`, local snapshots containing private blocks, or a private archive export.
 
 ## Session Wrap
 

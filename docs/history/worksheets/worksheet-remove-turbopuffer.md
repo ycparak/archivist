@@ -1,0 +1,6 @@
+# Remove Turbopuffer
+
+The user explicitly requested complete removal after the default local app failed on the legacy backend. Browser search becomes the only backend, overriding the previous opt-in cutover decision. Remove the SDK, runtime adapters, configuration, credentials and provider-specific tests; preserve domain normalization and public export isolation tests. Sync publishes checked static releases and calibration/evaluation consume those releases. No remote namespace deletion or deployment.
+Validation: check, lint, tests, default build, normal dev browser smoke check. Relevance miss and mobile performance remain tracked limitations.
+
+Completed removal including local Turbopuffer env keys, SDK/lockfile and provider-only tests. Shared snapshot publication is reused by sync and export; sync refuses incomplete publication. Existing test assertions now inspect returned search documents. Normal localhost loaded 52 channels/2,202 blocks and completed a hybrid concrete query without the legacy error. Check, lint, default build and the remaining unit suite passed. No sync/export/remote deletion/deployment was run in this task. Existing relevance/mobile limitations remain in TODOs.

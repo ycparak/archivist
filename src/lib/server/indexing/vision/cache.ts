@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * Generated descriptions are expensive to recreate and cheap to store, so the JSONL file is the
- * system of record — committed, portable, and outliving any Turbopuffer namespace migration. The
+ * system of record — committed, portable, and outliving any the search snapshot namespace migration. The
  * skip key below is what guarantees `bun run sync` never pays for the same block twice.
  */
 export const VISION_MEDIUMS = [

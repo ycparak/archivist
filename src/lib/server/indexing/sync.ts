@@ -7,12 +7,6 @@ import {
 	paginateChannelContents,
 	paginateOwnedChannels
 } from '$lib/server/arena/client';
-import {
-	deleteSearchDocuments,
-	listDocumentIds,
-	upsertSearchDocuments,
-	type TurbopufferConfig
-} from '$lib/server/search/turbopuffer-client';
 import { EMPTY_CHANNEL_FILTER, exclusionReason, type ChannelFilter } from './channel-filter';
 import type { SyncEventSink } from './progress/events';
 import type { ChannelManifestEntry } from './channel-manifest';
@@ -37,7 +31,6 @@ import { applyWriteBack, planWriteBack, type WriteBackSummary } from './vision/w
 
 export interface SyncOptions {
 	accessToken: string;
-	turbopuffer?: TurbopufferConfig;
 	output?: 'export';
 	fetchFn?: typeof fetch;
 	signal?: AbortSignal;
@@ -48,12 +41,10 @@ export interface SyncOptions {
 	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
 	maxLeadingChannelFailures?: number;
 	channelFilter?: ChannelFilter;
-	/** Refuse to prune when it would delete more than this fraction of the namespace. */
-	maxPruneFraction?: number;
 	/**
 	 * Generated text to index. Supplied on every run, not only when the stage is enabled — a sync
 	 * without `vision` must still index what previous runs generated, or it would silently strip
-	 * every description back out of the namespace.
+	 * every description out of the export.
 	 */
 	visionCache?: VisionCache;
 	/** Omit to index the existing cache without generating anything new. */
@@ -105,11 +96,6 @@ export interface SyncSummary {
 	itemsSkipped: number;
 	blocksNormalized: number;
 	uniqueBlocks: number;
-	documentsUpserted: number;
-	upsertBatches: number;
-	documentsDeleted: number;
-	/** Why stale documents were left in the namespace, or null when pruning ran. */
-	pruneSkipped: string | null;
 	/** Null when the colour stage did not run. */
 	colour: ColourStageSummary | null;
 	/** Null when the connections stage did not run. */
@@ -123,7 +109,6 @@ export interface SyncSummary {
 const noop = () => {};
 const DEFAULT_CHANNEL_DELAY_MS = 300;
 const DEFAULT_MAX_LEADING_CHANNEL_FAILURES = 3;
-const DEFAULT_MAX_PRUNE_FRACTION = 0.5;
 
 function maxDate(a: Date | undefined, b: Date | undefined): Date | undefined {
 	if (!a) return b;
@@ -150,14 +135,14 @@ function mergeBlock(blocksById: Map<string, ArchiveBlock>, block: ArchiveBlock):
 	});
 }
 
-function pruneBlockReason(
+function exportBlockReason(
 	summary: SyncSummary,
 	documentCount: number,
 	signal: AbortSignal | undefined
 ): string | null {
 	if (signal?.aborted) return 'sync was aborted before every channel was fetched';
 	if (summary.channelsFailed.length > 0) {
-		return `${summary.channelsFailed.length} channel(s) failed, so their blocks would look stale`;
+		return `${summary.channelsFailed.length} channel(s) failed; archive discovery is incomplete`;
 	}
 	if (documentCount === 0) return 'no blocks were fetched';
 	return null;
@@ -174,7 +159,6 @@ export async function syncArchive(options: SyncOptions): Promise<{
 }> {
 	const {
 		accessToken,
-		turbopuffer,
 		fetchFn,
 		signal,
 		log = noop,
@@ -183,7 +167,6 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		delayFn = delay,
 		maxLeadingChannelFailures = DEFAULT_MAX_LEADING_CHANNEL_FAILURES,
 		channelFilter = EMPTY_CHANNEL_FILTER,
-		maxPruneFraction = DEFAULT_MAX_PRUNE_FRACTION,
 		visionCache: existingVisionCache = new Map<string, VisionCacheEntry>(),
 		vision,
 		pushArena,
@@ -195,8 +178,6 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	if (options.output === 'export' && (vision || pushArena)) {
 		throw new Error('Export cannot generate vision text or write to Are.na');
 	}
-	if (options.output !== 'export' && !turbopuffer)
-		throw new Error('Turbopuffer is required for live sync');
 	const client = new ArenaClient({ accessToken, fetchFn });
 
 	const summary: SyncSummary = {
@@ -209,10 +190,6 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		itemsSkipped: 0,
 		blocksNormalized: 0,
 		uniqueBlocks: 0,
-		documentsUpserted: 0,
-		upsertBatches: 0,
-		documentsDeleted: 0,
-		pruneSkipped: null,
 		colour: null,
 		connections: null,
 		vision: null,
@@ -227,10 +204,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	for await (const page of paginateOwnedChannels(client, me.id, { signal })) {
 		for (const channel of page.data) {
 			summary.channelsDiscovered += 1;
-			const reason = exclusionReason(
-				channel,
-				options.output === 'export' ? { ...channelFilter, allowPrivate: new Set() } : channelFilter
-			);
+			const reason = exclusionReason(channel, { ...channelFilter, allowPrivate: new Set() });
 			if (reason === 'ignored') summary.channelsIgnored += 1;
 			else if (reason === 'private') summary.channelsPrivateSkipped += 1;
 			else channels.push({ slug: channel.slug, title: channel.title });
@@ -298,7 +272,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	summary.uniqueBlocks = blocksById.size;
 
 	const blocks = [...blocksById.values()];
-	// Same reasoning as pruning: a failed channel's blocks only look gone, and so do an aborted run's,
+	// Preserve cached entries after incomplete discovery: a failed channel's blocks only look gone, and so do an aborted run's,
 	// so their cached work stays.
 	const fetchedIds = new Set(blocks.map((block) => block.id));
 	const liveIds = (cache: ReadonlyMap<string, unknown>) =>
@@ -369,7 +343,6 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
 	}
 
-	// Before indexing, because a failure here should not cost the upsert.
 	if (pushArena) {
 		onEvent({ kind: 'phase', phase: 'writing-back' });
 		const { plans, skipped } = planWriteBack(blocks, visionText, { ownerId: me.id });
@@ -381,7 +354,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		});
 	}
 
-	onEvent({ kind: 'phase', phase: 'upserting' });
+	onEvent({ kind: 'phase', phase: 'building' });
 	const documents = blocks.map((block) =>
 		toSearchDocument(
 			block,
@@ -391,45 +364,9 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		)
 	);
 	if (options.output === 'export') {
-		const reason = pruneBlockReason(summary, documents.length, signal);
-		if (reason) throw new Error(`Export refused: ${reason}`);
-		summary.pruneSkipped = 'export only; live index untouched';
-		onEvent({ kind: 'phase', phase: 'done' });
-		return { blocks, documents, channels, visionCache, colourCache, connectionCache, summary };
+		const reason = exportBlockReason(summary, documents.length, signal);
+		if (reason) throw new Error('Export refused: ' + reason);
 	}
-	if (!turbopuffer) throw new Error('Turbopuffer is required for live sync');
-	const { batches, rowsUpserted } = await upsertSearchDocuments(documents, turbopuffer, {
-		log,
-		onProgress: (done, total) => onEvent({ kind: 'position', done, total })
-	});
-	summary.documentsUpserted = rowsUpserted;
-	summary.upsertBatches = batches;
-	log(`Upserted ${rowsUpserted} document(s) into Turbopuffer across ${batches} batch(es) total`);
-
-	onEvent({ kind: 'phase', phase: 'pruning' });
-	const pruneBlocker = pruneBlockReason(summary, documents.length, signal);
-	if (pruneBlocker) {
-		summary.pruneSkipped = pruneBlocker;
-	} else {
-		const keep = new Set(documents.map((document) => document.id));
-		const stale = (await listDocumentIds(turbopuffer)).filter((id) => !keep.has(id));
-		const existingCount = keep.size + stale.length;
-
-		if (stale.length === 0) {
-			log('No stale documents to prune');
-		} else if (stale.length > existingCount * maxPruneFraction) {
-			summary.pruneSkipped = `would delete ${stale.length} of ${existingCount} document(s), over the ${maxPruneFraction * 100}% safety limit`;
-		} else {
-			const { rowsDeleted } = await deleteSearchDocuments(stale, turbopuffer, {
-				log,
-				onProgress: (done, total) => onEvent({ kind: 'position', done, total })
-			});
-			summary.documentsDeleted = rowsDeleted;
-			log(`Pruned ${rowsDeleted} stale document(s) from Turbopuffer`);
-		}
-	}
-	if (summary.pruneSkipped) log(`Skipped pruning: ${summary.pruneSkipped}`);
-
 	onEvent({ kind: 'phase', phase: 'done' });
 	return { blocks, documents, channels, visionCache, colourCache, connectionCache, summary };
 }
