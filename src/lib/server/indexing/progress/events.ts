@@ -19,8 +19,8 @@ export type SyncPhase =
 	| 'counting'
 	| 'describing'
 	| 'writing-back'
-	| 'upserting'
-	| 'pruning'
+	| 'building'
+	| 'publishing'
 	| 'done';
 
 export type SyncEvent =

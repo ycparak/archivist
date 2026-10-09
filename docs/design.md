@@ -22,8 +22,7 @@ trimmed to cap height and baseline, and captions use one weight.
   headings, the query. Nothing else signals state: no fills, no pills, no underlines.
 - **Measured, not guessed.** Layout lengths derive from the shelf height or the column grid, never
   from one-off pixel values. Text that has to fit is measured with pretext before it is laid out.
-- **Legacy filters work without JavaScript.** Filters are links, the search is a GET form, and the
-  reveal animation's hidden state only applies once the document is flagged `data-js`.
+- **URL-backed browser search.** Filters remain links and search uses a GET form. Interactive filtering/search requires JavaScript; the default gallery is prerendered.
 
 ## Type
 
@@ -169,9 +168,8 @@ Breakpoint rems in media queries resolve against the browser's 16px, not the roo
 - **Channel names** drop the symbols the maintainer prefixes them with on Are.na (`✦`, `❋`, `𖤛`,
   ``): everything before the first Latin letter or digit goes (`channelLabel` in `format.ts`).
 - **Footer.** "Archivist" in the wordmark style, one column wide; then the number of channels and
-  the number of blocks in the archive, baselines aligned. The block count is one Turbopuffer
-  `Count` aggregate, cached for ten minutes per isolate; if it fails the line is left out. The
-  results status is only announced to screen readers.
+  the number of blocks in the archive, baselines aligned. Both counts come from the checked public
+  snapshot. The results status is only announced to screen readers.
 
 ### The shelf
 

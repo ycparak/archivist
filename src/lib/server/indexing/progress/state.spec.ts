@@ -22,7 +22,7 @@ describe('SyncProgress — phases', () => {
 		progress.apply({ kind: 'position', done: 42, total: 74, label: 'a-channel' });
 		expect(progress.snapshot().position).toEqual({ done: 42, total: 74, label: 'a-channel' });
 
-		progress.apply({ kind: 'phase', phase: 'upserting' });
+		progress.apply({ kind: 'phase', phase: 'building' });
 		expect(progress.snapshot().position).toBeNull();
 	});
 });
@@ -65,7 +65,7 @@ describe('SyncProgress — in flight', () => {
 		progress.apply({ kind: 'vision-settled', blockId: 'a', outcome: 'generated' });
 		progress.apply({ kind: 'vision-started', blockId: 'b' });
 
-		progress.apply({ kind: 'phase', phase: 'upserting' });
+		progress.apply({ kind: 'phase', phase: 'building' });
 
 		const vision = progress.snapshot().vision;
 		expect(vision?.inFlight).toEqual([]);

@@ -4,6 +4,10 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ## Unreleased
 
+### Removed
+
+- Removed Turbopuffer entirely and made static MiniSearch plus semantic browser search the default; maintenance commands now use public search snapshots.
+
 ### Added
 
 - Added an opt-in free browser search build using MiniSearch, exact semantic vector search and Workers AI query embeddings, with public-only exports, preserved filters/sorts/paging, and a prerendered default gallery.

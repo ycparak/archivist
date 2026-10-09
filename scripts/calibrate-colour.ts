@@ -1,19 +1,20 @@
+import { readFile } from 'node:fs/promises';
+import { metadataSchema, releaseSchema } from '$lib/search/snapshot';
+import { checkedAsset } from '$lib/search/assets';
 import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import Turbopuffer from '@turbopuffer/turbopuffer';
 import { ARCHIVE_COLOURS, type ArchiveColour } from '$lib/domain/search';
 import type { ColourWeights } from '$lib/server/indexing/colour/classify';
 import { measureImageColours } from '$lib/server/indexing/colour/extract';
 import { pool } from '$lib/server/indexing/pool';
 import { renditionUrl } from '$lib/server/indexing/vision/rendition';
 import { COLOUR_THRESHOLDS } from '$lib/server/search/colour-filter';
-import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 
 /**
- * Read-only. Lists blocks from Turbopuffer, measures a sample's colours the way the sync does, and
+ * Read-only. Lists blocks from the checked public snapshot, measures a sample's colours the way the sync does, and
  * writes a contact sheet outside the repo: the strongest blocks per colour, and the blocks either
  * side of each threshold. Nothing is written to the index, the caches or Are.na.
  */
@@ -30,13 +31,6 @@ if (!Number.isInteger(sampleSize) || sampleSize <= 0) {
 	process.exit(1);
 }
 
-const apiKey = process.env.TURBOPUFFER_API_KEY;
-const region = process.env.TURBOPUFFER_REGION;
-if (!apiKey || !region) {
-	console.error('TURBOPUFFER_API_KEY and TURBOPUFFER_REGION must both be set.');
-	process.exit(1);
-}
-
 interface Candidate {
 	id: string;
 	title: string | null;
@@ -49,24 +43,27 @@ interface Measured extends Candidate {
 	frames: number;
 }
 
-const namespace = new Turbopuffer({ apiKey, region }).namespace(
-	process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE
+const root = new URL('../static/', import.meta.url);
+const release = releaseSchema.parse(
+	JSON.parse(await readFile(new URL('search/manifest.json', root), 'utf8'))
 );
-const response = await namespace.query({
-	rank_by: ['id', 'asc'],
-	limit: 10_000,
-	include_attributes: ['title', 'image_url', 'arena_url']
-});
-const candidates: Candidate[] = (response.rows ?? []).flatMap((row) =>
-	typeof row.image_url === 'string'
-		? [
-				{
-					id: String(row.id),
-					title: typeof row.title === 'string' ? row.title : null,
-					imageUrl: row.image_url,
-					arenaUrl: String(row.arena_url)
-				}
-			]
+const metadata = metadataSchema.parse(
+	JSON.parse(
+		new TextDecoder().decode(
+			await checkedAsset(
+				release,
+				release.metadata,
+				async (input) =>
+					new Response(
+						new Uint8Array(await readFile(new URL(String(input).replace(/^\//, ''), root)))
+					)
+			)
+		)
+	)
+);
+const candidates: Candidate[] = metadata.documents.flatMap(({ result }) =>
+	result.imageUrl
+		? [{ id: result.id, title: result.title, imageUrl: result.imageUrl, arenaUrl: result.arenaUrl }]
 		: []
 );
 

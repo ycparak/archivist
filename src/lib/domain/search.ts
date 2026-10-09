@@ -32,7 +32,7 @@ export const ARCHIVE_COLOURS = [
 
 export type ArchiveColour = (typeof ARCHIVE_COLOURS)[number];
 
-/** Colours combine with AND; each one also sorts browse results, and Turbopuffer sorts on at most 8. */
+/** Colours combine with AND; each one also sorts browse results, and browser search sorts on at most 8. */
 export const ARCHIVE_MAX_COLOURS = 5;
 
 export const ARCHIVE_SEARCH_PARAM = {

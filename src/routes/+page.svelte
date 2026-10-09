@@ -32,10 +32,9 @@
 	let browserSearching = $state(false);
 	let activeSearch: AbortController | undefined;
 	let mounted = $state(false);
-	const browserMode = $derived(data.backend === 'browser');
-	const outcome = $derived(browserMode && browserOutcome ? browserOutcome : data);
+	const outcome = $derived(browserOutcome ?? data);
 	const searchState = $derived(
-		browserMode && mounted ? readArchiveSearchState(page.url.searchParams) : data.state
+		mounted ? readArchiveSearchState(page.url.searchParams) : data.state
 	);
 
 	onMount(() => {
@@ -62,7 +61,7 @@
 	});
 
 	$effect(() => {
-		if (!mounted || !browserMode || !client) return;
+		if (!mounted || !client) return;
 		const params = new URLSearchParams(page.url.searchParams);
 		const controller = new AbortController();
 		activeSearch = controller;
@@ -140,16 +139,10 @@
 		loadFailed = false;
 		try {
 			let body: { results: SearchResult[]; hasMore: boolean };
-			if (browserMode) {
-				if (!client || !activeSearch) throw new Error('Search is not ready');
-				const result = await client.search(new URLSearchParams(params), activeSearch.signal);
-				if (result.kind !== 'ok') throw new Error('Search page could not be loaded');
-				body = result;
-			} else {
-				const response = await fetch(`/api/search?${params}`);
-				if (!response.ok) throw new Error(`Search returned ${response.status}`);
-				body = await response.json();
-			}
+			if (!client || !activeSearch) throw new Error('Search is not ready');
+			const result = await client.search(new URLSearchParams(params), activeSearch.signal);
+			if (result.kind !== 'ok') throw new Error('Search page could not be loaded');
+			body = result;
 			if (source !== outcome || sourceKey !== requestKey) return;
 			const seen = new Set(pages.flat().map((result) => result.id));
 			const fresh = body.results.filter((result) => !seen.has(result.id));
@@ -236,12 +229,10 @@
 	<meta name="description" content="Search and browse an Are.na archive of original blocks." />
 </svelte:head>
 
-{#if browserMode}
-	<noscript
-		>Browsing this archive’s filters and searching require JavaScript. The default gallery is
-		available below.</noscript
-	>
-{/if}
+<noscript
+	>Browsing this archive’s filters and searching require JavaScript. The default gallery is
+	available below.</noscript
+>
 <div class="fixed inset-0 flex flex-col sm:block">
 	<SearchField search={searchState} onnavigate={navigate} />
 
@@ -285,17 +276,10 @@
 {#snippet message()}
 	{#if outcome.kind === 'unavailable'}
 		<ArchiveMessage heading="Search is unavailable">
-			{#if browserMode}
-				<p>
-					Search could not be completed. Reload the archive and try again. If Related ideas or Best
-					match is unavailable, Exact words may still work.
-				</p>
-			{:else}
-				<p>
-					The archive search could not be loaded. Try again shortly — if you are the maintainer,
-					this reference identifies the failure in the logs: <code>{outcome.correlationId}</code>
-				</p>
-			{/if}
+			<p>
+				Search could not be completed. Reload the archive and try again. If Related ideas or Best
+				match is unavailable, Exact words may still work.
+			</p>
 		</ArchiveMessage>
 	{:else if outcome.kind === 'invalid'}
 		<ArchiveMessage heading="That search could not be read">

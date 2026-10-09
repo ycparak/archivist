@@ -18,7 +18,7 @@ _(none)_
 
 ## Up Next
 
-- [ ] **Validate browser search cutover.** Resolve the widget-grid relevance miss, restore legacy evaluation access (HTTP 401), and measure mobile transfer/memory performance before enabling production browser mode.
+- [ ] **Validate browser search cutover.** Resolve the widget-grid relevance miss and measure mobile transfer/memory performance.
 
 ---
 
@@ -37,6 +37,8 @@ _(none)_
 ## Done
 
 _Newest first._
+
+- [x] **Remove Turbopuffer.** Made browser search the sole default backend and migrated sync, evaluation and calibration to public snapshots.
 
 - [x] **Implement free browser search.** Added the opt-in migration and generated public assets; production cutover remains gated on relevance and mobile validation.
 
