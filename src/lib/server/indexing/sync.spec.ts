@@ -1054,3 +1054,53 @@ describe('syncArchive — connections stage', () => {
 		expect(onEvent).toHaveBeenCalledWith({ kind: 'phase', phase: 'counting' });
 	});
 });
+
+describe('public-only export', () => {
+	it('never writes to either provider and excludes allow-listed private membership', async () => {
+		const provider = okTurbopufferFetch();
+		const fetchFn = routedFetch({
+			'/v3/me': () => meResponse(1, 'me'),
+			'/v3/users/1/contents': () =>
+				contentsResponse([
+					ownedChannel(1, 'public', 'Public'),
+					ownedChannel(2, 'private', 'Private', 'private')
+				]),
+			'/v3/channels/public/contents': () => contentsResponse([textBlock(1)])
+		});
+		const result = await syncArchive({
+			accessToken: 't',
+			output: 'export',
+			fetchFn,
+			turbopuffer: turbopufferConfig(provider),
+			channelDelayMs: 0,
+			channelFilter: { ignore: new Set(), allowPrivate: new Set(['private']) }
+		});
+		expect(provider).not.toHaveBeenCalled();
+		expect(result.channels).toEqual([{ slug: 'public', title: 'Public' }]);
+		expect(result.documents[0].channel_slugs).toEqual(['public']);
+		expect(result.documents[0].connection_count).toBe(1);
+		expect(fetchFn.mock.calls.every(([request]) => request.method === 'GET')).toBe(true);
+	});
+	it('refuses a partial export when any channel fails', async () => {
+		const fetchFn = routedFetch({
+			'/v3/me': () => meResponse(1, 'me'),
+			'/v3/users/1/contents': () =>
+				contentsResponse([
+					ownedChannel(1, 'public', 'Public'),
+					ownedChannel(2, 'failed', 'Failed')
+				]),
+			'/v3/channels/public/contents': () => contentsResponse([textBlock(1)]),
+			'/v3/channels/failed/contents': () => new Response('', { status: 403 })
+		});
+		await expect(
+			syncArchive({ accessToken: 't', output: 'export', fetchFn, channelDelayMs: 0 })
+		).rejects.toThrow('Export refused');
+	});
+	it('refuses write-back and vision generation before touching Are.na', async () => {
+		const fetchFn = vi.fn();
+		await expect(
+			syncArchive({ accessToken: 't', output: 'export', pushArena: true, fetchFn })
+		).rejects.toThrow('Export cannot');
+		expect(fetchFn).not.toHaveBeenCalled();
+	});
+});
