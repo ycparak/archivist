@@ -6,6 +6,8 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Added
 
+- Added an opt-in free browser search build using MiniSearch, exact semantic vector search and Workers AI query embeddings, with public-only exports, preserved filters/sorts/paging, and a prerendered default gallery.
+
 - Added a Most connected sort that ranks blocks by every connection they have on Are.na, yours and everyone else's, newest created first on a tie. Takes effect after `bun run sync`.
 - Added a connections stage to `bun run sync`, which asks Are.na for each block's total connections and caches them in `connections-cache.jsonl`, recounting a block once its count is a week old. A first run takes about nine minutes. Skip it with `--no-connections`.
 - Added a Created filter, a month slider from February 2014, beside Connected. Takes effect after `bun run sync`.

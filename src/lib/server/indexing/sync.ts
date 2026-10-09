@@ -1,4 +1,4 @@
-import { toSearchDocument, type ArchiveBlock } from '$lib/domain/archive';
+import { toSearchDocument, type ArchiveBlock, type SearchDocument } from '$lib/domain/archive';
 import {
 	ArenaClient,
 	ArenaRequestError,
@@ -37,7 +37,8 @@ import { applyWriteBack, planWriteBack, type WriteBackSummary } from './vision/w
 
 export interface SyncOptions {
 	accessToken: string;
-	turbopuffer: TurbopufferConfig;
+	turbopuffer?: TurbopufferConfig;
+	output?: 'export';
 	fetchFn?: typeof fetch;
 	signal?: AbortSignal;
 	log?: (message: string) => void;
@@ -164,6 +165,7 @@ function pruneBlockReason(
 
 export async function syncArchive(options: SyncOptions): Promise<{
 	blocks: ArchiveBlock[];
+	documents: SearchDocument[];
 	channels: ChannelManifestEntry[];
 	visionCache: VisionCacheEntry[] | null;
 	colourCache: ColourCacheEntry[] | null;
@@ -190,6 +192,11 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		connectionCache: existingConnectionCache = new Map<string, ConnectionCacheEntry>(),
 		connections
 	} = options;
+	if (options.output === 'export' && (vision || pushArena)) {
+		throw new Error('Export cannot generate vision text or write to Are.na');
+	}
+	if (options.output !== 'export' && !turbopuffer)
+		throw new Error('Turbopuffer is required for live sync');
 	const client = new ArenaClient({ accessToken, fetchFn });
 
 	const summary: SyncSummary = {
@@ -220,7 +227,10 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	for await (const page of paginateOwnedChannels(client, me.id, { signal })) {
 		for (const channel of page.data) {
 			summary.channelsDiscovered += 1;
-			const reason = exclusionReason(channel, channelFilter);
+			const reason = exclusionReason(
+				channel,
+				options.output === 'export' ? { ...channelFilter, allowPrivate: new Set() } : channelFilter
+			);
 			if (reason === 'ignored') summary.channelsIgnored += 1;
 			else if (reason === 'private') summary.channelsPrivateSkipped += 1;
 			else channels.push({ slug: channel.slug, title: channel.title });
@@ -380,6 +390,14 @@ export async function syncArchive(options: SyncOptions): Promise<{
 			connectionTotals.get(block.id)?.total
 		)
 	);
+	if (options.output === 'export') {
+		const reason = pruneBlockReason(summary, documents.length, signal);
+		if (reason) throw new Error(`Export refused: ${reason}`);
+		summary.pruneSkipped = 'export only; live index untouched';
+		onEvent({ kind: 'phase', phase: 'done' });
+		return { blocks, documents, channels, visionCache, colourCache, connectionCache, summary };
+	}
+	if (!turbopuffer) throw new Error('Turbopuffer is required for live sync');
 	const { batches, rowsUpserted } = await upsertSearchDocuments(documents, turbopuffer, {
 		log,
 		onProgress: (done, total) => onEvent({ kind: 'position', done, total })
@@ -413,5 +431,5 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	if (summary.pruneSkipped) log(`Skipped pruning: ${summary.pruneSkipped}`);
 
 	onEvent({ kind: 'phase', phase: 'done' });
-	return { blocks, channels, visionCache, colourCache, connectionCache, summary };
+	return { blocks, documents, channels, visionCache, colourCache, connectionCache, summary };
 }
