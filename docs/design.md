@@ -19,25 +19,25 @@ trimmed to cap height and baseline, and captions use one weight.
   sparingly, from the colour swatches and the keyword highlight.
 - **Grey until it matters.** Text is grey (`foreground`) by default and turns black
   (`foreground-strong`) when it is chosen, hovered or heads something: active filters, caption
-  headings, the query. Nothing else signals state: no fills, no pills, no underlines.
+  headings, the query. Filter state stays typographic; action buttons use the shared capsule surface.
 - **Measured, not guessed.** Layout lengths derive from the shelf height or the column grid, never
   from one-off pixel values. Text that has to fit is measured with pretext before it is laid out.
 - **URL-backed browser search.** Filters remain links and search uses a GET form. Interactive filtering/search requires JavaScript; the default gallery is prerendered.
 
 ## Type
 
-| Role            | Family     | Size                      | Line height | Use                                        |
-| --------------- | ---------- | ------------------------- | ----------- | ------------------------------------------ |
-| Body / app      | ABC Areal  | `text-body` (0.888888rem) | 14px        | Filters, captions, footer counts, messages |
-| Search          | Newsreader | `text-2xl` (1.5rem)       | 2rem        | The search field only                      |
-| Wordmark        | Newsreader | `text-3xl` (1.875rem)     | 1.2         | "Archivist" in the footer                  |
-| Channel cover   | Newsreader | `11cqw` of the cover      | 1.1         | Channel title on a shelf cover             |
-| Text block page | Newsreader | `6.5cqw` of the page      | 1.35        | The body of a Text block set as a page     |
+| Role            | Family     | Size                               | Line height | Use                                        |
+| --------------- | ---------- | ---------------------------------- | ----------- | ------------------------------------------ |
+| Body / app      | ABC Areal  | `text-body` / `text-base` (13.2px) | 15px        | Filters, captions, footer counts, messages |
+| Search          | Newsreader | `text-2xl` (1.5rem)                | 2rem        | The search field only                      |
+| Wordmark        | Newsreader | `text-3xl` (1.875rem)              | 1.2         | "Archivist" in the footer                  |
+| Channel cover   | Newsreader | `11cqw` of the cover               | 1.1         | Channel title on a shelf cover             |
+| Text block page | Newsreader | `6.5cqw` of the page               | 1.35        | The body of a Text block set as a page     |
 
-- The root size is **14px**, and **15px** from 40rem up. Every rem in the app follows it, so the
-  body is 12.4px on phones and 13.3px elsewhere.
-- All sans text sits on a **14px** line height.
-- Weight is 400, with **bold (700)** only for filter headings in the index. Captions use one weight, 400. There is no medium, no italic in the chrome, no letter-spacing.
+- The root size is **14px**, and **15px** from 40rem up. Serif sizes and shelf geometry retain these responsive rem values. Sans body type is fixed at
+  **13.2px / 15px**, matching yusufparak. Utility spacing uses a fixed **4px** unit.
+- All sans text sits on a **15px** line height.
+- Weight is 400, including filter headings, which use `foreground-strong` to match Yusufparak hierarchy. Captions use one weight, 400. There is no medium, no italic in the chrome, no letter-spacing.
 - Serif means Newsreader (`font-serif`), and only for the roles above. Everything else is Areal
   (`font-app`, which is also `font-sans`).
 - Fonts are self-hosted in `static/fonts/` and declared in `src/styles/fonts.css`.
@@ -49,8 +49,8 @@ box runs from the cap height of its first line to the baseline of its last. Spac
 measured from ink, and has to be set to keep a baseline grid:
 
 - **Stacked lines** (a heading over its options, a list of links, footer counts) go in a `lines`
-  container: a block whose children keep whole 14px line boxes (`text-box-trim: none`) while the
-  container trims its outer edges. Lines then fall exactly 14px apart. Flex and grid containers do
+  container: a block whose children keep whole 15px line boxes (`text-box-trim: none`) while the
+  container trims its outer edges. Lines then fall exactly 15px apart. Flex and grid containers do
   not trim, so a stack must be a block.
 - **Separate boxes** in a flex column are spaced with `gap-(--gap-line)` (`1lh − 1cap`) to read as
   the next line, or `gap-(--gap-paragraph)` (`2lh − 1cap`) for one blank line between.
@@ -59,7 +59,7 @@ measured from ink, and has to be set to keep a baseline grid:
   line box's bottom, moved to `--clip-below-baseline` (below the deepest descender, above where
   the next line's letters begin), lets ascenders above the trimmed top show, and pulls the
   following content up by `--line-below-baseline` so the box lays out as if trimmed to its
-  baseline. Overflow clipping with a margin cannot do this: at 14px
+  baseline. Overflow clipping with a margin cannot do this: at 15px
   Areal leaves about 1.5px between one line's descenders and the next line's capitals.
 - **Other clipped text** uses `clip-trimmed`, which clips at the same place below the baseline,
   and only at the bottom: a column of controls is never clipped at all, so focus rings, selected
@@ -75,8 +75,8 @@ measured from ink, and has to be set to keep a baseline grid:
 - `mark`, the search form and its textarea keep `text-box: normal`: a highlight paints its whole
   line, and trimming the line that holds a field only shifts the field. The field is lowered by
   `annotation padding − (1lh − 1cap) ÷ 2`, so its cap height lands on the annotation padding,
-  level with the top-row captions. The clear button is one line tall in the same type, with the
-  same offset, so its icon centres on the capitals.
+  level with the top-row captions. The clear button uses the 26px capsule action primitive; its 14px icon centres on the
+  search capitals independently of its sans body typography.
 
 ## Colour
 
@@ -130,7 +130,7 @@ raw ramp, except for the fixed swatch and page colours noted below.
   scroller below. From 40rem the search field floats over the scroller's top-left.
 - The scroller is a `container-type: size` element, so `cqi` and `cqh` inside it mean the viewport
   of the sheet. It holds `flex h-full w-max`: the index, then the shelf after `--column-gap`.
-- Both the index and the shelf are three rows: `--annotation-area-height` (10rem), the rest, and
+- Both the index and the shelf are three rows: `--annotation-area-height` (up to 10rem), the rest, and
   `--annotation-area-height` again. The top row of the index is under the search field; the bottom
   row holds the footer.
 
@@ -142,7 +142,7 @@ raw ramp, except for the fixed swatch and page colours noted below.
 | `--page-gutter`            | 2rem (left padding of the sheet, padding of the search field)             |
 | `--column-gap`             | 4rem                                                                      |
 | `--column-width`           | `(100cqi − 2 × gutter − (count − 1) × gap) ÷ count`                       |
-| `--annotation-area-height` | 10rem                                                                     |
+| `--annotation-area-height` | `clamp(4rem, (100svh − 28rem) / 2, 10rem)`                                |
 | `--annotation-padding`     | 16px: the page's vertical padding (search, captions, footer)              |
 
 Breakpoint rems in media queries resolve against the browser's 16px, not the root size.
@@ -151,7 +151,7 @@ Breakpoint rems in media queries resolve against the browser's 16px, not the roo
 
 - Each column is `w-(--column-width)`, topped with the `rule` utility (a `foreground-detail`
   border, `pt-3 mt-1`), and stacks lists `gap-(--gap-paragraph)` apart, one blank line.
-- A list is a bold `foreground` heading over its options. An option is a link: `foreground`, black
+- A list is a regular `foreground-strong` heading over its options. An option is a link: `foreground`, black
   on hover, black and `aria-current="true"` when active. An option that cannot apply to the
   current search (browse order beside a query, a sixth colour) is a non-link span in
   `foreground-secondary` with `aria-disabled`. Search type is always choosable: without a query
@@ -252,7 +252,7 @@ In the browser-search build, the default gallery is prerendered, but query/filte
 - **Search.** A new query smooth-scrolls the sheet so the shelf starts at the gutter; clearing it
   scrolls back to the filters. On first load the scroll is instant.
 - **Busy.** While a search is in flight the shelves drop to 50% opacity over `--duration-fast`.
-- **Hover.** Colour changes only, over the default 150ms. The clear button fades in on hover of the
+- **Hover.** Text and action surface colour changes over 150ms. The clear button fades in on hover of the
   search field, and is always visible on coarse pointers.
 - **Reduced motion.** Shelves and captions appear without movement, scrolls are instant and video
   keeps its poster frame.
@@ -296,18 +296,28 @@ in markup.
 - Filters are links with `aria-current`, swatches have `aria-label` and `title`, the slider thumbs
   are labelled "Connected from", "Connected until", "Created from" and "Created until" with month
   `aria-valuetext`.
-- Focus is a 2px `foreground-strong` outline offset 2px; pages offset it 4px.
+- Focus is a 2px blue outline offset 2px; pages offset it 4px. Capsule actions use a blue focus border.
 - A `role="status"` live region outside the busy subtree announces each result.
 - Every block page is a link to Are.na named by its title; every cover is a link named "Show only
   …" or "Stop filtering by …".
 
 ## Do and don't
 
-- Do use the semantic colour roles and the spacing tokens; don't add raw hex or grey steps in
-  components.
+- Do use the semantic colour roles and the spacing tokens; don't add raw hex in components. Fixed ASCII slider primitives use the documented grey steps.
 - Do express shelf geometry in `--shelf-h` units and grid geometry in `--column-width`; don't hard
   code pixels.
-- Do keep chrome flat: no borders around controls, no radii except swatches and slider thumbs, no
-  shadows except `shadow-page` on shelf objects.
+- Do keep chrome flat: capsule actions, swatches and slider thumbs are rounded; action focus and slider thumbs have borders. Shadows belong only to shelf objects.
 - Don't introduce a new typeface, weight or size; extend the table above first if one is needed.
-- Don't animate layout properties other than the reveal translate and the scale bar's width.
+- Don't animate layout properties other than the reveal translate and the scale bar's width. Capsule press feedback uses transforms.
+
+## Shared primitives and controls
+
+Yusufparak is the source for ABC Areal body type (13.2px / 15px, MONO 0), its oklch grey/accent palette, and 4px utility spacing. Areal uses the same font file and default feature settings. Archivist retains its semantic light/dark roles, responsive root sizes, layout breakpoints, and all existing Newsreader typography and metric overrides.
+
+`control-button` supplies the shared 26px capsule, 12px horizontal padding, grey-150 surface, grey-200 hover surface, blue focus border and spring press motion (reduced motion disables transforms). Search clear and shelf retry use it. In dark mode surfaces use grey-850 by default, grey-800 on hover and grey-900 on focus through semantic roles. Filter links and colour swatches retain their native selection semantics.
+
+Date controls retain two native month ranges. Their 20px control area contains a 1px grey-500 track and 11px white thumbs outlined in grey-700, matching ASCII Patterns; keyboard focus is blue. Coincident thumbs retain their existing endpoint stacking.
+
+For text rhythm, prefer `lines` for contiguous lines and `gap-(--gap-line)` / `gap-(--gap-paragraph)` for independently trimmed boxes. The gaps are `1lh - 1cap` and `2lh - 1cap`: at this font size they are approximately the 6px and 21px margins (`mb-1.5`, `mb-5.25`) used in SiteAbout, but they adjust automatically with font metrics. Keep these expressions on the container whose typography sets the intended rhythm. Do not replace them with fixed spacing utilities.
+
+Annotation bands contract on short screens to leave room for the 15px filter rhythm; their maximum remains 10rem and their minimum is 4rem.

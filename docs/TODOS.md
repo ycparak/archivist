@@ -38,6 +38,8 @@ _(none)_
 
 _Newest first._
 
+- [x] **Align the design system.** Matched Yusufparak sans primitives and ASCII controls while preserving serif styling; [worksheet](./history/worksheets/worksheet-design-system-parity.md).
+
 - [x] **Remove Turbopuffer.** Made browser search the sole default backend and migrated sync, evaluation and calibration to public snapshots.
 
 - [x] **Implement free browser search.** Added the opt-in migration and generated public assets; production cutover remains gated on relevance and mobile validation.
