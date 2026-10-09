@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ARCHIVE_BLOCK_TYPES } from '$lib/domain/search';
+import { ARCHIVE_BLOCK_TYPES, ARCHIVE_COLOURS, ARCHIVE_SORTS } from '$lib/domain/search';
 import { searchModeSchema } from './contracts';
 
 export const searchEvaluationCaseSchema = z.object({
@@ -10,6 +10,10 @@ export const searchEvaluationCaseSchema = z.object({
 	type: z.array(z.enum(ARCHIVE_BLOCK_TYPES)).min(1).optional(),
 	from: z.iso.date().optional(),
 	to: z.iso.date().optional(),
+	colour: z.array(z.enum(ARCHIVE_COLOURS)).min(1).optional(),
+	created_from: z.iso.date().optional(),
+	created_to: z.iso.date().optional(),
+	sort: z.enum(ARCHIVE_SORTS).optional(),
 	expectedBlockIds: z.array(z.string()),
 	/**
 	 * A target the archive cannot satisfy yet. Its failure does not fail the run, and its success

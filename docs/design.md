@@ -22,7 +22,7 @@ trimmed to cap height and baseline, and captions use one weight.
   headings, the query. Nothing else signals state: no fills, no pills, no underlines.
 - **Measured, not guessed.** Layout lengths derive from the shelf height or the column grid, never
   from one-off pixel values. Text that has to fit is measured with pretext before it is laid out.
-- **Everything works without JavaScript.** Filters are links, the search is a GET form, and the
+- **Legacy filters work without JavaScript.** Filters are links, the search is a GET form, and the
   reveal animation's hidden state only applies once the document is flagged `data-js`.
 
 ## Type
@@ -231,6 +231,8 @@ the heading, `foreground` for the text.
   pretext.
 - Top-row captions carry `data-top-annotation`. While one straddles the search field's right edge,
   the field shows a one-pixel `foreground-secondary-detail` hairline there.
+
+In the browser-search build, the default gallery is prerendered, but query/filter changes and infinite loading require JavaScript. A noscript notice makes this explicit. Search URLs, controls, busy feedback and announcements retain the same visual behavior.
 
 ## Motion
 

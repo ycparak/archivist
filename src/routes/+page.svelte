@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { BrowserSearchClient } from '$lib/search/client';
+	import type { BrowserSearchOutcome } from '$lib/search/protocol';
 	import type { Attachment } from 'svelte/attachments';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -24,8 +27,73 @@
 
 	let { data }: { data: PageData } = $props();
 
-	const searchState = $derived(data.state);
-	type Loaded = { source: PageData; pages: SearchResult[][]; offset: number; hasMore: boolean };
+	let client: BrowserSearchClient | undefined;
+	let browserOutcome = $state.raw<BrowserSearchOutcome>();
+	let browserSearching = $state(false);
+	let activeSearch: AbortController | undefined;
+	let mounted = $state(false);
+	const browserMode = $derived(data.backend === 'browser');
+	const outcome = $derived(browserMode && browserOutcome ? browserOutcome : data);
+	const searchState = $derived(
+		browserMode && mounted ? readArchiveSearchState(page.url.searchParams) : data.state
+	);
+
+	onMount(() => {
+		try {
+			if (data.release)
+				client = new BrowserSearchClient(
+					new Worker(new URL('../lib/search/search.worker.ts', import.meta.url), {
+						type: 'module'
+					}),
+					data.release
+				);
+		} catch {
+			browserOutcome = {
+				kind: 'unavailable',
+				state: readArchiveSearchState(page.url.searchParams),
+				correlationId: crypto.randomUUID()
+			};
+		}
+		mounted = true;
+		return () => {
+			activeSearch?.abort();
+			client?.destroy();
+		};
+	});
+
+	$effect(() => {
+		if (!mounted || !browserMode || !client) return;
+		const params = new URLSearchParams(page.url.searchParams);
+		const controller = new AbortController();
+		activeSearch = controller;
+		browserSearching = true;
+		loaded = undefined;
+		loadingMore = false;
+		loadFailed = false;
+		void client
+			?.search(params, controller.signal)
+			.then((result) => {
+				if (!controller.signal.aborted) browserOutcome = result;
+			})
+			.catch(() => {
+				if (!controller.signal.aborted)
+					browserOutcome = {
+						kind: 'unavailable',
+						state: readArchiveSearchState(params),
+						correlationId: crypto.randomUUID()
+					};
+			})
+			.finally(() => {
+				if (!controller.signal.aborted) browserSearching = false;
+			});
+		return () => controller.abort();
+	});
+	type Loaded = {
+		source: PageData | BrowserSearchOutcome;
+		pages: SearchResult[][];
+		offset: number;
+		hasMore: boolean;
+	};
 
 	let loaded = $state.raw<Loaded>();
 	let loadingMore = $state(false);
@@ -33,11 +101,13 @@
 	let scroller = $state<HTMLElement>();
 	let shelf = $state<HTMLElement>();
 
-	const loadedHere = $derived(loaded?.source === data ? loaded : undefined);
-	const firstPage = $derived(data.kind === 'ok' ? data.results : []);
+	const loadedHere = $derived(loaded?.source === outcome ? loaded : undefined);
+	const firstPage = $derived(outcome.kind === 'ok' ? outcome.results : []);
 	const pages = $derived([firstPage, ...(loadedHere?.pages ?? [])]);
 	const resultCount = $derived(pages.reduce((count, results) => count + results.length, 0));
-	const hasMore = $derived(loadedHere ? loadedHere.hasMore : data.kind === 'ok' && data.hasMore);
+	const hasMore = $derived(
+		loadedHere ? loadedHere.hasMore : outcome.kind === 'ok' && outcome.hasMore
+	);
 	const channels = $derived(
 		data.channels.map(({ slug, title }) => ({
 			slug,
@@ -48,7 +118,7 @@
 	const channelsBySlug = $derived(new Map(channels.map((channel) => [channel.slug, channel])));
 	const layout = $derived(layoutShelves(pages, channelsBySlug, searchState.channelSlugs));
 	const requestKey = $derived(toArchiveSearchHref(searchState));
-	const searching = $derived(navigating.to?.route.id === '/');
+	const searching = $derived(browserSearching || navigating.to?.route.id === '/');
 
 	const announced = $derived(
 		searching && navigating.to
@@ -56,22 +126,31 @@
 			: searchState
 	);
 	const status = $derived(
-		resultsStatus({ kind: data.kind, state: announced, resultCount, searching })
+		resultsStatus({ kind: outcome.kind, state: announced, resultCount, searching })
 	);
 
 	async function loadMore() {
 		if (loadingMore || searching || !hasMore) return;
-		const source = data;
+		const source = outcome;
+		const sourceKey = requestKey;
 		const offset = loadedHere?.offset ?? firstPage.length;
 		const params = new SvelteURLSearchParams(page.url.searchParams);
 		params.set(ARCHIVE_PAGE_PARAM.offset, String(offset));
 		loadingMore = true;
 		loadFailed = false;
 		try {
-			const response = await fetch(`/api/search?${params}`);
-			if (!response.ok) throw new Error(`Search returned ${response.status}`);
-			const body: { results: SearchResult[]; hasMore: boolean } = await response.json();
-			if (source !== data) return;
+			let body: { results: SearchResult[]; hasMore: boolean };
+			if (browserMode) {
+				if (!client || !activeSearch) throw new Error('Search is not ready');
+				const result = await client.search(new URLSearchParams(params), activeSearch.signal);
+				if (result.kind !== 'ok') throw new Error('Search page could not be loaded');
+				body = result;
+			} else {
+				const response = await fetch(`/api/search?${params}`);
+				if (!response.ok) throw new Error(`Search returned ${response.status}`);
+				body = await response.json();
+			}
+			if (source !== outcome || sourceKey !== requestKey) return;
 			const seen = new Set(pages.flat().map((result) => result.id));
 			const fresh = body.results.filter((result) => !seen.has(result.id));
 			loaded = {
@@ -81,9 +160,9 @@
 				pages: fresh.length ? [...(loadedHere?.pages ?? []), fresh] : (loadedHere?.pages ?? [])
 			};
 		} catch {
-			if (source === data) loadFailed = true;
+			if (source === outcome && sourceKey === requestKey) loadFailed = true;
 		} finally {
-			loadingMore = false;
+			if (source === outcome && sourceKey === requestKey) loadingMore = false;
 		}
 	}
 
@@ -157,6 +236,12 @@
 	<meta name="description" content="Search and browse an Are.na archive of original blocks." />
 </svelte:head>
 
+{#if browserMode}
+	<noscript
+		>Browsing this archive’s filters and searching require JavaScript. The default gallery is
+		available below.</noscript
+	>
+{/if}
 <div class="fixed inset-0 flex flex-col sm:block">
 	<SearchField search={searchState} onnavigate={navigate} />
 
@@ -188,7 +273,7 @@
 					{coverHref}
 					isActiveChannel={(channel) => searchState.channelSlugs.includes(channel.slug)}
 					onloadmore={loadMore}
-					message={data.kind !== 'ok' || !resultCount ? message : undefined}
+					message={outcome.kind !== 'ok' || !resultCount ? message : undefined}
 				/>
 			</div>
 		</div>
@@ -198,15 +283,21 @@
 </div>
 
 {#snippet message()}
-	{#if data.kind === 'unavailable'}
+	{#if outcome.kind === 'unavailable'}
 		<ArchiveMessage heading="Search is unavailable">
-			<p>
-				The archive index could not be reached. Try again shortly — if you are the maintainer, this
-				reference identifies the failure in the logs:
-				<code>{data.correlationId}</code>
-			</p>
+			{#if browserMode}
+				<p>
+					Search could not be completed. Reload the archive and try again. If Related ideas or Best
+					match is unavailable, Exact words may still work.
+				</p>
+			{:else}
+				<p>
+					The archive search could not be loaded. Try again shortly — if you are the maintainer,
+					this reference identifies the failure in the logs: <code>{outcome.correlationId}</code>
+				</p>
+			{/if}
 		</ArchiveMessage>
-	{:else if data.kind === 'invalid'}
+	{:else if outcome.kind === 'invalid'}
 		<ArchiveMessage heading="That search could not be read">
 			<p>
 				Check the ranking and the connected dates, then search again. Exact words and related ideas

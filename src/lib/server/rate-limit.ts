@@ -1,4 +1,4 @@
-export type PublicSearchRoute = '/' | '/api/search';
+export type PublicSearchRoute = '/' | '/api/search' | '/api/embedding';
 
 type RateLimiter = {
 	limit(options: { key: string }): Promise<{ success: boolean }>;
@@ -11,7 +11,7 @@ type RateLimitReport =
 const RETRY_AFTER_SECONDS = 60;
 
 function isPublicSearchRoute(pathname: string): pathname is PublicSearchRoute {
-	return pathname === '/' || pathname === '/api/search';
+	return pathname === '/' || pathname === '/api/search' || pathname === '/api/embedding';
 }
 
 function rateLimitKey(request: Request): string {
@@ -25,7 +25,7 @@ function rateLimitResponse(route: PublicSearchRoute): Response {
 		'retry-after': String(RETRY_AFTER_SECONDS)
 	};
 
-	if (route === '/api/search') {
+	if (route !== '/') {
 		return Response.json(
 			{ error: 'Too many search requests. Please try again in a minute.' },
 			{ status: 429, headers }
@@ -48,7 +48,16 @@ export async function enforcePublicSearchRateLimit(
 	limiter: RateLimiter | undefined,
 	report: (report: RateLimitReport) => void = reportRateLimitEvent
 ): Promise<Response | undefined> {
-	if (request.method !== 'GET' || !isPublicSearchRoute(pathname) || !limiter) return undefined;
+	if (!isPublicSearchRoute(pathname)) return undefined;
+	const embedding = pathname === '/api/embedding' && request.method === 'POST';
+	if (!embedding && request.method !== 'GET') return undefined;
+	if (!limiter)
+		return embedding
+			? Response.json(
+					{ error: 'Semantic search is unavailable' },
+					{ status: 503, headers: { 'cache-control': 'no-store' } }
+				)
+			: undefined;
 
 	try {
 		const { success } = await limiter.limit({ key: rateLimitKey(request) });
@@ -57,6 +66,11 @@ export async function enforcePublicSearchRateLimit(
 		return rateLimitResponse(pathname);
 	} catch {
 		report({ event: 'archive_search_rate_limit_error', route: pathname });
-		return undefined;
+		return embedding
+			? Response.json(
+					{ error: 'Semantic search is unavailable' },
+					{ status: 503, headers: { 'cache-control': 'no-store' } }
+				)
+			: undefined;
 	}
 }

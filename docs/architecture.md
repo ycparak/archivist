@@ -4,6 +4,20 @@
 
 **SvelteKit + TypeScript on Cloudflare Workers** (`@sveltejs/adapter-cloudflare`) serves the public app. **Are.na V3** is the source of truth, read only by a manually run sync CLI. The official **Turbopuffer TypeScript SDK** is the sole search datastore: native embeddings and full-text BM25 over one canonical text field, with its `multiQuery` endpoint and reciprocal-rank fusion for hybrid retrieval. A vision model, called only from the sync CLI, describes images so they can be found by what they look like.
 
+## Browser search migration
+
+A build-time opt-in, `PUBLIC_ARCHIVE_SEARCH=browser`, enables the accepted [browser search architecture](./decisions/0004-browser-search.md). The legacy provider described below remains the default until production cutover passes evaluation.
+
+- `src/lib/search/` owns client-safe request validation, snapshot schemas, colour thresholds, lexical/semantic ranking, RRF and the Web Worker/client protocol. `domain/search.ts` remains free of runtime validation; `domain/archive.ts` remains server/CLI-only.
+- `bun run export:search` calls `syncArchive` with `output: 'export'`, excludes all private channels including allow-listed ones, applies the ignore list and refuses partial or empty exports. No vision generation, Are.na write-back, live upsert or prune occurs. Existing enrichment caches are read, not refreshed.
+- Canonical `search_text` feeds both a serialized MiniSearch index and the versioned BGE-small embedding model. Corpus/query embeddings share configuration; long text is split into 384-byte UTF-8 chunks. Vectors are normalized and stored in little-endian Float32 shards of at most 8 MiB. Semantic ranking takes maximum chunk cosine per block; all eligible blocks are considered before fusion/paging.
+- The browser worker validates asset hashes, declared lengths, counts, membership and normalized vectors, lazily loads lexical/vector assets, caches 32 query embeddings, and pins one release for its lifetime. Filters precede ranking; full lexical/semantic ranked lists use RRF with `k=60` and ID ties. Browse preserves all seven orders, leading-colour thresholds and UTC day filters.
+- The default first page, channel list and count are prerendered from the release bootstrap. Browser URL changes drive async searches with cancellation and page ownership guards. Search/filter interactions require JavaScript; arbitrary-query SSR is intentionally replaced. `/api/search` returns 410 in browser builds.
+- `/api/embedding` is enabled only in browser builds. It validates bounded POST requests and model version, uses the Workers AI binding, normalizes provider vectors and returns explicit failure. It never generates an answer or result and never queries Are.na. The edge limiter covers POST embeddings and fails closed for inference.
+- Export assets and embedding cache are gitignored. A complete release is staged and published under its content hash before the manifest switches. Previous versions remain available for open sessions. The endpoint rejects incompatible model versions instead of mixing embeddings. Production credentials are bindings only; REST credentials are local export/dev tools.
+
+Commands: `export:search`, `evaluate:search --browser` / `--compare`, `dev:browser`, `build:browser`. The legacy sync remains available for enrichment/evaluation and rollback. Free use depends on Cloudflare Workers/Workers AI allocations; it does not make OpenRouter vision generation free.
+
 ## System shape
 
 ```text

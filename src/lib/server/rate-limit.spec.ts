@@ -109,3 +109,30 @@ describe('enforcePublicSearchRateLimit', () => {
 		expect(report).toHaveBeenCalledWith({ event: 'archive_search_rate_limit_error', route: '/' });
 	});
 });
+
+describe('embedding rate limit', () => {
+	it('limits POST embeddings and fails closed without a working binding', async () => {
+		const request = new Request('https://archive.test/api/embedding', { method: 'POST' });
+		expect(
+			(await enforcePublicSearchRateLimit(request, '/api/embedding', limiter(false), () => {}))
+				?.status
+		).toBe(429);
+		expect(
+			(await enforcePublicSearchRateLimit(request, '/api/embedding', undefined, () => {}))?.status
+		).toBe(503);
+		expect(
+			(
+				await enforcePublicSearchRateLimit(
+					request,
+					'/api/embedding',
+					{
+						limit: async () => {
+							throw new Error('unavailable');
+						}
+					},
+					() => {}
+				)
+			)?.status
+		).toBe(503);
+	});
+});

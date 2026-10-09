@@ -18,7 +18,7 @@ _(none)_
 
 ## Up Next
 
-_(none)_
+- [ ] **Validate browser search cutover.** Resolve the widget-grid relevance miss, restore legacy evaluation access (HTTP 401), and measure mobile transfer/memory performance before enabling production browser mode.
 
 ---
 
@@ -37,6 +37,8 @@ _(none)_
 ## Done
 
 _Newest first._
+
+- [x] **Implement free browser search.** Added the opt-in migration and generated public assets; production cutover remains gated on relevance and mobile validation.
 
 - [x] **Investigate free search hosting.** Recommended MiniSearch with browser vector search and Workers AI query embeddings, preserving semantic search within free allocations. Proposal: [free search migration](./specs/free-search-migration.md); worksheet: [investigation](./history/worksheets/worksheet-free-search-migration.md).
 

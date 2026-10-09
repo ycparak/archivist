@@ -1,3 +1,5 @@
+import { browserSearchEnabled } from '$lib/search/backend';
+import { loadSearchBootstrap } from '$lib/server/search/bootstrap';
 import { env } from '$env/dynamic/private';
 import type { PageServerLoad } from './$types';
 import { channelManifest } from '$lib/server/indexing/channel-manifest';
@@ -8,7 +10,8 @@ import { SearchUnavailableError } from '$lib/server/search/repository';
 
 const archiveSize = createArchiveSizeCache();
 
-export const load: PageServerLoad = async ({ url, platform, setHeaders }) => {
+export const load: PageServerLoad = async ({ url, platform, setHeaders, fetch }) => {
+	if (browserSearchEnabled) return loadSearchBootstrap(fetch);
 	const [outcome, blockCount] = await Promise.all([
 		executeArchiveSearch(url.searchParams, () => createSearchRepository(platform?.env, env)),
 		// The count only decorates the footer; without it the page still works, so it is logged and left out.
@@ -23,5 +26,11 @@ export const load: PageServerLoad = async ({ url, platform, setHeaders }) => {
 		)
 	]);
 	if (outcome.kind !== 'ok') setHeaders({ 'cache-control': 'no-store' });
-	return { ...outcome, channels: channelManifest, blockCount };
+	return {
+		...outcome,
+		backend: 'turbopuffer' as const,
+		release: null,
+		channels: channelManifest,
+		blockCount
+	};
 };
