@@ -116,7 +116,7 @@ describe('formatSnapshot', () => {
 
 	it('keeps spinning through a phase with no vision work, so it still looks alive', () => {
 		const lines = formatSnapshot(
-			snapshot({ phase: 'upserting', position: { done: 3, total: 13, label: null } }),
+			snapshot({ phase: 'building', position: { done: 3, total: 13, label: null } }),
 			PLAIN_PAINT,
 			{ frame: 0 }
 		);

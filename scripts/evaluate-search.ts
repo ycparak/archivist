@@ -1,29 +1,16 @@
 import { createBrowserEvaluationRepository } from './browser-search';
 import { readFile } from 'node:fs/promises';
 import { ARCHIVE_RESULT_LIMIT, ARCHIVE_SEARCH_PARAM } from '$lib/domain/search';
-import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 import { parseArchiveSearchRequest } from '$lib/server/search/request';
 import {
 	matchesEvaluationCase,
 	searchEvaluationCasesSchema,
 	type SearchEvaluationCase
 } from '$lib/server/search/evaluation';
-import { TurbopufferSearchRepository } from '$lib/server/search/repository';
 
 async function main() {
-	const apiKey = process.env.TURBOPUFFER_API_KEY;
-	const region = process.env.TURBOPUFFER_REGION;
-
-	const browser = process.argv.includes('--browser');
-	const compare = process.argv.includes('--compare');
-	if (process.argv.slice(2).some((arg) => arg !== '--browser' && arg !== '--compare'))
-		throw new Error('Use --browser or --compare');
-	if (browser && compare) throw new Error('Choose --browser or --compare');
-
-	if ((!browser || compare) && (!apiKey || !region)) {
-		console.error('TURBOPUFFER_API_KEY and TURBOPUFFER_REGION must both be set.');
-		process.exit(1);
-	}
+	if (process.argv.slice(2).some((arg) => arg !== '--browser'))
+		throw new Error('No arguments are required');
 
 	function toSearchParams(testCase: SearchEvaluationCase): URLSearchParams {
 		const params = new URLSearchParams({ [ARCHIVE_SEARCH_PARAM.mode]: testCase.mode });
@@ -45,14 +32,7 @@ async function main() {
 		await readFile(new URL('./fixtures/search-cases.json', import.meta.url), 'utf8')
 	);
 	const cases = searchEvaluationCasesSchema.parse(fixture);
-	const legacy = !browser
-		? new TurbopufferSearchRepository({
-				apiKey: apiKey!,
-				region: region!,
-				namespace: process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE
-			})
-		: undefined;
-	const repository = browser || compare ? await createBrowserEvaluationRepository() : legacy!;
+	const repository = await createBrowserEvaluationRepository();
 
 	/** Where each expected block landed, so a change that keeps a case passing but sinks it is visible. */
 	function formatRanks(expectedBlockIds: string[], orderedIds: string[]): string {
@@ -71,15 +51,6 @@ async function main() {
 			parseArchiveSearchRequest(toSearchParams(testCase))
 		);
 		const orderedIds = results.slice(0, ARCHIVE_RESULT_LIMIT).map((result) => result.id);
-		if (compare && legacy) {
-			const previous = await legacy.search(parseArchiveSearchRequest(toSearchParams(testCase)));
-			console.log(
-				`${testCase.id}: legacy${formatRanks(
-					testCase.expectedBlockIds,
-					previous.results.slice(0, ARCHIVE_RESULT_LIMIT).map((result) => result.id)
-				)}; browser${formatRanks(testCase.expectedBlockIds, orderedIds)}`
-			);
-		}
 		const resultIds = new Set(orderedIds);
 		const missing = testCase.expectedBlockIds.filter((id) => !resultIds.has(id));
 		const ranks = formatRanks(testCase.expectedBlockIds, orderedIds);

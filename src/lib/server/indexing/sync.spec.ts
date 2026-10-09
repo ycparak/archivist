@@ -59,44 +59,8 @@ function routedFetch(routes: Record<string, () => Response>) {
 	});
 }
 
-function okTurbopufferFetch(existingIds: string[] = []) {
-	return vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
-		const body = JSON.parse(init.body as string);
-		if (url.endsWith('/query')) {
-			const after = body.filters?.[2] as string | undefined;
-			const rows = existingIds
-				.filter((id) => after === undefined || id > after)
-				.sort()
-				.slice(0, body.limit)
-				.map((id) => ({ id }));
-			return jsonResponse({ rows, billing: {}, performance: {} });
-		}
-		return jsonResponse({
-			status: 'OK',
-			message: 'ok',
-			rows_affected: body.upsert_rows?.length ?? body.deletes?.length ?? 0,
-			billing: {}
-		});
-	});
-}
-
-function writeBodies(fetchFn: ReturnType<typeof okTurbopufferFetch>) {
-	return fetchFn.mock.calls
-		.filter(([url]) => !(url as string).endsWith('/query'))
-		.map(([, init]) => JSON.parse((init as RequestInit).body as string));
-}
-
-function turbopufferConfig(fetchFn = okTurbopufferFetch()) {
-	return {
-		apiKey: 'k',
-		region: 'r',
-		namespace: 'archivist-test',
-		fetchFn: fetchFn as unknown as typeof fetch
-	};
-}
-
 describe('syncArchive', () => {
-	it('skips ignored and private channels, but syncs allow-listed private ones', async () => {
+	it('skips ignored and all private channels', async () => {
 		const fetchFn = routedFetch({
 			'/v3/me': () => meResponse(1, 'me'),
 			'/v3/users/1/contents': () =>
@@ -117,19 +81,19 @@ describe('syncArchive', () => {
 			accessToken: 't',
 			fetchFn,
 			channelDelayMs: 0,
-			turbopuffer: turbopufferConfig(),
+
 			channelFilter: {
 				ignore: new Set(['ignored-b', 'private-ignored']),
 				allowPrivate: new Set(['private-allowed', 'private-ignored'])
 			}
 		});
 
-		expect(channels.map((c) => c.slug)).toEqual(['public-a', 'private-allowed', 'closed-e']);
+		expect(channels.map((c) => c.slug)).toEqual(['public-a', 'closed-e']);
 		expect(summary).toMatchObject({
 			channelsDiscovered: 6,
 			channelsIgnored: 2,
-			channelsPrivateSkipped: 1,
-			channelsSynced: 3
+			channelsPrivateSkipped: 2,
+			channelsSynced: 2
 		});
 	});
 
@@ -148,8 +112,7 @@ describe('syncArchive', () => {
 		const { blocks, summary } = await syncArchive({
 			accessToken: 't',
 			fetchFn,
-			channelDelayMs: 0,
-			turbopuffer: turbopufferConfig()
+			channelDelayMs: 0
 		});
 
 		expect(summary).toMatchObject({
@@ -159,9 +122,7 @@ describe('syncArchive', () => {
 			blocksFetched: 2,
 			itemsSkipped: 0,
 			blocksNormalized: 2,
-			uniqueBlocks: 2,
-			documentsUpserted: 2,
-			upsertBatches: 1
+			uniqueBlocks: 2
 		});
 		expect(blocks.map((b) => b.id).sort()).toEqual(['100', '101']);
 	});
@@ -181,8 +142,7 @@ describe('syncArchive', () => {
 		const { channels } = await syncArchive({
 			accessToken: 't',
 			fetchFn,
-			channelDelayMs: 0,
-			turbopuffer: turbopufferConfig()
+			channelDelayMs: 0
 		});
 
 		expect(channels).toEqual([
@@ -206,8 +166,7 @@ describe('syncArchive', () => {
 		const { blocks, summary } = await syncArchive({
 			accessToken: 't',
 			fetchFn,
-			channelDelayMs: 0,
-			turbopuffer: turbopufferConfig()
+			channelDelayMs: 0
 		});
 
 		expect(summary.uniqueBlocks).toBe(1);
@@ -232,8 +191,7 @@ describe('syncArchive', () => {
 		const { blocks: olderFirstBlocks } = await syncArchive({
 			accessToken: 't',
 			fetchFn: olderFirst,
-			channelDelayMs: 0,
-			turbopuffer: turbopufferConfig()
+			channelDelayMs: 0
 		});
 		expect(olderFirstBlocks[0]?.connectedAt).toEqual(new Date(newer));
 
@@ -250,8 +208,7 @@ describe('syncArchive', () => {
 		const { blocks: newerFirstBlocks } = await syncArchive({
 			accessToken: 't',
 			fetchFn: newerFirst,
-			channelDelayMs: 0,
-			turbopuffer: turbopufferConfig()
+			channelDelayMs: 0
 		});
 		expect(newerFirstBlocks[0]?.connectedAt).toEqual(new Date(newer));
 	});
@@ -276,8 +233,7 @@ describe('syncArchive', () => {
 		const { summary } = await syncArchive({
 			accessToken: 't',
 			fetchFn,
-			channelDelayMs: 0,
-			turbopuffer: turbopufferConfig()
+			channelDelayMs: 0
 		});
 
 		expect(summary.itemsSkipped).toBe(1);
@@ -300,8 +256,7 @@ describe('syncArchive', () => {
 		const { blocks, summary } = await syncArchive({
 			accessToken: 't',
 			fetchFn,
-			channelDelayMs: 0,
-			turbopuffer: turbopufferConfig()
+			channelDelayMs: 0
 		});
 
 		expect(summary.channelsSynced).toBe(1);
@@ -328,15 +283,12 @@ describe('syncArchive', () => {
 			return new Response('nope', { status: 404 });
 		});
 
-		const turbopufferFetch = okTurbopufferFetch();
-
 		await expect(
 			syncArchive({
 				accessToken: 't',
 				fetchFn,
 				channelDelayMs: 0,
-				maxLeadingChannelFailures: 3,
-				turbopuffer: turbopufferConfig(turbopufferFetch)
+				maxLeadingChannelFailures: 3
 			})
 		).rejects.toThrow(/first 3 channels all failed/);
 
@@ -345,7 +297,6 @@ describe('syncArchive', () => {
 			'/v3/channels/broken-2/contents',
 			'/v3/channels/broken-3/contents'
 		]);
-		expect(turbopufferFetch).not.toHaveBeenCalled();
 	});
 
 	it('does not trip the failure breaker once at least one channel has already succeeded', async () => {
@@ -368,8 +319,7 @@ describe('syncArchive', () => {
 			accessToken: 't',
 			fetchFn,
 			channelDelayMs: 0,
-			maxLeadingChannelFailures: 3,
-			turbopuffer: turbopufferConfig()
+			maxLeadingChannelFailures: 3
 		});
 
 		expect(summary.channelsSynced).toBe(1);
@@ -383,17 +333,13 @@ describe('syncArchive', () => {
 			'/v3/channels/channel-a/contents': () => contentsResponse([{ id: 1, type: 'Text' }])
 		});
 
-		const turbopufferFetch = okTurbopufferFetch();
-
 		await expect(
 			syncArchive({
 				accessToken: 't',
 				fetchFn,
-				channelDelayMs: 0,
-				turbopuffer: turbopufferConfig(turbopufferFetch)
+				channelDelayMs: 0
 			})
 		).rejects.toThrow();
-		expect(turbopufferFetch).not.toHaveBeenCalled();
 	});
 
 	it('paces requests between channels using the injected delayFn, not just between pages', async () => {
@@ -409,7 +355,7 @@ describe('syncArchive', () => {
 		});
 		const delayFn = vi.fn().mockResolvedValue(undefined);
 
-		await syncArchive({ accessToken: 't', fetchFn, delayFn, turbopuffer: turbopufferConfig() });
+		await syncArchive({ accessToken: 't', fetchFn, delayFn });
 
 		expect(delayFn).toHaveBeenCalledTimes(1);
 		expect(delayFn).toHaveBeenCalledWith(300, undefined);
@@ -427,166 +373,11 @@ describe('syncArchive', () => {
 			accessToken: 't',
 			fetchFn,
 			log,
-			channelDelayMs: 0,
-			turbopuffer: turbopufferConfig()
+			channelDelayMs: 0
 		});
 
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('Discovered 1'));
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('channel-a'));
-		expect(log).toHaveBeenCalledWith(expect.stringContaining('Upserted 1'));
-	});
-
-	it('upserts the deduplicated blocks into Turbopuffer with the right shape and reports the result', async () => {
-		const fetchFn = routedFetch({
-			'/v3/me': () => meResponse(1, 'me'),
-			'/v3/users/1/contents': () => contentsResponse([ownedChannel(10, 'channel-a', 'Channel A')]),
-			'/v3/channels/channel-a/contents': () => contentsResponse([textBlock(100)])
-		});
-		const turbopufferFetch = okTurbopufferFetch();
-
-		const { summary } = await syncArchive({
-			accessToken: 't',
-			fetchFn,
-			channelDelayMs: 0,
-			turbopuffer: turbopufferConfig(turbopufferFetch)
-		});
-
-		expect(summary.documentsUpserted).toBe(1);
-		expect(summary.upsertBatches).toBe(1);
-		expect(writeBodies(turbopufferFetch)).toHaveLength(1);
-
-		const [url, init] = turbopufferFetch.mock.calls[0] as [string, RequestInit];
-		expect(url).toBe('https://r.turbopuffer.com/v2/namespaces/archivist-test');
-		const body = JSON.parse(init.body as string);
-		expect(body.distance_metric).toBe('cosine_distance');
-		expect(body.upsert_rows).toEqual([
-			expect.objectContaining({ id: 'block:100', block_type: 'Text' })
-		]);
-	});
-
-	it('does not attempt to upsert anything when no blocks were fetched', async () => {
-		const fetchFn = routedFetch({
-			'/v3/me': () => meResponse(1, 'me'),
-			'/v3/users/1/contents': () => contentsResponse([])
-		});
-		const turbopufferFetch = okTurbopufferFetch();
-
-		const { summary } = await syncArchive({
-			accessToken: 't',
-			fetchFn,
-			turbopuffer: turbopufferConfig(turbopufferFetch)
-		});
-
-		expect(summary.documentsUpserted).toBe(0);
-		expect(summary.upsertBatches).toBe(0);
-		expect(turbopufferFetch).not.toHaveBeenCalled();
-	});
-
-	describe('pruning', () => {
-		const twoChannelsFetch = (failing = false) =>
-			routedFetch({
-				'/v3/me': () => meResponse(1, 'me'),
-				'/v3/users/1/contents': () =>
-					contentsResponse([
-						ownedChannel(10, 'channel-a', 'Channel A'),
-						ownedChannel(11, 'channel-b', 'Channel B')
-					]),
-				'/v3/channels/channel-a/contents': () => contentsResponse([textBlock(100), textBlock(101)]),
-				'/v3/channels/channel-b/contents': () =>
-					failing
-						? jsonResponse({ error: 'boom' }, { status: 500 })
-						: contentsResponse([textBlock(102)])
-			});
-
-		it('deletes indexed documents that were not fetched, after upserting', async () => {
-			const turbopufferFetch = okTurbopufferFetch([
-				'block:100',
-				'block:101',
-				'block:102',
-				'block:9'
-			]);
-
-			const { summary } = await syncArchive({
-				accessToken: 't',
-				fetchFn: twoChannelsFetch(),
-				channelDelayMs: 0,
-				turbopuffer: turbopufferConfig(turbopufferFetch)
-			});
-
-			expect(summary.documentsDeleted).toBe(1);
-			expect(summary.pruneSkipped).toBeNull();
-			const writes = writeBodies(turbopufferFetch);
-			expect(writes[0].upsert_rows).toHaveLength(3);
-			expect(writes[1]).toEqual({ deletes: ['block:9'] });
-		});
-
-		it('deletes several stale documents in one batch', async () => {
-			const stale = Array.from({ length: 3 }, (_, i) => `block:stale-${i}`);
-			const turbopufferFetch = okTurbopufferFetch([
-				'block:100',
-				'block:101',
-				'block:102',
-				...stale
-			]);
-
-			const { summary } = await syncArchive({
-				accessToken: 't',
-				fetchFn: twoChannelsFetch(),
-				channelDelayMs: 0,
-				maxPruneFraction: 1,
-				turbopuffer: turbopufferConfig(turbopufferFetch)
-			});
-
-			expect(summary.documentsDeleted).toBe(3);
-		});
-
-		it('does not prune when a channel failed to sync', async () => {
-			const turbopufferFetch = okTurbopufferFetch(['block:100', 'block:102']);
-
-			const { summary } = await syncArchive({
-				accessToken: 't',
-				fetchFn: twoChannelsFetch(true),
-				channelDelayMs: 0,
-				turbopuffer: turbopufferConfig(turbopufferFetch)
-			});
-
-			expect(summary.channelsFailed).toHaveLength(1);
-			expect(summary.documentsDeleted).toBe(0);
-			expect(summary.pruneSkipped).toMatch(/failed/);
-			expect(turbopufferFetch.mock.calls.some(([url]) => (url as string).endsWith('/query'))).toBe(
-				false
-			);
-		});
-
-		it('skips pruning above the safety limit', async () => {
-			const existing = ['block:100', 'block:101', 'block:102', 'block:7', 'block:8', 'block:9'];
-
-			const guarded = okTurbopufferFetch(existing);
-			const skipped = await syncArchive({
-				accessToken: 't',
-				fetchFn: twoChannelsFetch(),
-				channelDelayMs: 0,
-				maxPruneFraction: 0.4,
-				turbopuffer: turbopufferConfig(guarded)
-			});
-			expect(skipped.summary.documentsDeleted).toBe(0);
-			expect(skipped.summary.pruneSkipped).toMatch(/3 of 6/);
-			expect(writeBodies(guarded)).toHaveLength(1);
-		});
-
-		it('does nothing when the namespace already matches', async () => {
-			const turbopufferFetch = okTurbopufferFetch(['block:100', 'block:101', 'block:102']);
-
-			const { summary } = await syncArchive({
-				accessToken: 't',
-				fetchFn: twoChannelsFetch(),
-				channelDelayMs: 0,
-				turbopuffer: turbopufferConfig(turbopufferFetch)
-			});
-
-			expect(summary.documentsDeleted).toBe(0);
-			expect(writeBodies(turbopufferFetch)).toHaveLength(1);
-		});
 	});
 });
 
@@ -641,7 +432,7 @@ describe('syncArchive — vision stage', () => {
 	it('leaves sync untouched when no vision options are passed', async () => {
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {}
 		});
@@ -654,7 +445,7 @@ describe('syncArchive — vision stage', () => {
 		const client = visionClient();
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			vision: { client }
@@ -680,7 +471,7 @@ describe('syncArchive — vision stage', () => {
 
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			visionCache: new Map([['999', stale]]),
@@ -704,7 +495,7 @@ describe('syncArchive — vision stage', () => {
 
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: routedFetch({
 				'/v3/me': () => meResponse(7, 'maintainer'),
 				'/v3/users/7/contents': () =>
@@ -748,7 +539,7 @@ describe('syncArchive — colour stage', () => {
 	it('measures nothing, and reports nothing, when the stage is not requested', async () => {
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {}
 		});
@@ -758,11 +549,10 @@ describe('syncArchive — colour stage', () => {
 	});
 
 	it('measures blocks with an image and indexes their weights', async () => {
-		const fetchFn = okTurbopufferFetch();
 		const measure = vi.fn(measuredBlue);
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(fetchFn),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			colour: { measure }
@@ -772,32 +562,31 @@ describe('syncArchive — colour stage', () => {
 		expect(result.summary.colour).toMatchObject({ blocksWithImage: 1, measured: 1 });
 		expect(result.colourCache?.map((entry) => entry.block_id)).toEqual(['11']);
 
-		const rows = writeBodies(fetchFn).flatMap((body) => body.upsert_rows ?? []);
+		const rows = result.documents;
 		const image = rows.find((row: { id: string }) => row.id === 'block:11');
 		const text = rows.find((row: { id: string }) => row.id === 'block:12');
-		expect(image.colour_blue).toBe(700);
-		expect(text.colour_blue).toBe(0);
-		expect(text.colour_mono).toBe(0);
+		expect(image?.colour_blue).toBe(700);
+		expect(text?.colour_blue).toBe(0);
+		expect(text?.colour_mono).toBe(0);
 	});
 
 	it('indexes cached weights on a run that does not measure', async () => {
-		const fetchFn = okTurbopufferFetch();
-		await syncArchive({
+		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(fetchFn),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			colourCache: new Map([['11', colourEntry('11', 420)]])
 		});
 
-		const rows = writeBodies(fetchFn).flatMap((body) => body.upsert_rows ?? []);
-		expect(rows.find((row: { id: string }) => row.id === 'block:11').colour_blue).toBe(420);
+		const rows = result.documents;
+		expect(rows.find((row: { id: string }) => row.id === 'block:11')?.colour_blue).toBe(420);
 	});
 
 	it('drops cache entries for blocks that have left the archive', async () => {
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			colourCache: new Map([['999', colourEntry('999', 100)]]),
@@ -810,7 +599,7 @@ describe('syncArchive — colour stage', () => {
 	it('keeps cache entries for unfetched blocks when a channel failed', async () => {
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: routedFetch({
 				'/v3/me': () => meResponse(7, 'maintainer'),
 				'/v3/users/7/contents': () =>
@@ -830,7 +619,7 @@ describe('syncArchive — colour stage', () => {
 		const onEvent = vi.fn();
 		await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			onEvent,
@@ -845,19 +634,11 @@ function connectionEntry(blockId: string, total: number, countedAt = new Date().
 	return { block_id: blockId, total, counted_at: countedAt };
 }
 
-function upsertedRows(fetchFn: ReturnType<typeof okTurbopufferFetch>) {
-	return writeBodies(fetchFn).flatMap((body) => body.upsert_rows ?? []) as Array<{
-		id: string;
-		connection_count: number;
-		total_connection_count: number;
-	}>;
-}
-
 describe('syncArchive — connections stage', () => {
 	it('counts nothing, and reports nothing, when the stage is not requested', async () => {
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {}
 		});
@@ -867,11 +648,10 @@ describe('syncArchive — connections stage', () => {
 	});
 
 	it('counts every block once and indexes the total beside the maintainer’s own count', async () => {
-		const fetchFn = okTurbopufferFetch();
 		const count = vi.fn(async (blockId: number) => blockId * 10);
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(fetchFn),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			connections: { count }
@@ -884,7 +664,7 @@ describe('syncArchive — connections stage', () => {
 			['12', 120]
 		]);
 
-		const rows = upsertedRows(fetchFn);
+		const rows = result.documents;
 		expect(rows.find((row) => row.id === 'block:11')).toMatchObject({
 			connection_count: 1,
 			total_connection_count: 110
@@ -893,7 +673,6 @@ describe('syncArchive — connections stage', () => {
 	});
 
 	it('asks Are.na for each block’s connections when no counter is injected', async () => {
-		const fetchFn = okTurbopufferFetch();
 		const arena = routedFetch({
 			'/v3/me': () => meResponse(7, 'maintainer'),
 			'/v3/users/7/contents': () => contentsResponse([ownedChannel(1, 'alpha', 'Alpha')]),
@@ -901,36 +680,33 @@ describe('syncArchive — connections stage', () => {
 			'/v3/blocks/11/connections': () => contentsResponse([{}], { total_count: 8 }),
 			'/v3/blocks/12/connections': () => contentsResponse([{}], { total_count: 2 })
 		});
-		await syncArchive({
+		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(fetchFn),
+
 			fetchFn: arena as unknown as typeof fetch,
 			delayFn: async () => {},
 			connections: {}
 		});
 
-		const rows = upsertedRows(fetchFn);
+		const rows = result.documents;
 		expect(rows.find((row) => row.id === 'block:11')?.total_connection_count).toBe(8);
 		expect(rows.find((row) => row.id === 'block:12')?.total_connection_count).toBe(2);
 	});
 
 	it('indexes cached totals on a run that does not count, and counts nothing for fresh ones', async () => {
-		const fetchFn = okTurbopufferFetch();
 		const count = vi.fn(async () => 99);
-		await syncArchive({
+		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(fetchFn),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			connectionCache: new Map([['11', connectionEntry('11', 42)]])
 		});
-		expect(upsertedRows(fetchFn).find((row) => row.id === 'block:11')?.total_connection_count).toBe(
-			42
-		);
+		expect(result.documents.find((row) => row.id === 'block:11')?.total_connection_count).toBe(42);
 
 		await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			connectionCache: new Map([
@@ -946,7 +722,7 @@ describe('syncArchive — connections stage', () => {
 		const count = vi.fn(async (blockId: number) => (blockId === 11 ? 50 : 0));
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			connectionCache: new Map([
@@ -965,10 +741,9 @@ describe('syncArchive — connections stage', () => {
 	});
 
 	it('never indexes a total below the channels it already knows hold the block', async () => {
-		const fetchFn = okTurbopufferFetch();
-		await syncArchive({
+		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(fetchFn),
+
 			fetchFn: routedFetch({
 				'/v3/me': () => meResponse(7, 'maintainer'),
 				'/v3/users/7/contents': () =>
@@ -980,16 +755,15 @@ describe('syncArchive — connections stage', () => {
 			connectionCache: new Map([['12', connectionEntry('12', 1)]])
 		});
 
-		const [row] = upsertedRows(fetchFn);
+		const [row] = result.documents;
 		expect(row.connection_count).toBe(2);
 		expect(row.total_connection_count).toBe(2);
 	});
 
 	it('indexes a block whose count failed, keeps the failure in the summary, and writes no entry for it', async () => {
-		const fetchFn = okTurbopufferFetch();
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(fetchFn),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			connections: {
@@ -1004,14 +778,14 @@ describe('syncArchive — connections stage', () => {
 			{ blockId: '11', error: 'Are.na request failed with status 404' }
 		]);
 		expect(result.connectionCache?.map((entry) => entry.block_id)).toEqual(['12']);
-		const failed = upsertedRows(fetchFn).find((row) => row.id === 'block:11');
+		const failed = result.documents.find((row) => row.id === 'block:11');
 		expect(failed?.total_connection_count).toBe(1);
 	});
 
 	it('drops cache entries for blocks that have left the archive', async () => {
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			connectionCache: new Map([['999', connectionEntry('999', 1)]]),
@@ -1024,7 +798,7 @@ describe('syncArchive — connections stage', () => {
 	it('keeps cache entries for unfetched blocks when a channel failed', async () => {
 		const result = await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: routedFetch({
 				'/v3/me': () => meResponse(7, 'maintainer'),
 				'/v3/users/7/contents': () =>
@@ -1044,7 +818,7 @@ describe('syncArchive — connections stage', () => {
 		const onEvent = vi.fn();
 		await syncArchive({
 			accessToken: 't',
-			turbopuffer: turbopufferConfig(),
+
 			fetchFn: visionFetch() as unknown as typeof fetch,
 			delayFn: async () => {},
 			onEvent,
@@ -1057,7 +831,6 @@ describe('syncArchive — connections stage', () => {
 
 describe('public-only export', () => {
 	it('never writes to either provider and excludes allow-listed private membership', async () => {
-		const provider = okTurbopufferFetch();
 		const fetchFn = routedFetch({
 			'/v3/me': () => meResponse(1, 'me'),
 			'/v3/users/1/contents': () =>
@@ -1071,11 +844,11 @@ describe('public-only export', () => {
 			accessToken: 't',
 			output: 'export',
 			fetchFn,
-			turbopuffer: turbopufferConfig(provider),
+
 			channelDelayMs: 0,
 			channelFilter: { ignore: new Set(), allowPrivate: new Set(['private']) }
 		});
-		expect(provider).not.toHaveBeenCalled();
+
 		expect(result.channels).toEqual([{ slug: 'public', title: 'Public' }]);
 		expect(result.documents[0].channel_slugs).toEqual(['public']);
 		expect(result.documents[0].connection_count).toBe(1);

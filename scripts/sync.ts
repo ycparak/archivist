@@ -1,3 +1,4 @@
+import { publishArchiveSearch } from './publish-search';
 import { readFile, writeFile } from 'node:fs/promises';
 import {
 	buildChannelManifest,
@@ -22,7 +23,6 @@ import {
 	serializeVisionCache,
 	type VisionCacheEntry
 } from '$lib/server/indexing/vision/cache';
-import { DEFAULT_NAMESPACE } from '$lib/server/search/namespace';
 
 const VISION_CACHE_URL = new URL('../src/lib/server/indexing/vision-cache.jsonl', import.meta.url);
 const COLOUR_CACHE_URL = new URL('../src/lib/server/indexing/colour-cache.jsonl', import.meta.url);
@@ -83,16 +83,6 @@ if (!accessToken) {
 	process.exit(1);
 }
 
-const apiKey = process.env.TURBOPUFFER_API_KEY;
-const region = process.env.TURBOPUFFER_REGION;
-if (!apiKey || !region) {
-	console.error(
-		'TURBOPUFFER_API_KEY and TURBOPUFFER_REGION must both be set. Copy .env.example to .env and fill them in.'
-	);
-	process.exit(1);
-}
-const namespace = process.env.TURBOPUFFER_NAMESPACE || DEFAULT_NAMESPACE;
-
 const vision = resolveVisionOptions();
 const pushArena = !hasFlag('no-push-arena');
 const measureColour = !hasFlag('no-colour');
@@ -101,6 +91,7 @@ const visionCache = await readCache(VISION_CACHE_URL, parseVisionCache);
 const colourCache = await readCache(COLOUR_CACHE_URL, parseColourCache);
 const connectionCache = await readCache(CONNECTIONS_CACHE_URL, parseConnectionCache);
 const reporter = createSyncReporter();
+const abort = new AbortController();
 
 // A killed run must not leave the terminal with its cursor still hidden.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
@@ -166,13 +157,14 @@ const connectionWriter = cacheWriter(connectionCache, writeConnectionCache);
 try {
 	const {
 		channels,
+		documents,
 		visionCache: mergedVisionCache,
 		colourCache: mergedColourCache,
 		connectionCache: mergedConnectionCache,
 		summary
 	} = await syncArchive({
 		accessToken,
-		turbopuffer: { apiKey, region, namespace },
+		signal: abort.signal,
 		log: (message) => reporter.log(message),
 		onEvent: (event) => reporter.emit(event),
 		visionCache,
@@ -184,7 +176,7 @@ try {
 		connections: countConnections ? { onEntry: connectionWriter.onEntry } : undefined,
 		channelFilter: {
 			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
-			allowPrivate: parseSlugList(process.env.ARENA_ALLOW_PRIVATE_CHANNELS)
+			allowPrivate: new Set()
 		}
 	});
 
@@ -206,6 +198,9 @@ try {
 		console.log(`Wrote connections cache: ${mergedConnectionCache.length} entr(ies)`);
 	}
 
+	if (summary.channelsFailed.length || abort.signal.aborted || !documents.length)
+		throw new Error('Cannot publish an incomplete archive');
+	await publishArchiveSearch(documents, channels, abort.signal);
 	const manifest = buildChannelManifest(channels);
 	const manifestPath = new URL('../src/lib/server/indexing/channel-manifest.json', import.meta.url);
 	await writeFile(manifestPath, serializeChannelManifest(manifest));
@@ -226,9 +221,6 @@ try {
 	console.log(`  Blocks fetched:      ${summary.blocksFetched}`);
 	console.log(`  Items skipped:       ${summary.itemsSkipped} (nested channels, not blocks)`);
 	console.log(`  Unique blocks:       ${summary.uniqueBlocks} (after dedup across channels)`);
-	console.log(
-		`  Upserted:            ${summary.documentsUpserted} document(s) into "${namespace}" across ${summary.upsertBatches} batch(es)`
-	);
 	if (summary.colour) {
 		const c = summary.colour;
 		console.log(`  Colour cache hits:   ${c.cacheHits} (no download)`);
@@ -299,14 +291,8 @@ try {
 			if (w.failed.length > 10) console.log(`      ... and ${w.failed.length - 10} more`);
 		}
 	}
-	if (summary.pruneSkipped) {
-		console.log(`  Pruned:              skipped (${summary.pruneSkipped})`);
-		console.log('  Stale documents remain searchable.');
-	} else {
-		console.log(`  Pruned:              ${summary.documentsDeleted} stale document(s)`);
-	}
 } catch (error) {
 	reporter.stop();
-	console.error('Sync failed:', error instanceof Error ? error.message : error);
+	console.error({ event: 'sync_failed', name: error instanceof Error ? error.name : 'unknown' });
 	process.exit(1);
 }
