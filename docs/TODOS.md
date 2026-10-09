@@ -38,6 +38,8 @@ _(none)_
 
 _Newest first._
 
+- [x] **Set up Trigger.dev.** Added a typed hello task, ran it successfully in development, and confirmed it appears in the dashboard; [worksheet](./history/worksheets/worksheet-trigger-dev-setup.md).
+
 - [x] **Align the design system.** Matched Yusufparak sans primitives and ASCII controls while preserving serif styling; [worksheet](./history/worksheets/worksheet-design-system-parity.md).
 
 - [x] **Remove Turbopuffer.** Made browser search the sole default backend and migrated sync, evaluation and calibration to public snapshots.
