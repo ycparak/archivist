@@ -38,6 +38,8 @@ _(none)_
 
 _Newest first._
 
+- [x] **Investigate free search hosting.** Recommended MiniSearch with browser vector search and Workers AI query embeddings, preserving semantic search within free allocations. Proposal: [free search migration](./specs/free-search-migration.md); worksheet: [investigation](./history/worksheets/worksheet-free-search-migration.md).
+
 - [x] **Sort by every connection on Are.na.** Blocks now carry a `total_connection_count`, counted per block by a new sync stage, and Most connected joins the Sort by list beside four My orders for the maintainer's own channels; the default browse is My most connected. Spec: [connection count](./specs/connection-count.md).
 - [x] **Redesign the gallery as a horizontal library.** The UI now follows Seth Thompson's Library: a sideways sheet of filter columns fitted with pretext, results shelved by channel with captions and reveal motion, and a browse `sort`. Design: [design.md](./design.md); worksheet: [library redesign](./history/worksheets/worksheet-library-redesign.md).
 - [x] **Index and filter by colour.** Colour weights are indexed as `colour_*` attributes and filtered with `?colour=` (ANDed), browse ranks by weight; synced with `bun run sync --no-vision --no-push-arena` and checked against the live index. Worksheet: [colour filter](./history/worksheets/worksheet-colour-filter.md).
