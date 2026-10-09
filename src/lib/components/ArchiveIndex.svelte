@@ -101,7 +101,7 @@
 
 {#snippet list(heading: string, entries: FilterOption[])}
 	<div class="lines shrink-0">
-		<h2 class="font-bold">{heading}</h2>
+		<h2 class="font-regular text-foreground-strong">{heading}</h2>
 		{#each entries as entry (entry.key)}
 			{@render option(entry)}
 		{/each}
@@ -147,7 +147,7 @@
 			>
 				{@render list('Block type', blockTypeOptions(search))}
 				<div class="flex shrink-0 flex-col gap-2.5">
-					<h2 class="font-bold">Colours</h2>
+					<h2 class="font-regular text-foreground-strong">Colours</h2>
 					<ul class="m-0 grid list-none grid-cols-9 gap-1.75 p-0">
 						{#each colourOptions(search) as colour (colour.key)}
 							<li>
@@ -191,7 +191,7 @@
 					class="rule flex min-h-0 w-(--column-width) flex-none flex-col gap-(--gap-line)"
 					aria-label={index === 0 ? 'Channels' : undefined}
 				>
-					<h2 class="shrink-0 font-bold">Channel</h2>
+					<h2 class="shrink-0 font-regular text-foreground-strong">Channel</h2>
 					<div class="lines min-h-0 flex-1 clip-trimmed" data-index-entries>
 						{#each column as channel (channel.slug)}
 							{@render option(channelOption(search, channel))}

@@ -4,6 +4,10 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ## Unreleased
 
+### Changed
+
+- Aligned sans typography, colour primitives, spacing, capsule actions and date-slider controls with Yusufparak while preserving Archivist serif styling.
+
 ### Removed
 
 - Removed Turbopuffer entirely and made static MiniSearch plus semantic browser search the default; maintenance commands now use public search snapshots.
