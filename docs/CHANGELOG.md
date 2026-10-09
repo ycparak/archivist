@@ -14,6 +14,8 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Added
 
+- Added Trigger.dev development support with a typed `hello-world` task.
+
 - Added an opt-in free browser search build using MiniSearch, exact semantic vector search and Workers AI query embeddings, with public-only exports, preserved filters/sorts/paging, and a prerendered default gallery.
 
 - Added a Most connected sort that ranks blocks by every connection they have on Are.na, yours and everyone else's, newest created first on a tie. Takes effect after `bun run sync`.
