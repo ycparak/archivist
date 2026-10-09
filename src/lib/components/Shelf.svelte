@@ -161,7 +161,7 @@
 			<div class="absolute top-0 right-0 h-full w-px" {@attach watchEnd}></div>
 			<div class="absolute right-(--shelf-padding) bottom-(--shelf-padding) text-foreground">
 				{#if loadFailed}
-					<button type="button" class="underline" onclick={onloadmore}
+					<button type="button" class="control-button" onclick={onloadmore}
 						>Couldn’t load more. Try again</button
 					>
 				{:else if loadingMore}

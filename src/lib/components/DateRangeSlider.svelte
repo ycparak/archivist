@@ -49,24 +49,15 @@
 		if (!dragging) return;
 		onchange(monthRangeToDates(dragging[0], dragging[1], first, count));
 	}
-
-	const percent = (index: number) => (count > 1 ? (index / (count - 1)) * 100 : 0);
 </script>
 
 <div class="flex shrink-0 flex-col gap-2.5">
 	<div class="lines">
-		<h2 class="font-bold">{heading}</h2>
+		<h2 class="font-regular text-foreground-strong">{heading}</h2>
 		<p class={active ? 'text-foreground-strong' : undefined} aria-hidden="true">{label}</p>
 	</div>
-	<div class="relative h-4">
-		<div
-			class="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-foreground-secondary-detail"
-		></div>
-		<div
-			class="absolute top-1/2 h-px -translate-y-1/2 bg-foreground-strong"
-			style:left="{percent(range[0])}%"
-			style:right="{100 - percent(range[1])}%"
-		></div>
+	<div class="relative h-5">
+		<div class="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-gray-500"></div>
 		<input
 			class="range"
 			type="range"
@@ -108,32 +99,33 @@
 	}
 
 	.range::-webkit-slider-runnable-track {
-		height: 100%;
+		height: 1px;
 		background: transparent;
 	}
 
 	.range::-webkit-slider-thumb {
 		appearance: none;
-		width: 0.75rem;
-		height: 0.75rem;
-		margin-top: 0.125rem;
+		width: 11px;
+		height: 11px;
+		margin-top: -5px;
 		border-radius: 9999px;
-		background: var(--foreground-strong);
-		border: 0;
+		background: var(--color-white);
+		border: 1px solid var(--color-gray-700);
 		cursor: grab;
 		pointer-events: auto;
 	}
 
 	.range::-moz-range-track {
+		height: 1px;
 		background: transparent;
 	}
 
 	.range::-moz-range-thumb {
-		width: 0.75rem;
-		height: 0.75rem;
+		width: 11px;
+		height: 11px;
 		border-radius: 9999px;
-		background: var(--foreground-strong);
-		border: 0;
+		background: var(--color-white);
+		border: 1px solid var(--color-gray-700);
 		cursor: grab;
 		pointer-events: auto;
 	}
@@ -147,12 +139,12 @@
 	}
 
 	.range:focus-visible::-webkit-slider-thumb {
-		outline: 2px solid var(--foreground-strong);
+		outline: 2px solid var(--color-blue);
 		outline-offset: 2px;
 	}
 
 	.range:focus-visible::-moz-range-thumb {
-		outline: 2px solid var(--foreground-strong);
+		outline: 2px solid var(--color-blue);
 		outline-offset: 2px;
 	}
 </style>

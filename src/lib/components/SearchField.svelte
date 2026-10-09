@@ -170,16 +170,16 @@
 		<button
 			type="button"
 			aria-label="Clear search"
-			class="search-line absolute right-0 grid h-lh place-items-center px-1 font-serif text-2xl text-foreground-elevated opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground-strong focus-visible:opacity-100 pointer-coarse:opacity-100"
+			class="search-line absolute right-0 control-button size-6.5 px-0 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground-strong focus-visible:opacity-100 pointer-coarse:opacity-100"
 			onclick={clear}
 		>
 			<svg
-				width="32"
-				height="32"
+				width="14"
+				height="14"
 				viewBox="0 0 20 20"
 				fill="none"
 				stroke="currentColor"
-				stroke-width="0.625"
+				stroke-width="1.5"
 				stroke-linecap="square"
 				aria-hidden="true"
 			>
@@ -200,5 +200,6 @@
 
 	button.search-line {
 		top: 0;
+		margin-block-start: calc(var(--annotation-padding) + (1.5rem * 0.72 - 26px) / 2);
 	}
 </style>
