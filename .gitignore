@@ -20,3 +20,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 /.worktrees
+
+/.search-cache
+/static/search

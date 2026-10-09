@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { matchesEvaluationCase, type SearchEvaluationCase } from './evaluation';
+import {
+	matchesEvaluationCase,
+	searchEvaluationCaseSchema,
+	type SearchEvaluationCase
+} from './evaluation';
 
 const noResultCase: SearchEvaluationCase = {
 	id: 'no-result',
@@ -13,4 +17,14 @@ describe('matchesEvaluationCase', () => {
 		expect(matchesEvaluationCase(noResultCase, new Set())).toBe(true);
 		expect(matchesEvaluationCase(noResultCase, new Set(['block:1']))).toBe(false);
 	});
+});
+
+it('retains colour, created date and browse sort evaluation inputs', () => {
+	const fields = {
+		colour: ['blue', 'orange'],
+		created_from: '2026-09-01',
+		created_to: '2026-09-30',
+		sort: 'oldest-created'
+	};
+	expect(searchEvaluationCaseSchema.parse({ ...noResultCase, ...fields })).toMatchObject(fields);
 });

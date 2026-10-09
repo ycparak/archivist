@@ -2,7 +2,7 @@
 title: AGENTS
 ---
 
-Archivist is a SvelteKit app on Cloudflare Workers: a Spotlight-like search and gallery for one maintainer's Are.na archive, backed by Turbopuffer for hybrid (lexical + semantic) retrieval.
+Archivist is a SvelteKit app on Cloudflare Workers: a Spotlight-like search and gallery for one maintainer's Are.na archive, with an opt-in MiniSearch/browser-vector backend and a legacy Turbopuffer backend for hybrid retrieval.
 
 ## This File
 
@@ -15,6 +15,7 @@ Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, Turbopuffer (sear
 - `src/lib/domain/`: framework-free domain types and transformations. `titles.ts` decides which Are.na titles carry no information; write-back and captions both use it. `search.ts` (the URL grammar, `SearchResult`, `ArchiveSearchState`) ships to the browser, so it must stay free of Zod schemas, provider shapes, and any runtime validation library. `archive.ts` (`ArchiveBlock`, `SearchDocument`, `toSearchDocument`) is imported only from `src/lib/server/` and does use Zod; never import it from a component or route markup. Provider validation and provider shapes live under `src/lib/server/`.
 - `src/lib/server/arena/`: Are.na transport, payload schemas, and pagination only.
 - `src/lib/server/indexing/`: normalization, channel filtering, the channel manifest, sync orchestration, the colour stage (`colour/`), the connections stage (`connections/`), the vision stage (`vision/`), and CLI progress reporting (`progress/`). It also holds the four committed files the sync writes: `channel-manifest.json`, `colour-cache.jsonl`, `connections-cache.jsonl` and `vision-cache.jsonl`.
+- `src/lib/search/`: client-safe search validation, snapshot schemas, lexical/vector ranking, RRF, colour thresholds and the browser Web Worker/client. Keep provider normalization and credentials server-only.
 - `src/lib/server/search/`: search request validation, env config, `executeArchiveSearch` (dedupe and paging), the read-side `SearchRepository`, result mapping, the evaluation-case schema, and the Turbopuffer write client and schema the sync uses.
 - `src/lib/server/rate-limit.ts`: edge rate limiting, wired in through `src/hooks.server.ts`.
 - `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
@@ -70,14 +71,15 @@ in `./docs/decisions/`.
 Archivist is a public gallery and search surface for one maintainer's Are.na archive. A new plan is being written; until it lands, the points below describe what the code does and are the boundary for changes. Anything beyond them needs the maintainer's explicit go-ahead.
 
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
-- Query time is LLM-free. The one use of a model is the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
-- Sync is manual. A plain `bun run sync` is maintainer-only; agents may run the flagged variants described under Hard Rules. Public requests query Turbopuffer only; they must never proxy to Are.na.
+- Query time is free of generative LLMs. Browser search uses Workers AI only to embed queries; the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
+- Sync is manual. A plain `bun run sync` is maintainer-only; agents may run the flagged variants described under Hard Rules. Legacy public requests query Turbopuffer; browser builds download versioned public assets and call a bounded embedding endpoint. Public requests must never proxy to Are.na.
 
 ## Search Invariants
 
-- Use the `search_text` schema in `docs/architecture.md` for both BM25 and native embeddings.
+- Use the canonical `search_text` composition in `docs/architecture.md` for lexical indexing and embeddings; browser embeddings use bounded complete-text chunks.
 - `src/lib/domain/search.ts` owns the URL search grammar (parameter names, the implicit-mode rule, the date format). The server parser and the UI both consume it; do not restate a parameter name anywhere else.
-- Hybrid means one Turbopuffer `multiQuery` with BM25 + native ANN and `rerank_by: ['RRF']`; do not implement ad-hoc score arithmetic in the UI.
+- In browser builds, filter the complete eligible corpus before lexical/vector ranking, aggregate chunk scores to one block, and fuse complete ranked lists with RRF (`k=60`) in `src/lib/search/`, with stable ID ties and release pinning. No raw score arithmetic belongs in UI components.
+- Legacy hybrid means one Turbopuffer `multiQuery` with BM25 + native ANN and `rerank_by: ['RRF']`; do not implement ad-hoc score arithmetic in the UI.
 - Filter only `kind`, `channel_slugs`, `connected_at`, `created_at`, and the `colour_*` weights. `kind` is the gallery's Block type, derived at sync by `blockKind`; `block_type` is Are.na's own type and is not a filter. `sort` changes the browse order only; a text query always ranks by relevance, and without a query every request browses. Colour browse sorts on the weights with an `id` tiebreak, never on a `Sum` expression, because expression ties have no stable order across pages. See [Retrieval behavior](./docs/architecture.md#retrieval-behavior).
 - Schema changes that alter an existing Turbopuffer attribute's type require a new versioned namespace. Record that migration as an ADR in `docs/decisions/`.
 

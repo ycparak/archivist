@@ -17,6 +17,34 @@ syncs every channel that user owns. Run it and you get your archive, not anyone 
 
 ---
 
+## Free browser search
+
+The MiniSearch migration is available as a separate build while the legacy provider remains the default for rollback. It preserves Exact words, Related ideas and Best match, all filters, browse sorts and paging. The default gallery is prerendered; searching and filtering require JavaScript. Semantic search uses Workers AI's free allocation; no database is needed.
+
+In the Cloudflare dashboard, open **Workers AI → Use REST API**, copy the account ID, and create the Workers AI API token from the template (Workers AI Read/Edit). Put these in the gitignored `.env` alongside the existing Are.na token:
+
+```dotenv
+CLOUDFLARE_ACCOUNT_ID=your_account_id
+CLOUDFLARE_API_TOKEN=your_workers_ai_api_token
+```
+
+Then run:
+
+```sh
+bun run export:search
+bun run evaluate:search --compare
+bun run dev:browser
+bun run build:browser
+```
+
+`export:search` reads only public/closed channels, even when a private channel is allow-listed for legacy sync. It reuses existing vision, colour and connection caches; it does not refresh those measurements, call OpenRouter, write Are.na titles, or modify Turbopuffer. Failed/aborted discovery cannot replace the current release. Document embeddings use Cloudflare Workers AI and checkpoint locally; reruns reuse unchanged chunks. The corpus and search index are public downloads, so review publication scope before deploying.
+
+Generated files live in gitignored `static/search/` and `.search-cache/`. Keep the assets in the same checkout when building, or supply them as CI artifacts before `build:browser`; do not commit a populated export. Preserve old release directories so open browser sessions keep working. `evaluate:search --browser` evaluates only the replacement; `--compare` additionally reports legacy ranks. Both use the existing public block-ID fixture.
+
+The browser Worker uses MiniSearch for keywords and normalized cosine over static document vectors for meaning; RRF combines the ranked lists. Queries go to a rate-limited, bounded POST endpoint only to produce an embedding. Local `dev:browser` uses the REST credentials; deployment uses the configured `AI` binding and requires no Are.na, OpenRouter or Cloudflare API token. Rate limiting is mandatory for inference. Check free account allocations before generating embeddings: usage is shared with other Workers AI projects.
+
+Before cutover, check real fixture ranks and phone performance, then deploy the output of `build:browser` using the existing deployment procedure. `/api/search` returns **410** in browser mode; consumers must use the static archive/search worker. The normal `build` and `dev` commands continue to use Turbopuffer unless `PUBLIC_ARCHIVE_SEARCH=browser` is explicitly set. Neither implementation work nor an export deploys the app or deletes the live index. See the [decision](docs/decisions/0004-browser-search.md).
+
 ## What you need
 
 |                                                  | Why                                                 | Cost                                |

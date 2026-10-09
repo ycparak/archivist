@@ -19,7 +19,10 @@
 		"gen": "wrangler types --env-file=.env.example",
 		"sync": "bun run scripts/sync.ts",
 		"evaluate:search": "bun run scripts/evaluate-search.ts",
-		"calibrate:colour": "bun run scripts/calibrate-colour.ts"
+		"calibrate:colour": "bun run scripts/calibrate-colour.ts",
+		"export:search": "bun run scripts/export-search.ts",
+		"build:browser": "PUBLIC_ARCHIVE_SEARCH=browser bun run build",
+		"dev:browser": "PUBLIC_ARCHIVE_SEARCH=browser bun run dev"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -50,6 +53,7 @@
 		"@aredotna/sdk": "^0.1.1",
 		"@chenglou/pretext": "^0.0.9",
 		"@turbopuffer/turbopuffer": "^2.8.0",
+		"minisearch": "^7.2.0",
 		"zod": "^4.6.2"
 	}
 }
