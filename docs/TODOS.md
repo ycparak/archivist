@@ -38,6 +38,8 @@ _(none)_
 
 _Newest first._
 
+- [x] **Deploy Archivist to Cloudflare.** Published the Worker at archivist.yusufparak.com and verified HTTPS, public assets and semantic embeddings; [worksheet](./history/worksheets/worksheet-cloudflare-deploy.md).
+
 - [x] **Submit search on Enter or blur.** Removed automatic search while typing; [worksheet](./history/worksheets/worksheet-search-submit.md).
 
 - [x] **Stabilize Cloudflare local development.** Marked Workers AI as remote, disabled persisted local platform-proxy state, and verified concurrent requests; [worksheet](./history/worksheets/worksheet-cloudflare-local-dev.md).

@@ -1,6 +1,8 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "archivist",
+	"account_id": "2a232099fe24d1ae20687ea6d3240f20",
+	"routes": [{ "pattern": "archivist.yusufparak.com", "custom_domain": true }],
 	"compatibility_date": "2026-09-11",
 	"compatibility_flags": ["nodejs_als"],
 	"main": ".svelte-kit/cloudflare/_worker.js",
