@@ -6,6 +6,8 @@ User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS
 
 ### Changed
 
+- Changed search to submit on Enter or when the input loses focus instead of searching while typing.
+
 - Aligned sans typography, colour primitives, spacing, capsule actions and date-slider controls with Yusufparak while preserving Archivist serif styling.
 
 ### Removed

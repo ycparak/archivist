@@ -277,16 +277,16 @@ trimmed stack is a little shorter, so packing by it errs on the safe side.
 
 ## Components
 
-| Component                | Role                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------ |
-| `SearchField.svelte`     | The serif search box: debounced live search, Enter submits, clear button, overlap hairline |
-| `ArchiveIndex.svelte`    | Filter columns, colour swatches, channel fitting, footer                                   |
-| `DateRangeSlider.svelte` | Two native range inputs over whole months; Connected starts June 2024, Created Feb 2014    |
-| `Shelf.svelte`           | The band, scale bar, shelves, captions, reveal and infinite load                           |
-| `ShelfCover.svelte`      | A channel cover                                                                            |
-| `ShelfBlock.svelte`      | One block as a page: image, muted looping video, or a page of text                         |
-| `CaptionText.svelte`     | Clamped caption words with marks and the pretext lead-in                                   |
-| `ArchiveMessage.svelte`  | Empty, invalid and unavailable states, set inside the band                                 |
+| Component                | Role                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| `SearchField.svelte`     | The serif search box: Enter or blur submits, clear button, overlap hairline             |
+| `ArchiveIndex.svelte`    | Filter columns, colour swatches, channel fitting, footer                                |
+| `DateRangeSlider.svelte` | Two native range inputs over whole months; Connected starts June 2024, Created Feb 2014 |
+| `Shelf.svelte`           | The band, scale bar, shelves, captions, reveal and infinite load                        |
+| `ShelfCover.svelte`      | A channel cover                                                                         |
+| `ShelfBlock.svelte`      | One block as a page: image, muted looping video, or a page of text                      |
+| `CaptionText.svelte`     | Clamped caption words with marks and the pretext lead-in                                |
+| `ArchiveMessage.svelte`  | Empty, invalid and unavailable states, set inside the band                              |
 
 Copy that depends on state lives in tested functions (`filters.ts`, `caption.ts`, `format.ts`), not
 in markup.
