@@ -12,12 +12,9 @@
 		onnavigate
 	}: { search: ArchiveSearchState; onnavigate: (href: ArchiveSearchHref) => void } = $props();
 
-	const QUERY_DEBOUNCE_MS = 150;
-
 	let draft = $state<string | undefined>();
 	let textarea = $state<HTMLTextAreaElement>();
 	let overlapping = $state(false);
-	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let requestedHref: ArchiveSearchHref | undefined;
 
 	const value = $derived(draft ?? search.query);
@@ -25,8 +22,7 @@
 	$effect(() => {
 		void search;
 		requestedHref = undefined;
-		// A keystroke still waiting on the debounce is newer than the URL that just arrived.
-		if (!debounceTimer) draft = undefined;
+		draft = undefined;
 	});
 
 	/** What a submit without JavaScript must carry. Sort is left out: it is invalid beside a query,
@@ -46,13 +42,7 @@
 		return fields;
 	});
 
-	function cancelPending() {
-		clearTimeout(debounceTimer);
-		debounceTimer = undefined;
-	}
-
 	function submitQuery(query: string) {
-		cancelPending();
 		const mode = search.mode === 'browse' ? 'hybrid' : search.mode;
 		const href = toArchiveSearchHref({ ...search, query, mode });
 		if (href === (requestedHref ?? toArchiveSearchHref(search))) return;
@@ -62,9 +52,6 @@
 
 	function handleInput(event: Event & { currentTarget: HTMLTextAreaElement }) {
 		draft = event.currentTarget.value;
-		cancelPending();
-		const query = draft;
-		debounceTimer = setTimeout(() => submitQuery(query), QUERY_DEBOUNCE_MS);
 	}
 
 	function handleKeydown(event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
@@ -137,8 +124,6 @@
 			window.removeEventListener('resize', schedule);
 		};
 	};
-
-	$effect(() => cancelPending);
 </script>
 
 <form
@@ -162,6 +147,14 @@
 		spellcheck="false"
 		{value}
 		oninput={handleInput}
+		onblur={(event) => {
+			if (
+				event.relatedTarget instanceof Element &&
+				event.relatedTarget.closest('button[aria-label="Clear search"]')
+			)
+				return;
+			submitQuery(event.currentTarget.value);
+		}}
 		onkeydown={handleKeydown}></textarea>
 	{#each hidden as [name, fieldValue], index (index)}
 		<input type="hidden" {name} value={fieldValue} />
