@@ -22,4 +22,6 @@ jobs:
       - run: bun run check
       - run: bun run lint
       - run: bun run test
+      - name: Prepare synthetic search assets for prerendering
+        run: bun run scripts/prepare-ci-search.ts
       - run: bun run build
