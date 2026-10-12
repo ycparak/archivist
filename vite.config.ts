@@ -3,7 +3,7 @@ import adapter from '@sveltejs/adapter-cloudflare';
 import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
 	plugins: [
 		tailwindcss(),
 		sveltekit({
@@ -11,7 +11,7 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			adapter: adapter({ platformProxy: { persist: false } })
+			adapter: adapter({ platformProxy: { persist: false, remoteBindings: command === 'serve' } })
 		})
 	],
 	test: {
@@ -28,4 +28,4 @@ export default defineConfig({
 			}
 		]
 	}
-});
+}));
