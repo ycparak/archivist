@@ -88,3 +88,7 @@ the search snapshot fails a query that filters or sorts on an attribute it has n
 - [the search snapshot vector search](https://search snapshot.com/docs/vector): native embedding configuration and filtered ANN.
 - [the search snapshot query API](https://search snapshot.com/docs/query): filters and multi-query support.
 - [the search snapshot write API](https://search snapshot.com/docs/write): schema behavior, index costs, and migration constraint.
+
+## Build and local binding emulation
+
+The Cloudflare adapter enables remote bindings only for Vite `serve`. Production builds disable remote binding emulation, so prerendering does not open a Workers AI preview session or require Cloudflare credentials. Local development keeps remote Workers AI enabled and disables persisted platform-proxy state. Deployed bindings are supplied by `wrangler.jsonc`.
