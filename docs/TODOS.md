@@ -38,6 +38,8 @@ _(none)_
 
 _Newest first._
 
+- [x] **Fix CI build authentication.** Disabled remote binding emulation during builds and removed the CI build token; [worksheet](./history/worksheets/worksheet-ci-build.md).
+
 - [x] **Deploy Archivist to Cloudflare.** Published the Worker at archivist.yusufparak.com and verified HTTPS, public assets and semantic embeddings; [worksheet](./history/worksheets/worksheet-cloudflare-deploy.md).
 
 - [x] **Submit search on Enter or blur.** Removed automatic search while typing; [worksheet](./history/worksheets/worksheet-search-submit.md).
