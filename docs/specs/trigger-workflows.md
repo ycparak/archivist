@@ -1,6 +1,6 @@
 # Trigger.dev maintenance workflows
 
-Status: phase 1 implemented locally; phase 2 implemented with a hosted development run (production Trigger environment not yet configured); phases 3–6 planned; scope selected by the maintainer on 2026-10-14 and revised the same day to add a daily scheduled sync with automatic deployment.
+Status: phase 1 implemented locally; phase 2 implemented with a hosted development run (production Trigger environment not yet configured); phase 3 implemented in code and awaiting production credentials ([worksheet](./worksheet-daily-sync.md)); phases 4–6 planned; scope selected by the maintainer on 2026-10-14 and revised the same day to add a daily scheduled sync with automatic deployment.
 The current runtime is described in [architecture](../architecture.md). Phase 1 provides local candidate commands and a synthetic Trigger validation task (evidence in the [phase 1 worksheet](../history/worksheets/worksheet-candidate-validation.md)); phase 2 code, its storage [ADR](../decisions/0005-hosted-maintenance-storage.md) and [worksheet](../history/worksheets/worksheet-hosted-sync.md) exist; remaining phases are proposed work.
 
 ## Outcome and scope

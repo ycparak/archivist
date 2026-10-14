@@ -30,7 +30,7 @@ R2 evaluates `If-Match` and `If-None-Match: *` on `PutObject` atomically against
 
 Committed JSONL files become a portable seed and a reviewed export. `bun run hosted bootstrap` imports them once. `bun run hosted pull` imports hosted entries locally without replacing newer local work, and writes `.maintenance/cache-changes.json` for review.
 
-Source identity for hosted candidates is computed from the clean local checkout that triggers the job, not from the Trigger worker bundle. The deploy command enforces the same identity, so promotion is bound to reviewed source. However, a Trigger worker deployed from different code could still produce the candidate. Deploy the Trigger worker from the same revision before triggering production jobs.
+Source identity for manually triggered candidates is computed from the clean local checkout that triggers the job. Scheduled jobs use the identity CI bakes into the Trigger bundle at deploy time, and refuse to run without it; they cross-check it against the deployment's commit. The deploy command enforces the same identity either way, so promotion is bound to reviewed source. A manual job can still run on a Trigger worker deployed from different code, so trigger manual production jobs only from the revision CI last deployed.
 
 Provider charges are not exactly-once: a process can die after a provider call succeeds but before its record is persisted. Records are written as each entry settles, which bounds that loss to in-flight entries.
 
