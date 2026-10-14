@@ -11,11 +11,15 @@ import {
 	stageCodecs
 } from './caches';
 import {
+	ADOPTED_LIVE_JOB_ID,
 	jobKeys,
+	loadStoredRelease,
 	PRODUCTION_POINTER_KEY,
 	recordHostedDeployment,
 	stageHostedDeployment
 } from './hosted-release';
+import { dispatchSiteDeploy } from './github';
+import { pruneArtifacts } from './retention';
 import {
 	HostedJobConfigurationError,
 	runHostedSync,
@@ -105,6 +109,12 @@ function dependencies(
 		heapBytes: () => 0,
 		...overrides
 	};
+}
+
+function ready<T extends { status: string }>(staged: T) {
+	if (staged.status !== 'ready')
+		throw new Error(`Expected a ready deployment, got ${staged.status}`);
+	return staged as Extract<T, { status: 'ready' }>;
 }
 
 describe('archive lease', () => {
@@ -313,9 +323,123 @@ describe('hosted deployment', () => {
 			});
 		await expect(stage('job-new', 'c'.repeat(40))).rejects.toThrow('source revision');
 		const lease = await acquireLease(store, { holder: 'deploy', renew: false });
-		await recordHostedDeployment(store, lease, await stage('job-new'));
+		await recordHostedDeployment(store, lease, ready(await stage('job-new')));
 		await lease.release();
 		expect(await store.get(PRODUCTION_POINTER_KEY)).not.toBeNull();
+		expect((await stage('job-new')).status).toBe('already-live');
 		await expect(stage('job-old')).rejects.toThrow('superseded');
+	});
+
+	it('adopts the live release as baseline and decides deploy, unchanged or rejected', async () => {
+		const store = await bootstrapped();
+		const live = await bootstrapped();
+		await runHostedSync(payload('job-seed'), dependencies(live));
+		const { release, assets } = await loadStoredRelease(
+			live,
+			(await live.list('releases/'))[0].split('/')[1]
+		);
+		const site: typeof fetch = async (input) => {
+			const path = new URL(String(input)).pathname;
+			if (path === '/search/manifest.json') return new Response(JSON.stringify(release));
+			const file = path.replace(`/search/releases/${release.version}/`, '');
+			return assets.has(file)
+				? new Response(new Uint8Array(assets.get(file)!))
+				: new Response(null, { status: 404 });
+		};
+		const daily = (jobId: string, ids: string[]) =>
+			runHostedSync(
+				{ ...payload(jobId), gate: 'no-regression' },
+				dependencies(store, {
+					discover: async () => discovered(ids),
+					liveSite: { url: 'https://site.test', fetchFn: site }
+				})
+			);
+		expect((await daily('daily-same', ['1', '2'])).decision).toBe('unchanged');
+		const pointer = await store.get(PRODUCTION_POINTER_KEY);
+		expect(JSON.parse(new TextDecoder().decode(pointer!.bytes))).toMatchObject({
+			version: release.version,
+			jobId: ADOPTED_LIVE_JOB_ID,
+			candidateFence: 0
+		});
+		const added = await daily('daily-added', ['1', '2', '3']);
+		expect(added).toMatchObject({ decision: 'deploy', passed: true, sourceRevision: revision });
+		const rejected = await runHostedSync(
+			{ ...payload('daily-lost'), gate: 'no-regression' },
+			dependencies(store, { discover: async () => discovered(['2', '3']) })
+		);
+		expect(rejected.decision).toBe('rejected');
+	});
+});
+
+describe('retention', () => {
+	it('keeps live, previous and newest candidates and expires old jobs', async () => {
+		const store = memoryStore();
+		const put = (key: string, value: unknown) =>
+			store.put(key, new TextEncoder().encode(JSON.stringify(value)));
+		const version = (n: number) => String(n).repeat(64);
+		const day = 24 * 60 * 60 * 1000;
+		const now = Date.parse('2026-12-01T00:00:00.000Z');
+		for (let n = 1; n <= 9; n++) {
+			await put(`releases/${version(n)}/manifest.json`, {});
+			const at = new Date(now - (10 - n) * 10 * day).toISOString();
+			await put(`jobs/job-${n}/job.json`, { createdAt: at });
+			await put(`jobs/job-${n}/report.json`, {
+				format: 1,
+				jobId: `job-${n}`,
+				status: 'completed',
+				candidateVersion: version(n),
+				passed: true,
+				decision: 'deploy',
+				sourceRevision: revision,
+				blocks: 1,
+				channels: 1,
+				stages: {},
+				completedAt: at
+			});
+		}
+		await put(PRODUCTION_POINTER_KEY, {
+			format: 1,
+			fence: 1,
+			version: version(1),
+			jobId: 'job-1',
+			candidateFence: 1,
+			sourceRevision: revision,
+			previousVersion: version(2),
+			deployedAt: new Date(now).toISOString()
+		});
+		const lease = await acquireLease(store, { holder: 'prune', renew: false });
+		const deleted = await pruneArtifacts(store, lease, { now, keepCandidates: 3 });
+		const versions = new Set((await store.list('releases/')).map((key) => key.split('/')[1]));
+		expect(versions).toEqual(new Set([1, 2, 7, 8, 9].map(version)));
+		const jobs = new Set((await store.list('jobs/')).map((key) => key.split('/')[1]));
+		expect(jobs).toEqual(new Set(['job-1', 'job-7', 'job-8', 'job-9']));
+		expect(deleted).toEqual({ releases: 4, jobs: 5 });
+	});
+});
+
+describe('site deploy dispatch', () => {
+	it('dispatches the workflow with the job and revision and hides the token on failure', async () => {
+		const calls: [string, RequestInit][] = [];
+		const ok: typeof fetch = async (input, init) => {
+			calls.push([String(input), init!]);
+			return new Response(null, { status: 204 });
+		};
+		const options = {
+			token: 'secret-token',
+			repository: 'ycparak/archivist',
+			jobId: 'daily-20261015',
+			revision
+		};
+		await dispatchSiteDeploy(options, ok);
+		expect(calls[0][0]).toBe(
+			'https://api.github.com/repos/ycparak/archivist/actions/workflows/deploy-site.yml/dispatches'
+		);
+		expect(JSON.parse(String(calls[0][1].body))).toEqual({
+			ref: 'main',
+			inputs: { job_id: 'daily-20261015', revision }
+		});
+		const denied = dispatchSiteDeploy(options, async () => new Response(null, { status: 403 }));
+		await expect(denied).rejects.toThrow('(403)');
+		await expect(denied).rejects.not.toThrow('secret-token');
 	});
 });

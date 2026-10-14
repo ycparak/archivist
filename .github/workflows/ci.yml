@@ -25,3 +25,22 @@ jobs:
       - name: Prepare synthetic search assets for prerendering
         run: bun run scripts/prepare-ci-search.ts
       - run: bun run build
+
+  deploy-trigger:
+    # Scheduled jobs record the identity written here; the site deploy refuses any other source.
+    needs: quality
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: trigger-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Record source identity
+        run: bun run hosted identity
+      - name: Deploy Trigger.dev tasks
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+        run: bunx trigger.dev@4.7.3 deploy --external-id "$GITHUB_SHA"

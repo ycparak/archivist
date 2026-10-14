@@ -6,6 +6,7 @@ import {
 	evaluationCasesSchema,
 	evaluateRelease,
 	evaluationEvidence,
+	GATE_POLICIES,
 	queryVectorsSchema
 } from './evaluate';
 import { releaseAssets, type ValidatedRelease } from './release';
@@ -20,13 +21,18 @@ export const candidateOriginSchema = z
 		sourceFingerprint: hash,
 		baselineVersion: hash.nullable(),
 		maxRankDrop: z.number().int().nonnegative().nullable(),
+		gate: z.enum(GATE_POLICIES),
 		/** Hosted provenance: a candidate from an older lease fence is superseded by a newer deployment. */
 		job: z
 			.object({ id: z.string().min(1), fence: z.number().int().positive() })
 			.strict()
 			.nullable()
 	})
-	.strict();
+	.strict()
+	.refine(
+		(origin) => origin.gate === 'strict' || origin.maxRankDrop !== null,
+		'The no-regression gate needs an explicit rank tolerance'
+	);
 export type CandidateOrigin = z.infer<typeof candidateOriginSchema>;
 const rankSchema = z
 	.object({
@@ -43,6 +49,7 @@ const resultSchema = z
 		resultCount: z.number().int().nonnegative(),
 		ranks: z.array(rankSchema),
 		firstPagePass: z.boolean(),
+		knownFailure: z.boolean(),
 		regression: z.boolean(),
 		passed: z.boolean()
 	})
@@ -96,7 +103,14 @@ export async function validateCandidate(options: {
 			: options.fixture
 	);
 	const queries = queryVectorsSchema.parse(options.queryVectors);
-	const results = evaluateRelease(candidate, cases, queries, baseline, origin.maxRankDrop);
+	const results = evaluateRelease(
+		candidate,
+		cases,
+		queries,
+		baseline,
+		origin.maxRankDrop,
+		origin.gate
+	);
 	const assets = [];
 	for (const asset of releaseAssets(candidate.release))
 		assets.push({
@@ -154,7 +168,8 @@ export async function assertPromotion(options: {
 		cases,
 		report.queryVectors,
 		options.baseline,
-		origin.maxRankDrop
+		origin.maxRankDrop,
+		origin.gate
 	);
 	if (
 		!report.passed ||
@@ -171,14 +186,14 @@ export function formatValidationReport(report: ValidationReport): string {
 		`Candidate: ${report.candidateVersion}`,
 		'',
 		`Corpus: ${report.blockCount} blocks, ${report.vectorCount} vectors.`,
-		`Result: ${report.passed ? 'passed' : 'failed'}. Mobile performance: ${report.mobile}.`,
+		`Result: ${report.passed ? 'passed' : 'failed'}. Known failures: ${report.results.filter(({ knownFailure }) => knownFailure).length}. Mobile performance: ${report.mobile}.`,
 		'',
 		'| Case | First page | Expected ranks (baseline) | Regression |',
 		'| --- | --- | --- | --- |'
 	];
 	for (const result of report.results)
 		lines.push(
-			`| ${result.id} | ${result.firstPagePass ? 'pass' : 'fail'}${result.pending ? ' (pending)' : ''} | ${result.ranks.map(({ id, rank, baselineRank }) => `${id}: ${rank ?? 'missing'} (${baselineRank ?? '—'})`).join(', ') || 'no results expected'} | ${result.regression ? 'yes' : 'no'} |`
+			`| ${result.id} | ${result.firstPagePass ? 'pass' : 'fail'}${result.pending ? ' (pending)' : ''}${result.knownFailure ? ' (known)' : ''} | ${result.ranks.map(({ id, rank, baselineRank }) => `${id}: ${rank ?? 'missing'} (${baselineRank ?? '—'})`).join(', ') || 'no results expected'} | ${result.regression ? 'yes' : 'no'} |`
 		);
 	lines.push(
 		'',

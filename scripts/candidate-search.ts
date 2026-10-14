@@ -49,6 +49,7 @@ async function main() {
 				...identity,
 				baselineVersion: baseline?.release.version ?? null,
 				maxRankDrop: null,
+				gate: 'strict',
 				job: null
 			}),
 			signal: abort.signal,
