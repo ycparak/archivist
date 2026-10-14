@@ -19,7 +19,12 @@ export const candidateOriginSchema = z
 		sourceRevision: z.string().min(1),
 		sourceFingerprint: hash,
 		baselineVersion: hash.nullable(),
-		maxRankDrop: z.number().int().nonnegative().nullable()
+		maxRankDrop: z.number().int().nonnegative().nullable(),
+		/** Hosted provenance: a candidate from an older lease fence is superseded by a newer deployment. */
+		job: z
+			.object({ id: z.string().min(1), fence: z.number().int().positive() })
+			.strict()
+			.nullable()
 	})
 	.strict();
 export type CandidateOrigin = z.infer<typeof candidateOriginSchema>;

@@ -20,6 +20,7 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Added
 
+- Added the manually triggered `archive-sync` Trigger.dev task with leased, resumable R2-backed caches and a `bun run hosted` CLI for bootstrap, cache import, sync and guarded deployment.
 - Added separate search candidate preparation, full-ranking validation reports and guarded local promotion, plus a non-mutating Trigger.dev validation smoke task.
 - Added the production deployment at archivist.yusufparak.com and the `bun run deploy` command.
 - Added Trigger.dev development support with a typed `hello-world` task.

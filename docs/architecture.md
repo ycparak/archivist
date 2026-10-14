@@ -106,7 +106,34 @@ All manifest writers use an exclusive publication lock and fail explicitly on co
 
 ## Trigger.dev
 
-The current integration is SDK/build package 4.7.3, `trigger.config.ts` using Node 24, task discovery under `src/trigger/`, a 3,600-second maximum duration and three default attempts (also enabled in development). Tasks include the typed `hello-world` example and a schema-validated `validate-search-smoke` task that checks a synthetic release without provider calls or publication. No hosted archive sync, enrichment, persistence or deployment task exists yet. Proposed work is in [Trigger.dev workflows](./specs/trigger-workflows.md); it is not current runtime behavior.
+The current integration is SDK/build package 4.7.3, `trigger.config.ts` using Node 24, task discovery under `src/trigger/`, a 3,600-second maximum duration and three default attempts (also enabled in development). Tasks are:
+
+- `hello-world`, the typed example.
+- `validate-search-smoke`, which checks a synthetic release with no provider calls or publication.
+- `archive-sync`, the manual hosted sync.
+
+### Hosted maintenance
+
+`archive-sync` runs on the `archive-maintenance` queue (concurrency 1) with two attempts. Its payload selects the colour and connections stages; vision and Are.na write-back are rejected by schema. Persistence and coordination are described in [ADR 0005](./decisions/0005-hosted-maintenance-storage.md). A job:
+
+1. Takes the archive lease.
+2. Pins one complete discovery via `discoverArchive`; incomplete or empty discovery persists nothing.
+3. Overlays its own settled records on the canonical caches, then runs `enrichArchive`, persisting every settled entry immediately.
+4. Merges those records into the latest canonical snapshot under the fence.
+5. Builds a candidate with hosted embedding deltas.
+6. Validates the candidate against the bundled fixture and the deployed baseline.
+7. Writes a final job report.
+
+A restarted attempt reuses the pinned discovery and settled records. Progress is exposed as run metadata (`phase`, `position`). Lease conflicts, invalid configuration and reused job IDs fail without retry.
+
+`bun run hosted` is the maintainer CLI:
+
+- `bootstrap` imports committed caches and the local embedding cache once.
+- `pull` imports hosted caches locally without replacing newer local entries, and writes `.maintenance/cache-changes.json`.
+- `sync` triggers a job from a clean checkout, with `--no-colour`, `--no-connections`, and `--resume <job>` (which uses a fresh run key).
+- `deploy <job> [--dry-run]` stages and deploys a job's candidate. It verifies the job report, checkout identity, supersession and recomputed evaluation, moves existing local search assets aside, and publishes only the deployed baseline and the candidate. It then builds, deploys, and records the production pointer.
+
+No task deploys, writes to Are.na or runs automatically.
 
 ## Build and local binding emulation
 
