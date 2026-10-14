@@ -2,6 +2,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { downloadCapped } from '../download';
+import { isRetryableStatus } from '../outcome';
 import { runFfmpeg, type RunFfmpegOptions } from '../ffmpeg';
 import { isAnimatedImage } from '$lib/domain/archive';
 
@@ -32,7 +33,7 @@ export const MAX_SOURCE_BYTES = 64 * 1024 * 1024;
 
 export type TranscodeResult =
 	| { kind: 'video'; dataUrl: string; bytes: number }
-	| { kind: 'skipped'; cause: 'unreachable' | 'too-large'; reason: string };
+	| { kind: 'skipped'; cause: 'unreachable' | 'too-large'; reason: string; retryable?: boolean };
 
 export interface TranscodeOptions extends RunFfmpegOptions {
 	fetchFn?: typeof fetch;
@@ -65,7 +66,12 @@ export async function transcodeToVideoDataUrl(
 		signal: ffmpegOptions.signal
 	});
 	if (download.kind === 'unreachable')
-		return { kind: 'skipped', cause: 'unreachable', reason: download.reason };
+		return {
+			kind: 'skipped',
+			cause: 'unreachable',
+			reason: download.reason,
+			retryable: isRetryableStatus(download.status)
+		};
 	if (download.kind === 'too-large')
 		return { kind: 'skipped', cause: 'too-large', reason: download.reason };
 	const source = download.bytes;

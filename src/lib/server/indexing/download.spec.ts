@@ -77,7 +77,8 @@ describe('downloadCapped', () => {
 			new Response('missing', { status: 404 })) as unknown as typeof fetch;
 		await expect(downloadCapped('https://cdn.test/a', { fetchFn, maxBytes: 10 })).resolves.toEqual({
 			kind: 'unreachable',
-			reason: 'source returned HTTP 404'
+			reason: 'source returned HTTP 404',
+			status: 404
 		});
 	});
 });
