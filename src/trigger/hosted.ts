@@ -13,6 +13,7 @@ import {
 } from '../lib/server/maintenance/hosted-sync';
 import { LeaseHeldError } from '../lib/server/maintenance/lease';
 import { createR2Store } from '../lib/server/maintenance/r2';
+import { enrichBatchTask } from './batch';
 
 export const SITE_URL = 'https://archivist.yusufparak.com';
 
@@ -49,6 +50,14 @@ export function hostedDependencies(signal: AbortSignal): HostedSyncDependencies 
 		}),
 		onEvent: progress,
 		liveSite: { url: SITE_URL },
+		fanOut: async (jobId, stage, batches) => {
+			const result = await enrichBatchTask.batchTriggerAndWait(
+				batches.map((blockIds, batch) => ({ payload: { jobId, stage, batch, blockIds } }))
+			);
+			// Settled batches keep their records; a retried parent re-plans only what is still missing.
+			const failed = result.runs.filter((run) => !run.ok).length;
+			if (failed) throw new Error(`${failed} of ${batches.length} ${stage} batches failed`);
+		},
 		gzipSize: async (bytes) => gzipSync(bytes).length,
 		heapBytes: () => memoryUsage().heapUsed
 	};

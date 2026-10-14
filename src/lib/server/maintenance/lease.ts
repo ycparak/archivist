@@ -31,6 +31,11 @@ export interface Lease {
 	/** Aborted when the lease is lost or released. */
 	signal: AbortSignal;
 	assertHeld(): void;
+	/**
+	 * Renews now. Needed after a wait that may have suspended the process and its renewal timer;
+	 * throws `LeaseLostError` if another holder took the lease in the meantime.
+	 */
+	renew(): Promise<void>;
 	release(): Promise<void>;
 }
 
@@ -79,22 +84,24 @@ export async function acquireLease(
 		if (timer) clearInterval(timer);
 		controller.abort(new LeaseLostError());
 	};
+	const renewOnce = async () => {
+		if (controller.signal.aborted) return;
+		const nextExpiry = now() + ttlMs;
+		try {
+			etag = await putJson(
+				store,
+				LEASE_KEY,
+				{ holder, token, expiresAt: nextExpiry },
+				{ ifMatch: etag }
+			);
+			expiresAt = nextExpiry;
+		} catch {
+			lose();
+		}
+	};
 	if (renew)
 		timer = setInterval(() => {
-			renewing = (async () => {
-				const nextExpiry = now() + ttlMs;
-				try {
-					etag = await putJson(
-						store,
-						LEASE_KEY,
-						{ holder, token, expiresAt: nextExpiry },
-						{ ifMatch: etag }
-					);
-					expiresAt = nextExpiry;
-				} catch {
-					lose();
-				}
-			})();
+			renewing = renewOnce();
 		}, ttlMs / 3);
 	return {
 		token,
@@ -102,6 +109,12 @@ export async function acquireLease(
 		signal: controller.signal,
 		assertHeld() {
 			if (controller.signal.aborted || now() >= expiresAt) throw new LeaseLostError();
+		},
+		async renew() {
+			await renewing;
+			renewing = renewOnce();
+			await renewing;
+			if (controller.signal.aborted) throw new LeaseLostError();
 		},
 		async release() {
 			if (timer) clearInterval(timer);
