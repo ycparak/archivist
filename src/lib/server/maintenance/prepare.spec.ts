@@ -22,7 +22,8 @@ const origin = candidateOriginSchema.parse({
 	sourceRevision: 'test',
 	sourceFingerprint: 'a'.repeat(64),
 	baselineVersion: null,
-	maxRankDrop: null
+	maxRankDrop: null,
+	job: null
 });
 it('never builds or persists incomplete discovery', async () => {
 	const build = vi.fn(),

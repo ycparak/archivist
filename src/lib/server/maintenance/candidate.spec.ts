@@ -37,7 +37,8 @@ const origin = (baselineVersion: string | null = null): CandidateOrigin => ({
 	sourceRevision: 'test',
 	sourceFingerprint: 'a'.repeat(64),
 	baselineVersion,
-	maxRankDrop: null
+	maxRankDrop: null,
+	job: null
 });
 async function reportFor(candidate: Awaited<ReturnType<typeof loaded>>) {
 	return validateCandidate({

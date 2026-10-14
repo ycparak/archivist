@@ -26,7 +26,8 @@
 		"dev:browser": "bun run dev",
 		"prepare:search": "bun run scripts/candidate-search.ts prepare",
 		"validate:search": "bun run scripts/candidate-search.ts validate",
-		"promote:search": "bun run scripts/candidate-search.ts promote"
+		"promote:search": "bun run scripts/candidate-search.ts promote",
+		"hosted": "bun run scripts/hosted-maintenance.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -56,6 +57,7 @@
 	},
 	"dependencies": {
 		"@aredotna/sdk": "^0.1.1",
+		"@aws-sdk/client-s3": "3.700.0",
 		"@chenglou/pretext": "^0.0.9",
 		"@trigger.dev/sdk": "4.7.3",
 		"minisearch": "^7.2.0",

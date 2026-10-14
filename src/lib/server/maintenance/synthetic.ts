@@ -31,7 +31,8 @@ export async function validateSyntheticRelease(options: {
 			sourceRevision: 'smoke',
 			sourceFingerprint: '0'.repeat(64),
 			baselineVersion: null,
-			maxRankDrop: null
+			maxRankDrop: null,
+			job: null
 		},
 		fixture: [{ id: 'lexical-smoke', mode: 'lexical', q: 'fox', expectedBlockIds: ['block:1'] }],
 		queryVectors: {},
