@@ -31,7 +31,7 @@ This is an **agent router**, read every session by both Claude Code and Codex. I
 
 - Load only the docs relevant to the task. If a behavior or rule changes, update the owning doc in the same change.
 - Update [docs/CHANGELOG.md](./docs/CHANGELOG.md) for user-visible work.
-- Never run a plain `bun run sync`: it calls OpenRouter and writes titles and descriptions to Are.na. Use `--no-vision --no-push-arena` unless those stages are explicitly needed. Sync always rebuilds public search assets with Workers AI embeddings. `bun run sync --export` uses the committed caches without vision generation, colour or connection measurement, or Are.na write-back. Run either only after code and tests pass, and report the command in the handoff.
+- A plain `bun run sync` is read-only toward Are.na: it measures colour and connections and rebuilds the public search assets with Workers AI embeddings. Never add `--vision` (calls OpenRouter and spends credit) or `--push-arena` (writes titles and descriptions to Are.na) unless those stages are explicitly needed. `bun run sync --export` uses the local caches without vision generation, colour or connection measurement, or Are.na write-back. Run either only after code and tests pass, and report the command in the handoff.
 - Never start a paid vision backfill without the maintainer's explicit approval of its block cap and budget.
 - Do not install Mastra or add agent behavior unless the maintainer explicitly asks for it.
 
@@ -40,7 +40,7 @@ This is an **agent router**, read every session by both Claude Code and Codex. I
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
 - Query time is free of generative LLMs. Browser search uses Workers AI only to embed queries. The sync-time vision stage describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval; generated tags are indexed but not shown. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`.
 - Public requests download versioned public assets and call a bounded embedding endpoint. They never proxy to Are.na.
-- The production `daily-archive-sync` is the maintainer-approved hosted equivalent of a plain sync: it generates vision within a daily cap and writes back to Are.na. Do not change its caps or write-back without the maintainer.
+- The production `daily-archive-sync` is the maintainer-approved hosted equivalent of `bun run sync --vision --push-arena`: it generates vision within a daily cap and writes back to Are.na. Do not change its caps or write-back without the maintainer.
 - Auth, accounts, analytics, link crawling, query-time LLMs and chat UI need an explicit maintainer decision.
 
 ## Search Invariants
@@ -91,4 +91,4 @@ bun run build   # vite build; needs a release in static/search (bun run sync --e
 
 - One coherent change per commit, with a clear message; see the commit history for style.
 - Keep each pull request to one vertical slice, and state the changed behavior, test evidence, and any environment or configuration change.
-- Never commit `.env`, local snapshots containing private blocks, or a private archive export.
+- Never commit `.env`, the `data/*.jsonl` enrichment caches, local snapshots containing private blocks, or a private archive export.

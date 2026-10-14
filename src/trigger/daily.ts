@@ -11,10 +11,7 @@ import {
 	visionDependencies
 } from './hosted';
 import { SOURCE_IDENTITY } from './source-identity';
-
-const GITHUB_REPOSITORY = 'ycparak/archivist';
-/** Maintainer-chosen daily ceiling; blocks beyond it are described the next morning. */
-const DAILY_VISION = { maxBlocks: 50, budgetUsd: 0.5 };
+import { siteConfig } from '../../site.config';
 
 export const dailyArchiveSync = schedules.task({
 	id: 'daily-archive-sync',
@@ -37,12 +34,12 @@ export const dailyArchiveSync = schedules.task({
 			// One job per scheduled day: a duplicate fire or a retry resumes it instead of starting another.
 			const jobId = `daily-${payload.timestamp.toISOString().slice(0, 10).replaceAll('-', '')}`;
 			const deps = { ...hostedDependencies(signal), vision: await visionDependencies() };
-			// The hosted equivalent of `bun run sync`, with vision capped per day.
+			// The hosted equivalent of `bun run sync --vision --push-arena`, with vision capped per day.
 			const report = await runHostedSync(
 				{
 					jobId,
 					stages: { colour: true, connections: true },
-					vision: DAILY_VISION,
+					vision: siteConfig.dailyVision,
 					pushArena: true,
 					gate: 'no-regression',
 					source
@@ -58,7 +55,7 @@ export const dailyArchiveSync = schedules.task({
 				await dispatchSiteDeploy({
 					token: z.object({ GITHUB_DEPLOY_TOKEN: z.string().min(1) }).parse(process.env)
 						.GITHUB_DEPLOY_TOKEN,
-					repository: GITHUB_REPOSITORY,
+					repository: siteConfig.githubRepository,
 					jobId,
 					revision: report.sourceRevision
 				});

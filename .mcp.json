@@ -1,11 +1,11 @@
 {
 	"mcpServers": {
 		"svelte": {
-			"args": ["-y", "@sveltejs/mcp"],
+			"args": ["-y", "@sveltejs/mcp@0.1.26"],
 			"command": "npx"
 		},
 		"trigger": {
-			"args": ["trigger.dev@latest", "mcp"],
+			"args": ["trigger.dev@4.7.3", "mcp"],
 			"command": "npx"
 		}
 	}

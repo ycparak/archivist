@@ -12,8 +12,8 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       # The transcode tests drive the real binary, because a mocked child process would pass with
       # any arguments at all — and these arguments have been wrong twice. ubuntu-latest stopped
       # shipping ffmpeg, so install it explicitly.
@@ -28,19 +28,28 @@ jobs:
 
   deploy-trigger:
     # Scheduled jobs record the identity written here; the site deploy refuses any other source.
+    # Forks have no TRIGGER_ACCESS_TOKEN, so this job does nothing there.
     needs: quality
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
       group: trigger-production
       cancel-in-progress: false
+    env:
+      TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
+      - name: Check for a Trigger.dev token
+        id: configured
+        run: echo "enabled=${{ env.TRIGGER_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - if: steps.configured.outputs.enabled == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - if: steps.configured.outputs.enabled == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - if: steps.configured.outputs.enabled == 'true'
+        run: bun install --frozen-lockfile
       - name: Record source identity
+        if: steps.configured.outputs.enabled == 'true'
         run: bun run hosted identity
       - name: Deploy Trigger.dev tasks
-        env:
-          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+        if: steps.configured.outputs.enabled == 'true'
         run: bunx trigger.dev@4.7.3 deploy --external-id "$GITHUB_SHA"

@@ -21,3 +21,6 @@ vite.config.ts.timestamp-*
 .trigger
 
 /.maintenance
+
+# Per-archive enrichment caches (vision text and OCR of saved blocks)
+/data/*.jsonl

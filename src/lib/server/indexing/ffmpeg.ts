@@ -5,7 +5,7 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 export class FfmpegMissingError extends Error {
 	constructor(command: string, options?: ErrorOptions) {
 		super(
-			`Could not run "${command}". The sync uses ffmpeg to read animated blocks and to measure colour — install it (brew install ffmpeg), or pass --no-vision and --no-colour to skip both stages.`,
+			`Could not run "${command}". The sync uses ffmpeg to read animated blocks and to measure colour — install it (brew install ffmpeg), or skip both stages by leaving out --vision and passing --no-colour.`,
 			options
 		);
 		this.name = 'FfmpegMissingError';

@@ -16,6 +16,7 @@
 		"vite.config.ts",
 		"src/**/*.ts",
 		"src/**/*.svelte",
-		"trigger.config.ts"
+		"trigger.config.ts",
+		"site.config.ts"
 	]
 }

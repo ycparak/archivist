@@ -7,6 +7,10 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Changed
 
+- Changed `bun run sync` to be read-only toward Are.na and free of vision spend by default: `--vision` and `--push-arena` are now opt-in, and the old `--no-vision` and `--no-push-arena` flags were removed.
+- Changed the enrichment caches in `data/` to be git-ignored local files rather than committed, since they hold generated text and OCR of other people's blocks.
+- Changed the Trigger.dev deploy job to skip itself when `TRIGGER_ACCESS_TOKEN` is not set, pinned GitHub Actions and the MCP servers to exact versions, and turned off `workers.dev` and preview URLs.
+- Rewrote the README getting-started path so a plain sync with three credentials is enough.
 - Split `src/lib/server/search/` so release-building code lives in `src/lib/server/release/` and only request-time Worker code stays in `search/`; moved the sync summary printing out of `scripts/sync.ts` into `progress/summary.ts`.
 - Moved the committed enrichment caches from `src/lib/server/indexing/` to `data/`.
 - Changed keyword search to match word prefixes, so a search for "widget" also finds "widgets".
@@ -32,6 +36,7 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Added
 
+- Added `site.config.ts` as the single place that names the deployment, plus `CONTRIBUTING.md`, `SECURITY.md`, a bug report template and Dependabot updates for GitHub Actions.
 - Added reproducible, read-only search experiments with held-out known-item scoring, and a per-case ranking investigation.
 - Added a read-only enrichment coverage report and budget-capped hosted vision backfills with cost estimates.
 - Added per-block enrichment outcomes, `bun run hosted retry` for failed blocks only, and batched child tasks for large backlogs.
