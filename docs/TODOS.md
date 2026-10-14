@@ -10,7 +10,7 @@ _(none)_
 
 ## Up Next
 
-- [ ] **Block retries and hosted media processing.** Implement phase 4 of the [Trigger.dev plan](./specs/trigger-workflows.md#phase-4-block-retries-and-hosted-media-processing).
+- [ ] **Targeted vision backfills and coverage reports.** Implement phase 5 of the [Trigger.dev plan](./specs/trigger-workflows.md#phase-5-targeted-vision-backfills-and-coverage-reports).
 
 ## Needs Input
 
@@ -22,6 +22,7 @@ _(none)_
 
 ## Done
 
+- [x] **Block retries and hosted media processing.** Implemented phase 4 of the [Trigger.dev plan](./specs/trigger-workflows.md): per-block outcomes, `hosted retry`, batched children and bounded animation downloads ([worksheet](./history/worksheets/worksheet-block-retries.md)).
 - [x] **Daily scheduled sync and automatic deployment.** Implemented phase 3 of the [Trigger.dev plan](./specs/trigger-workflows.md); the first production run deployed the site automatically ([worksheet](./history/worksheets/worksheet-daily-sync.md)).
 - [x] **Durable hosted storage and manual sync.** Implemented phase 2 of the [Trigger.dev plan](./specs/trigger-workflows.md) and demonstrated a resumable hosted development run ([worksheet](./history/worksheets/worksheet-hosted-sync.md)).
 - [x] **Extract maintenance services and candidate validation.** Implemented phase 1 of the [Trigger.dev plan](./specs/trigger-workflows.md) with guarded local promotion and a synthetic Trigger smoke task ([worksheet](./history/worksheets/worksheet-candidate-validation.md)).
