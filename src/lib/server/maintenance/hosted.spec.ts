@@ -20,6 +20,8 @@ import {
 } from './hosted-release';
 import { dispatchSiteDeploy } from './github';
 import { pruneArtifacts } from './retention';
+import { BATCH_SIZE, FAN_OUT_THRESHOLD, runEnrichBatch } from './batches';
+import { ARCHIVE_COLOURS } from '$lib/domain/search';
 import {
 	HostedJobConfigurationError,
 	runHostedSync,
@@ -140,6 +142,14 @@ describe('archive lease', () => {
 		).rejects.toThrow(LeaseLostError);
 	});
 
+	it('fails an explicit renewal after another holder took over', async () => {
+		const store = memoryStore();
+		const lease = await acquireLease(store, { holder: 'a', renew: false });
+		const lock = await store.get('locks/archive.json');
+		await store.put('locks/archive.json', lock!.bytes);
+		await expect(lease.renew()).rejects.toThrow(LeaseLostError);
+	});
+
 	it('aborts the holder when renewal finds the lease taken over', async () => {
 		vi.useFakeTimers();
 		try {
@@ -154,6 +164,75 @@ describe('archive lease', () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe('batched enrichment', () => {
+	it('fans a large backlog out into batches and merges every batch record', async () => {
+		const store = await bootstrapped();
+		const ids = Array.from({ length: FAN_OUT_THRESHOLD + 2 }, (_, i) => String(i + 1));
+		const enrich = vi.fn<HostedSyncDependencies['enrich']>(async (discovery) => ({
+			summary: discovery.summary
+		}));
+		const batches: number[] = [];
+		const report = await runHostedSync(
+			payload(),
+			dependencies(store, {
+				discover: async () => discovered(ids),
+				enrich,
+				fanOut: async (jobId, stage, chunks) => {
+					for (const [batch, blockIds] of chunks.entries()) {
+						batches.push(blockIds.length);
+						await runEnrichBatch(
+							{ jobId, stage, batch, blockIds },
+							{
+								store,
+								signal: new AbortController().signal,
+								count: async (blockId) => {
+									if (blockId === 7) throw new Error('Are.na 502');
+									return 1;
+								}
+							}
+						);
+					}
+				}
+			})
+		);
+		expect(enrich.mock.calls[0][1].connections).toBeUndefined();
+		expect(batches).toHaveLength(Math.ceil(ids.length / BATCH_SIZE));
+		expect(batches.every((size) => size <= BATCH_SIZE)).toBe(true);
+		expect((await loadCanonicalCaches(store)).caches.connections.size).toBe(ids.length - 1);
+		expect(report).toMatchObject({ retryable: 1, passed: true });
+	});
+
+	it('refuses blocks outside the job and skips colour a retried batch already recorded', async () => {
+		const store = await bootstrapped();
+		await runHostedSync(payload(), dependencies(store));
+		const measure = vi.fn(async () => ({
+			kind: 'measured' as const,
+			weights: Object.fromEntries(ARCHIVE_COLOURS.map((c) => [c, 0])) as never,
+			frames: 1
+		}));
+		const batch = (blockIds: string[]) =>
+			runEnrichBatch(
+				{ jobId: 'job-one', stage: 'colour', batch: 0, blockIds },
+				{ store, signal: new AbortController().signal, measure, count: async () => 0 }
+			);
+		await expect(batch(['404'])).rejects.toThrow('outside the job');
+		await store.put(
+			jobKeys('job-one').discovery,
+			new TextEncoder().encode(
+				JSON.stringify({
+					...JSON.parse(
+						new TextDecoder().decode((await store.get(jobKeys('job-one').discovery))!.bytes)
+					),
+					blocks: ['1', '2'].map((id) => ({ ...block(id), imageUrl: `https://cdn.test/${id}.png` }))
+				})
+			)
+		);
+		await batch(['1', '2']);
+		await batch(['1', '2']);
+		expect(measure).toHaveBeenCalledTimes(2);
 	});
 });
 
