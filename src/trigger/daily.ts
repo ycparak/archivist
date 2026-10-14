@@ -46,7 +46,8 @@ export const dailyArchiveSync = schedules.task({
 				);
 			if (report.decision === 'deploy')
 				await dispatchSiteDeploy({
-					token: z.string().min(1).parse(process.env.GITHUB_DEPLOY_TOKEN),
+					token: z.object({ GITHUB_DEPLOY_TOKEN: z.string().min(1) }).parse(process.env)
+						.GITHUB_DEPLOY_TOKEN,
 					repository: GITHUB_REPOSITORY,
 					jobId,
 					revision: report.sourceRevision
