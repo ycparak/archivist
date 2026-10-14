@@ -1,6 +1,6 @@
 # Daily sync and automatic deployment worksheet
 
-Task: phase 3 of [Trigger.dev workflows](./trigger-workflows.md#phase-3-daily-scheduled-sync-and-automatic-deployment). Branch `trigger`. Decisions (maintainer, 2026-10-14): daily at 06:00 UTC; deploy when there is no regression against the live release; stay within free plans.
+Task: phase 3 of [Trigger.dev workflows](../../specs/trigger-workflows.md#phase-3-daily-scheduled-sync-and-automatic-deployment). Branch `trigger`. Decisions (maintainer, 2026-10-14): daily at 06:00 UTC; deploy when there is no regression against the live release; stay within free plans.
 
 ## Implementation
 
@@ -38,14 +38,15 @@ Task: phase 3 of [Trigger.dev workflows](./trigger-workflows.md#phase-3-daily-sc
   - Attempt 1 failed writing `origin.json` to R2 with an undiagnosed network error. Attempt 2 resumed after the merge and completed in 35 s. Diagnostics were added afterwards.
 - `bun run hosted deploy sync-20261014135316-4r4atd --dry-run` at `cf3e161` passed every check and built the site with exactly the live baseline and the candidate. It did not deploy.
 
-## Production activation (maintainer)
+## Production activation, 2026-10-14
 
-1. **Trigger production environment variables:** `ARENA_ACCESS_TOKEN`, `ARENA_IGNORE_CHANNELS`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Workers AI), the three `MAINTENANCE_R2_*` values, and `GITHUB_DEPLOY_TOKEN`. That last one is a fine-grained token for `ycparak/archivist` with Actions: read and write.
-2. **GitHub repository secrets:**
-   - `TRIGGER_ACCESS_TOKEN` (a deploy-only Trigger access token);
-   - `CLOUDFLARE_ACCOUNT_ID`;
-   - `CLOUDFLARE_DEPLOY_API_TOKEN` (Workers Scripts: Edit, for this account);
-   - the three `MAINTENANCE_R2_*` values.
-3. **Alert:** in Trigger, add an email alert for failed runs in production. The free plan allows one destination.
-4. **Activate:** merge `trigger` into `main`. CI deploys the tasks with their source identity, and the schedule syncs on deploy.
-5. **Record the first run:** record the first 06:00 UTC run here, with its run ID, decision, deploy workflow run, live manifest version and Trigger cost. Then move this worksheet to history.
+- The maintainer configured the Trigger production variables, the GitHub secrets and the failure alert, then merged #6. CI run `38579353256` passed `quality` and `deploy-trigger`, and Trigger production worker `20261014.1` registered `daily-archive-sync`.
+- Test run `run_06gjlju1nl7l82hv9ote53age1` (job `daily-20261014`, $0.0076, 1.5 min) synced 2,213 blocks:
+  - colour: 2,210 cache hits; connections: 2,213 cache hits;
+  - candidate `75b321b4…` passed the no-regression gate (decision `deploy`).
+  - The run then failed to dispatch because `GITHUB_DEPLOY_TOKEN` was missing in Production. [#7](https://github.com/ycparak/archivist/pull/7) makes such errors name the setting.
+- After the token was added, a rerun reused the completed job and dispatched the site deploy. `Deploy site` run `38581958586` succeeded in 1m21s, which verified wrangler token handling in GitHub Actions.
+- Afterwards:
+  - the live `/search/manifest.json` serves `75b321b4…`, and the previous release `4241d946…` is still served for open sessions;
+  - the R2 production pointer records job `daily-20261014`, previous `4241d946`, source `e5ad94d`.
+- The scheduled 06:00 UTC runs continue without local action.

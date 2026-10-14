@@ -14,7 +14,7 @@ _(none)_
 
 ## Needs Input
 
-- [~] **Daily scheduled sync and automatic deployment.** Phase 3 code is complete; configure the production credentials and alert, merge to `main`, then record the first scheduled run in the [worksheet](./specs/worksheet-daily-sync.md).
+_(none)_
 
 ## Backlog
 
@@ -22,6 +22,7 @@ _(none)_
 
 ## Done
 
+- [x] **Daily scheduled sync and automatic deployment.** Implemented phase 3 of the [Trigger.dev plan](./specs/trigger-workflows.md); the first production run deployed the site automatically ([worksheet](./history/worksheets/worksheet-daily-sync.md)).
 - [x] **Durable hosted storage and manual sync.** Implemented phase 2 of the [Trigger.dev plan](./specs/trigger-workflows.md) and demonstrated a resumable hosted development run ([worksheet](./history/worksheets/worksheet-hosted-sync.md)).
 - [x] **Extract maintenance services and candidate validation.** Implemented phase 1 of the [Trigger.dev plan](./specs/trigger-workflows.md) with guarded local promotion and a synthetic Trigger smoke task ([worksheet](./history/worksheets/worksheet-candidate-validation.md)).
 - [x] **Align documentation and plan Trigger.dev workflows.** Consolidated current behavior, removed obsolete documents and recorded the [implementation plan](./specs/trigger-workflows.md).
