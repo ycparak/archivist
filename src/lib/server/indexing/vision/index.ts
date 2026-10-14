@@ -32,6 +32,8 @@ export interface VisionStageOptions {
 	onEvent?: SyncEventSink;
 	/** Called for every block that did not produce an entry, with why. */
 	onOutcome?: OutcomeSink;
+	/** Per-request cost reporting; see `DescribeInput.onCost`. */
+	onCost?: (usd: number | null) => void;
 }
 
 export interface VisionFailure {
@@ -193,9 +195,19 @@ export async function describeBlocks(
 /** Describes one block. Never throws: a failure is an outcome, so a caller can retry just it. */
 export async function describeBlock(
 	block: ArchiveBlock,
-	options: Pick<VisionStageOptions, 'client' | 'signal' | 'now' | 'transcodeOptions' | 'onEvent'>
+	options: Pick<
+		VisionStageOptions,
+		'client' | 'signal' | 'now' | 'transcodeOptions' | 'onEvent' | 'onCost'
+	>
 ): Promise<BlockOutcome<VisionCacheEntry>> {
-	const { client, signal, now = () => new Date(), transcodeOptions, onEvent = noop } = options;
+	const {
+		client,
+		signal,
+		now = () => new Date(),
+		transcodeOptions,
+		onEvent = noop,
+		onCost
+	} = options;
 	try {
 		const unsupported = unsupportedFormatReason(block.imageContentType);
 		if (unsupported)
@@ -230,7 +242,8 @@ export async function describeBlock(
 				description: block.description,
 				sourceTitle: block.sourceTitle
 			},
-			signal
+			signal,
+			onCost
 		});
 		if (described.kind === 'skipped')
 			return { kind: 'skipped', cause: 'too-large', reason: described.reason, retryable: false };

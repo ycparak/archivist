@@ -209,3 +209,16 @@ export async function recordHostedDeployment(
 		staged.productionEtag
 	);
 }
+
+/** The most recently completed sync job, whose pinned discovery is the current archive. */
+export async function latestCompletedJobId(store: ObjectStore): Promise<string> {
+	let latest: { jobId: string; completedAt: string } | null = null;
+	for (const key of await store.list('jobs/')) {
+		if (!key.endsWith('/report.json')) continue;
+		const report = await getJson(store, key, jobReportSchema).catch(() => null);
+		if (report && (!latest || report.value.completedAt > latest.completedAt))
+			latest = { jobId: report.value.jobId, completedAt: report.value.completedAt };
+	}
+	if (!latest) throw new Error('No completed sync job exists yet');
+	return latest.jobId;
+}

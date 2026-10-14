@@ -113,6 +113,7 @@ The current integration is SDK/build package 4.7.3, `trigger.config.ts` using No
 - `archive-sync`, the manual hosted sync.
 - `daily-archive-sync`, the scheduled production sync.
 - `archive-enrich-batch`, a 50-block child used when a stage has a large backlog.
+- `archive-vision-backfill`, the only task that spends OpenRouter credit. It runs only when triggered manually.
 
 ### Hosted maintenance
 
@@ -140,6 +141,30 @@ Validation uses one of two gate policies, recorded in the candidate origin:
 
 - `strict` (manual default and local `promote:search`) requires every non-pending case on the first page.
 - `no-regression` (scheduled jobs) keeps integrity checks mandatory and requires cases the live release passes to stay on the first page. A case that already fails live is reported as a known failure and passes if its expected ranks drop by at most 10.
+
+### Coverage and vision backfills
+
+`bun run hosted coverage [--job <id>]` is read-only. It classifies every block of a job's pinned corpus against the canonical caches:
+
+- **Vision:** valid, missing, stale (source, prompt, model or input mode), unsupported, or no image.
+- **Colour:** valid, missing, stale (source or version), unsupported, or no image.
+- **Connections:** fresh, stale (older than 7 days), or missing.
+
+It also reports the job's recorded failures and coverage by channel and block type, with bounded ID lists, and writes `.maintenance/coverage.{json,md}`. Jobs that predate per-block outcomes are reported as not recorded rather than as zero failures.
+
+`bun run hosted backfill --plan` selects describable blocks by IDs, channels, and missing or stale state, using the production model and prompt version. It never bumps the prompt to select a subset. It estimates cost from OpenRouter's public pricing with stated token assumptions, and spends nothing.
+
+`--run` requires an explicit `--max-blocks` (at most 1,000) and `--budget-usd` (at most $20), and triggers `archive-vision-backfill`. That task:
+
+- **Spending:**
+  - reserves each block's worst case before starting it (every retry at maximum length, or the costliest block seen so far if larger);
+  - books OpenRouter's reported `usage.cost`, charging requests of unknown cost at the ceiling;
+  - stops scheduling when spend plus in-flight reservations would exceed the budget;
+  - keeps a spend ledger in R2, so a resumed attempt counts earlier in-flight exposure as spent.
+- **Resuming:** it persists every generated entry immediately and skips them on resume.
+- **Merging:** it takes the archive lease only to merge without pruning, waiting out a running daily sync.
+
+It refuses to run without pricing, never writes to Are.na, and does not build a candidate: the next daily sync publishes the new text through the usual gate.
 
 ### Daily sync and deployment
 

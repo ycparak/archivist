@@ -20,6 +20,7 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Added
 
+- Added a read-only enrichment coverage report and budget-capped hosted vision backfills with cost estimates.
 - Added per-block enrichment outcomes, `bun run hosted retry` for failed blocks only, and batched child tasks for large backlogs.
 - Added a daily 06:00 UTC hosted archive sync that deploys the site through GitHub Actions when the new release introduces no search regressions.
 - Added the manually triggered `archive-sync` Trigger.dev task with leased, resumable R2-backed caches and a `bun run hosted` CLI for bootstrap, cache import, sync and guarded deployment.
