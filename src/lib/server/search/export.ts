@@ -39,21 +39,21 @@ export function toPublicDocument(document: SearchDocument): PublicDocument {
 
 // BERT WordPiece cannot emit more tokens than input UTF-8 bytes; leave room for special tokens.
 export const EMBEDDING_CHUNK_BYTES = 384;
-export function embeddingChunks(text: string): string[] {
+export function embeddingChunks(text: string, maxBytes: number = EMBEDDING_CHUNK_BYTES): string[] {
 	const encoder = new TextEncoder();
 	const chunks: string[] = [];
 	let chunk = '';
 	let bytes = 0;
 	for (const word of text.split(/(?<=\s)/u)) {
 		const wordBytes = encoder.encode(word).length;
-		if (bytes && bytes + wordBytes > EMBEDDING_CHUNK_BYTES) {
+		if (bytes && bytes + wordBytes > maxBytes) {
 			if (chunk.trim()) chunks.push(chunk.trim());
 			chunk = '';
 			bytes = 0;
 		}
 		for (const character of word) {
 			const size = encoder.encode(character).length;
-			if (bytes + size > EMBEDDING_CHUNK_BYTES) {
+			if (bytes + size > maxBytes) {
 				if (chunk.trim()) chunks.push(chunk.trim());
 				chunk = '';
 				bytes = 0;
