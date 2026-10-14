@@ -1,3 +1,4 @@
+import { downloadCapped } from '../download';
 import { runFfmpeg, type PipeFfmpegOptions } from '../ffmpeg';
 import { renditionUrl } from '../vision/rendition';
 import { MAX_SOURCE_BYTES } from '../vision/video';
@@ -14,7 +15,6 @@ export const MAX_FRAMES = 8;
 
 const BYTES_PER_PIXEL = 4;
 const FRAME_BYTES = RASTER_SIZE * RASTER_SIZE * BYTES_PER_PIXEL;
-const FETCH_TIMEOUT_MS = 60_000;
 
 export type MeasureResult =
 	| { kind: 'measured'; weights: ColourWeights; frames: number }
@@ -46,27 +46,6 @@ export const RASTER_ARGS = [
 	'pipe:1'
 ];
 
-async function readCapped(response: Response, maxBytes: number): Promise<Uint8Array | null> {
-	const declared = Number(response.headers.get('content-length'));
-	if (Number.isFinite(declared) && declared > maxBytes) return null;
-	if (!response.body) return new Uint8Array(await response.arrayBuffer());
-
-	const chunks: Uint8Array[] = [];
-	let total = 0;
-	const reader = response.body.getReader();
-	for (;;) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		total += value.byteLength;
-		if (total > maxBytes) {
-			await reader.cancel();
-			return null;
-		}
-		chunks.push(value);
-	}
-	return Buffer.concat(chunks);
-}
-
 /**
  * Measures how much of an image is each colour. A still is fetched as a small Are.na rendition; an
  * animation on the CDN has no rendition, so its original is fetched and sampled across frames.
@@ -76,28 +55,16 @@ export async function measureImageColours(
 	options: MeasureOptions = {}
 ): Promise<MeasureResult> {
 	const { fetchFn = fetch, maxSourceBytes = MAX_SOURCE_BYTES, signal, ...ffmpegOptions } = options;
-	const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
-
-	const response = await fetchFn(renditionUrl(url, COLOUR_RENDITION_WIDTH), {
-		headers: { 'User-Agent': 'archivist' },
-		signal: signal ? AbortSignal.any([signal, timeout]) : timeout
+	const download = await downloadCapped(renditionUrl(url, COLOUR_RENDITION_WIDTH), {
+		fetchFn,
+		maxBytes: maxSourceBytes,
+		signal
 	});
-	if (!response.ok) {
-		return {
-			kind: 'skipped',
-			cause: 'unreachable',
-			reason: `source returned HTTP ${response.status}`
-		};
-	}
-
-	const source = await readCapped(response, maxSourceBytes);
-	if (!source) {
-		return {
-			kind: 'skipped',
-			cause: 'too-large',
-			reason: `source is over the ${maxSourceBytes / 1024 / 1024}MB download limit`
-		};
-	}
+	if (download.kind === 'unreachable')
+		return { kind: 'skipped', cause: 'unreachable', reason: download.reason };
+	if (download.kind === 'too-large')
+		return { kind: 'skipped', cause: 'too-large', reason: download.reason };
+	const source = download.bytes;
 
 	const raster = await runFfmpeg(RASTER_ARGS, {
 		...ffmpegOptions,
