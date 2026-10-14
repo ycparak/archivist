@@ -39,3 +39,5 @@ Credentials are separate:
 - Provider: `ARENA_ACCESS_TOKEN`, plus Workers AI through `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
 - Storage: `MAINTENANCE_R2_*`, an R2 token scoped to the one bucket.
 - Deployment: `CLOUDFLARE_DEPLOY_API_TOKEN` or `wrangler login`, never the Workers AI token.
+
+On 2026-10-14 the maintainer enabled capped vision and Are.na write-back in the daily job. Write-back uses the existing `ARENA_ACCESS_TOKEN`, which therefore needs write scope in the Trigger production environment. Written blocks are recorded under `jobs/<job>/writeback/`, and vision spend under `jobs/<job>/spend.json`.
