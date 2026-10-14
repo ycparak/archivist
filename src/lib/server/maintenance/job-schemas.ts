@@ -29,7 +29,8 @@ export type StoredOutcome = z.infer<typeof storedOutcomeSchema>;
 export const jobOutcomesSchema = z
 	.object({
 		colour: z.array(storedOutcomeSchema),
-		connections: z.array(storedOutcomeSchema)
+		connections: z.array(storedOutcomeSchema),
+		vision: z.array(storedOutcomeSchema).default([])
 	})
 	.strict();
 export type JobOutcomes = z.infer<typeof jobOutcomesSchema>;
@@ -42,4 +43,9 @@ export function storedOutcome(...[blockId, outcome]: Parameters<OutcomeSink>): S
 		retryable: outcome.kind === 'failed' || outcome.retryable,
 		reason: outcome.kind === 'failed' ? outcome.error : outcome.reason
 	};
+}
+
+/** A payload or state contradiction that retrying cannot fix. */
+export class HostedJobConfigurationError extends Error {
+	override name = 'HostedJobConfigurationError';
 }
