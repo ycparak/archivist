@@ -37,4 +37,8 @@ bun run deploy
 
 A generated public snapshot must exist when building. CI prepares a small synthetic release with `bun run scripts/prepare-ci-search.ts` before the build, without credentials or external API calls. The script refuses to overwrite an existing export; its output is for CI validation only and must never be deployed. `bun run deploy` builds and publishes the Worker and static assets to https://archivist.yusufparak.com, with AI and ARCHIVE_SEARCH_RATE_LIMITER bindings. Authenticate first with `bunx wrangler login`. Deployment uses `.env.example` so the local Workers AI token does not override your deployment login or upload local credentials. Wrangler manages the custom domain's DNS and TLS in the configured Cloudflare account. REST API credentials are only needed locally; production query inference uses the AI binding. The default gallery is static; interactive search/filtering requires JavaScript. /api/search is retired with HTTP 410.
 
-Free hosting/inference depends on Cloudflare allocations. One current relevance fixture fails (widget-grid expected block rank 112), and physical mobile performance remains to be measured. See [architecture](./docs/architecture.md) and [tasks](./docs/TODOS.md).
+Free hosting/inference depends on Cloudflare allocations. A previous evaluation found the widget-grid expected block at rank 112; rerun the fixture to measure the current release. Physical mobile performance remains to be measured. See [architecture](./docs/architecture.md) and [tasks](./docs/TODOS.md).
+
+## Trigger.dev
+
+The SDK and Node 24 configuration are installed; `src/trigger/example.ts` is the only current task. Start development with `bunx trigger.dev@4.7.3 dev`. Archive maintenance workflows are proposed in the [implementation plan](./docs/specs/trigger-workflows.md), not implemented yet.

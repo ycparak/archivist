@@ -30,11 +30,11 @@ Activate only the personas relevant to the changed surface area. Each persona ow
 - **SvelteKit/Frontend Expert**: Svelte 5 rune correctness, component structure, `load`-function boundaries, accessibility, URL-backed state, reactivity mistakes.
   Owned docs: `docs/svelte-guidelines.md`.
 
-- **Search & Retrieval Expert**: Turbopuffer schema and query correctness, hybrid `multiQuery`/RRF usage, filter construction, namespace-versioning discipline for attribute-type changes.
-  Owned docs: `docs/architecture.md` (Turbopuffer namespace, Retrieval behavior), the Search Invariants section of `AGENTS.md`.
+- **Search & Retrieval Expert**: snapshot integrity, filter-before-rank behavior, chunk aggregation, complete-list RRF, stable ties and release/embedding versioning.
+  Owned docs: `docs/architecture.md` (Retrieval behavior, Releases and sync), the Search Invariants section of `AGENTS.md`.
 
 - **Data/Sync Expert**: Are.na V3 transport and pagination correctness, rate-limit/backoff handling, normalization and deduplication in `src/lib/server/indexing/`, sync idempotency.
-  Owned docs: `docs/architecture.md` (Sync lifecycle, Why this data-access model, Vision indexing).
+  Owned docs: `docs/architecture.md` (Releases and sync, Vision indexing, Connection counts).
 
 - **Systems Architect**: ownership boundaries between `src/lib/domain/`, `src/lib/server/*/`, and `src/routes/`; wrong-layer placement (provider calls or ranking logic leaking into routes); scope drift.
   Owned docs: `AGENTS.md` (Architecture (Brief), Scope, Search Invariants).
@@ -47,7 +47,7 @@ Each persona should also load any spec or doc directly relevant to the files bei
 **Persona activation guidance:**
 
 - Touching `.svelte` files, `src/routes/`, or `src/styles/` → include SvelteKit/Frontend.
-- Touching `src/lib/server/search/` or the Turbopuffer schema → include Search & Retrieval.
+- Touching `src/lib/server/search/` or `src/lib/search/` → include Search & Retrieval.
 - Touching `src/lib/server/arena/` or `src/lib/server/indexing/` → include Data/Sync.
 - Touching cross-directory boundaries or adding a new top-level concept → include Systems Architect.
 - Any change with regression risk → include QA.
@@ -68,13 +68,14 @@ If there are no findings, explicitly say so and list residual risks/testing gaps
 
 ## Quality Checklist
 
-- Scope in `AGENTS.md` respected: no auth, accounts, analytics, background queues, link crawling, query-time LLM, agent behavior, or chat UI introduced without an explicit decision from the maintainer.
+- Scope in `AGENTS.md` respected: no auth, accounts, analytics, link crawling, query-time LLM, agent behavior, or chat UI introduced without an explicit decision from the maintainer.
 - Correct ownership: `src/lib/domain/` stays framework-free, `src/lib/server/` stays server-only and provider-shape-private, `src/routes/` stays composition-only.
-- Provider API shapes (Are.na, Turbopuffer) never leak past their adapter module — UI and route code consume `SearchResult`, never raw rows/payloads.
-- Turbopuffer attribute-type changes are versioned into a new namespace with an ADR in `docs/decisions/`, never an in-place type change.
-- Hybrid ranking uses Turbopuffer's `multiQuery` + `rerank_by: ['RRF']`; no ad-hoc score arithmetic in application code.
-- Untrusted input (query params, Are.na responses) validated with Zod at the boundary.
+- Provider API shapes (Are.na, OpenRouter, Workers AI) never leak past their adapter module — UI and route code consume `SearchResult`, never raw rows/payloads.
+- Incompatible snapshot/embedding changes require versioning and an ADR in `docs/decisions/`.
+- Hybrid ranking fuses complete eligible ranked lists with RRF (`k=60`) in `src/lib/search/`; ranking stays out of UI markup.
+- Untrusted input (URL requests, provider responses, task payloads and stored artifacts) validated with Zod at the boundary.
 - Secrets stay server-only; no tokens, full raw API payloads, or user search queries in logs.
+- Maintenance retries preserve completed enrichment, incomplete discovery cannot prune caches or publish, and publication is tied to the evaluated candidate.
 - Relevant docs updated when behavior or rules changed.
 - Reviewers should recommend updates to their own persona's docs whenever they notice gaps, stale info, unclear language, or missing coverage.
 - Commit cadence verified: in loop mode, one commit per completed task (unless user explicitly requested batching).
