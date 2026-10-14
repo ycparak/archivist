@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { toSearchDocument } from '$lib/domain/archive';
 import { EMBEDDING } from '$lib/search/embedding';
 import { buildSearchRelease, sha256 } from '$lib/server/search/release-builder';
-import { assertPromotion, hashJson, validateCandidate, type CandidateOrigin } from './candidate';
+import {
+	assertPromotion,
+	candidateOriginSchema,
+	hashJson,
+	validateCandidate,
+	type CandidateOrigin
+} from './candidate';
 import { evaluateRelease } from './evaluate';
 import { loadValidatedRelease, releaseVersion } from './release';
 
@@ -38,6 +44,7 @@ const origin = (baselineVersion: string | null = null): CandidateOrigin => ({
 	sourceFingerprint: 'a'.repeat(64),
 	baselineVersion,
 	maxRankDrop: null,
+	gate: 'strict',
 	job: null
 });
 async function reportFor(candidate: Awaited<ReturnType<typeof loaded>>) {
@@ -138,6 +145,44 @@ describe('full ranking evaluation', () => {
 		);
 		expect(missing[0].regression).toBe(true);
 		expect(missing[0].passed).toBe(false);
+	});
+});
+
+describe('no-regression gate', () => {
+	// Ties order by ID string, so block:9 sits below every two-digit ID: rank 30 of 30, 35 of 35.
+	const miss = [{ ...fixture[0], expectedBlockIds: ['block:9'] }];
+	it('accepts a pre-existing miss within tolerance and reports it as known', async () => {
+		const baseline = await loaded(30),
+			candidate = await loaded(35);
+		const [result] = evaluateRelease(candidate, miss, {}, baseline, 10, 'no-regression');
+		expect(result.ranks[0]).toMatchObject({ rank: 35, baselineRank: 30 });
+		expect(result).toMatchObject({ firstPagePass: false, knownFailure: true, passed: true });
+		const [strict] = evaluateRelease(candidate, miss, {}, baseline, 10, 'strict');
+		expect(strict.passed).toBe(false);
+	});
+	it('rejects a known miss that slips beyond tolerance or disappears', async () => {
+		const baseline = await loaded(30);
+		const [slipped] = evaluateRelease(await loaded(35), miss, {}, baseline, 4, 'no-regression');
+		expect(slipped).toMatchObject({ knownFailure: true, regression: true, passed: false });
+		const [gone] = evaluateRelease(await loaded(8), miss, {}, baseline, 10, 'no-regression');
+		expect(gone).toMatchObject({ knownFailure: true, passed: false });
+	});
+	it('still requires a case the baseline passes to stay on the first page', async () => {
+		const passing = [{ ...fixture[0], expectedBlockIds: ['block:2'] }];
+		const [result] = evaluateRelease(
+			await loaded(1),
+			passing,
+			{},
+			await loaded(30),
+			10,
+			'no-regression'
+		);
+		expect(result).toMatchObject({ knownFailure: false, passed: false });
+	});
+	it('requires an explicit tolerance for the no-regression gate', () => {
+		expect(() =>
+			candidateOriginSchema.parse({ ...origin(), gate: 'no-regression', maxRankDrop: null })
+		).toThrow('tolerance');
 	});
 });
 

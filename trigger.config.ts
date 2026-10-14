@@ -1,3 +1,4 @@
+import { ffmpeg } from '@trigger.dev/build/extensions/core';
 import { defineConfig } from '@trigger.dev/sdk';
 
 export default defineConfig({
@@ -15,5 +16,7 @@ export default defineConfig({
 			randomize: true
 		}
 	},
-	dirs: ['./src/trigger']
+	dirs: ['./src/trigger'],
+	// Colour measurement decodes images and animations through the shared ffmpeg subprocess.
+	build: { extensions: [ffmpeg()] }
 });

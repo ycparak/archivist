@@ -21,6 +21,7 @@ export interface ObjectStore {
 	get(key: string): Promise<StoredObject | null>;
 	put(key: string, bytes: Uint8Array, condition?: PutCondition): Promise<string>;
 	list(prefix: string): Promise<string[]>;
+	delete(key: string): Promise<void>;
 }
 
 export class PreconditionFailedError extends Error {
@@ -82,6 +83,9 @@ export function memoryStore(): ObjectStore & { objects: Map<string, StoredObject
 		},
 		async list(prefix) {
 			return [...objects.keys()].filter((key) => key.startsWith(prefix)).sort();
+		},
+		async delete(key) {
+			objects.delete(key);
 		}
 	};
 }

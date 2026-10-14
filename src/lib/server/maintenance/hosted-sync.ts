@@ -21,13 +21,14 @@ import {
 } from './caches';
 import { candidateOriginSchema, formatValidationReport, validateCandidate } from './candidate';
 import {
+	adoptLiveRelease,
 	loadProduction,
 	jobIdSchema,
 	jobKeys,
 	jobReportSchema,
 	persistRelease
 } from './hosted-release';
-import { embedEvaluationQueries, evaluationCasesSchema } from './evaluate';
+import { embedEvaluationQueries, evaluationCasesSchema, GATE_POLICIES } from './evaluate';
 import { acquireLease } from './lease';
 import { loadValidatedRelease } from './release';
 import { getJson, putImmutable, putJson, type ObjectStore } from './store';
@@ -39,6 +40,7 @@ export const hostedSyncPayloadSchema = z
 		/** Vision generation and Are.na write-back are not available to hosted jobs yet. */
 		vision: z.literal(false).default(false),
 		pushArena: z.literal(false).default(false),
+		gate: z.enum(GATE_POLICIES).default('strict'),
 		source: z
 			.object({
 				sourceRevision: z.string().regex(/^[a-f0-9]{40}$/),
@@ -74,6 +76,9 @@ const discoverySchema = z
 	})
 	.strict();
 
+/** How far a known failure's expected ranks may slip before the no-regression gate rejects it. */
+export const NO_REGRESSION_RANK_TOLERANCE = 10;
+
 export interface HostedSyncDependencies {
 	store: ObjectStore;
 	discover: (signal: AbortSignal) => Promise<DiscoveredArchive>;
@@ -88,6 +93,8 @@ export interface HostedSyncDependencies {
 	gzipSize: (bytes: Uint8Array) => Promise<number>;
 	heapBytes: () => number;
 	leaseTtlMs?: number;
+	/** When set and no production pointer exists, adopt the release this site serves as the baseline. */
+	liveSite?: { url: string; fetchFn?: typeof fetch };
 	now?: () => number;
 }
 
@@ -192,6 +199,8 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			built.assets.get(asset.file)!
 		);
 
+		if (deps.liveSite && !(await loadProduction(store)).pointer)
+			await adoptLiveRelease(store, lease, deps.liveSite.url, deps.liveSite.fetchFn);
 		const production = await loadProduction(store);
 		const origin = candidateOriginSchema.parse({
 			format: 1,
@@ -199,7 +208,8 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			complete: true,
 			...payload.source,
 			baselineVersion: production.release?.release.version ?? null,
-			maxRankDrop: null,
+			maxRankDrop: payload.gate === 'no-regression' ? NO_REGRESSION_RANK_TOLERANCE : null,
+			gate: payload.gate,
 			job: { id: payload.jobId, fence: lease.token }
 		});
 		const queryVectors = await embedEvaluationQueries(
@@ -228,6 +238,12 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			status: 'completed',
 			candidateVersion: candidate.release.version,
 			passed: validation.passed,
+			decision: !validation.passed
+				? 'rejected'
+				: production.pointer?.version === candidate.release.version
+					? 'unchanged'
+					: 'deploy',
+			sourceRevision: origin.sourceRevision,
 			blocks: discovery.blocks.length,
 			channels: discovery.channels.length,
 			stages: {

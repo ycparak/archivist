@@ -1,4 +1,5 @@
 import {
+	DeleteObjectCommand,
 	GetObjectCommand,
 	ListObjectsV2Command,
 	NoSuchKey,
@@ -68,6 +69,13 @@ export function createR2Store(env: Record<string, string | undefined>): ObjectSt
 				ContinuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
 			} while (ContinuationToken);
 			return keys.sort();
+		},
+		async delete(key) {
+			try {
+				await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+			} catch (error) {
+				throw sanitized(error, key);
+			}
 		}
 	};
 }
