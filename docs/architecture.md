@@ -111,6 +111,7 @@ The current integration is SDK/build package 4.7.3, `trigger.config.ts` using No
 - `hello-world`, the typed example.
 - `validate-search-smoke`, which checks a synthetic release with no provider calls or publication.
 - `archive-sync`, the manual hosted sync.
+- `daily-archive-sync`, the scheduled production sync.
 
 ### Hosted maintenance
 
@@ -121,19 +122,35 @@ The current integration is SDK/build package 4.7.3, `trigger.config.ts` using No
 3. Overlays its own settled records on the canonical caches, then runs `enrichArchive`, persisting every settled entry immediately.
 4. Merges those records into the latest canonical snapshot under the fence.
 5. Builds a candidate with hosted embedding deltas.
-6. Validates the candidate against the bundled fixture and the deployed baseline.
-7. Writes a final job report.
+6. Validates the candidate against the bundled fixture and the deployed baseline. When no production pointer exists, it first adopts the release the public site serves as that baseline, verifying every asset.
+7. Writes a final job report with a decision: `deploy` (passed, and differs from live), `unchanged` or `rejected`.
 
-A restarted attempt reuses the pinned discovery and settled records. Progress is exposed as run metadata (`phase`, `position`). Lease conflicts, invalid configuration and reused job IDs fail without retry.
+A restarted attempt reuses the pinned discovery, settled records and recorded stage results. Progress is exposed as run metadata (`phase`, `position`). Lease conflicts, invalid configuration and reused job IDs fail without retry.
+
+Validation uses one of two gate policies, recorded in the candidate origin:
+
+- `strict` (manual default and local `promote:search`) requires every non-pending case on the first page.
+- `no-regression` (scheduled jobs) keeps integrity checks mandatory and requires cases the live release passes to stay on the first page. A case that already fails live is reported as a known failure and passes if its expected ranks drop by at most 10.
+
+### Daily sync and deployment
+
+`daily-archive-sync` runs at 06:00 UTC in production only, as job `daily-YYYYMMDD`, so a duplicate fire or retry resumes the same job. It runs colour (ffmpeg comes from the Trigger build extension) and connections with the `no-regression` gate. Then:
+
+- `rejected` fails the run, which triggers Trigger's alert email.
+- `deploy` dispatches the `Deploy site` GitHub workflow (`.github/workflows/deploy-site.yml`) with the job ID and revision.
+- Finally, retention prunes releases (keeping live, previous and the 7 newest candidates) and job directories older than 30 days.
+
+The job refuses to run without the source identity that CI bakes into `src/trigger/source-identity.ts` (`bun run hosted identity`) before each production Trigger deploy. The CI `deploy-trigger` job does this on every push to `main` after the quality checks pass. The site workflow checks out the recorded revision and runs `bun run hosted deploy`, which repeats every check. A job that is already live is a no-op.
 
 `bun run hosted` is the maintainer CLI:
 
 - `bootstrap` imports committed caches and the local embedding cache once.
 - `pull` imports hosted caches locally without replacing newer local entries, and writes `.maintenance/cache-changes.json`.
-- `sync` triggers a job from a clean checkout, with `--no-colour`, `--no-connections`, and `--resume <job>` (which uses a fresh run key).
+- `sync` triggers a job from a clean checkout, with `--no-colour`, `--no-connections`, `--no-regression`, and `--resume <job>` (which uses a fresh run key).
+- `identity` writes the clean checkout's source identity into the Trigger bundle; CI runs it.
 - `deploy <job> [--dry-run]` stages and deploys a job's candidate. It verifies the job report, checkout identity, supersession and recomputed evaluation, moves existing local search assets aside, and publishes only the deployed baseline and the candidate. It then builds, deploys, and records the production pointer.
 
-No task deploys, writes to Are.na or runs automatically.
+No task writes to Are.na or generates vision. Only the daily schedule runs automatically, and only the site workflow deploys.
 
 ## Build and local binding emulation
 
