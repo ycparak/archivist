@@ -1,6 +1,11 @@
 import { schemaTask } from '@trigger.dev/sdk';
 import { hostedSyncPayloadSchema, runHostedSync } from '../lib/server/maintenance/hosted-sync';
-import { hostedDependencies, maintenanceQueue, rethrowForTrigger } from './hosted';
+import {
+	hostedDependencies,
+	maintenanceQueue,
+	rethrowForTrigger,
+	visionDependencies
+} from './hosted';
 
 export const archiveSyncTask = schemaTask({
 	id: 'archive-sync',
@@ -14,7 +19,10 @@ export const archiveSyncTask = schemaTask({
 	retry: { maxAttempts: 2, minTimeoutInMs: 30_000, maxTimeoutInMs: 120_000 },
 	run: async (payload, { signal }) => {
 		try {
-			return await runHostedSync(payload, hostedDependencies(signal));
+			return await runHostedSync(payload, {
+				...hostedDependencies(signal),
+				...(payload.vision ? { vision: await visionDependencies() } : {})
+			});
 		} catch (error) {
 			rethrowForTrigger(error);
 		}

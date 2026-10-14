@@ -9,8 +9,12 @@ import { sha256 } from '$lib/server/search/release-builder';
 import { loadCanonicalCaches, loadRecords, mergeJobRecords, persistRecord } from './caches';
 import { visionState, type VisionState } from './coverage';
 import { jobIdSchema, jobKeys } from './hosted-release';
-import { HostedJobConfigurationError } from './hosted-sync';
-import { discoverySchema, storedOutcome, type StoredOutcome } from './job-schemas';
+import {
+	discoverySchema,
+	HostedJobConfigurationError,
+	storedOutcome,
+	type StoredOutcome
+} from './job-schemas';
 import { acquireLease, LeaseHeldError } from './lease';
 import { getJson, putImmutable, putJson, type ObjectStore } from './store';
 
@@ -151,9 +155,11 @@ export function estimateBackfillCost(
 	};
 }
 
-const ledgerSchema = z
+export const ledgerSchema = z
 	.object({
 		spentUsd: z.number().nonnegative(),
+		/** Blocks started, so a cap holds across resumed attempts. */
+		blocks: z.number().int().nonnegative().default(0),
 		requests: z.number().int().nonnegative(),
 		unknownCostRequests: z.number().int().nonnegative(),
 		/** Exposure of blocks in flight when this was written; a resumed run counts it as spent. */
@@ -170,10 +176,17 @@ export function createSpendLimiter(options: {
 	budgetUsd: number;
 	reservePerBlockUsd: number;
 	ceilingPerCallUsd: number;
+	maxBlocks?: number;
 	initial?: Ledger;
 }) {
 	const ledger: Ledger = {
-		...(options.initial ?? { spentUsd: 0, requests: 0, unknownCostRequests: 0, inFlightUsd: 0 })
+		...(options.initial ?? {
+			spentUsd: 0,
+			blocks: 0,
+			requests: 0,
+			unknownCostRequests: 0,
+			inFlightUsd: 0
+		})
 	};
 	// Whatever was in flight when a previous attempt died may have been billed in full.
 	ledger.spentUsd += ledger.inFlightUsd;
@@ -186,6 +199,8 @@ export function createSpendLimiter(options: {
 		tryReserve() {
 			const reserved = reserve();
 			if (ledger.spentUsd + ledger.inFlightUsd + reserved > options.budgetUsd) return null;
+			if (options.maxBlocks !== undefined && ledger.blocks >= options.maxBlocks) return null;
+			ledger.blocks += 1;
 			ledger.inFlightUsd += reserved;
 			const costs: (number | null)[] = [];
 			return {
@@ -202,6 +217,45 @@ export function createSpendLimiter(options: {
 					largestBlockUsd = Math.max(largestBlockUsd, blockUsd);
 				}
 			};
+		}
+	};
+}
+
+export class VisionBudgetExhaustedError extends Error {
+	override name = 'VisionBudgetExhaustedError';
+	constructor() {
+		super('Vision budget or block cap reached for this run; the block waits for the next run');
+	}
+}
+
+/**
+ * Puts a spend limiter in front of a vision client, for runs that describe through the ordinary
+ * sync stage rather than a backfill. A refused reservation fails just that block, retryably.
+ */
+export function budgetedVisionClient(
+	client: VisionClient,
+	limiter: ReturnType<typeof createSpendLimiter>,
+	onSettle: () => Promise<void>
+): VisionClient {
+	return {
+		model: client.model,
+		promptVersion: client.promptVersion,
+		async describe(input) {
+			const reservation = limiter.tryReserve();
+			if (!reservation) throw new VisionBudgetExhaustedError();
+			try {
+				await onSettle();
+				return await client.describe({
+					...input,
+					onCost: (usd) => {
+						reservation.onCost(usd);
+						input.onCost?.(usd);
+					}
+				});
+			} finally {
+				reservation.settle();
+				await onSettle();
+			}
 		}
 	};
 }
