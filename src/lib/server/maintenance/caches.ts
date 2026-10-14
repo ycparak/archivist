@@ -185,7 +185,8 @@ export async function mergeJobRecords(
 	options: {
 		jobId: string;
 		records: Partial<{ [S in CacheStage]: StageEntries[S][] }>;
-		liveBlockIds: ReadonlySet<string>;
+		/** Null merges without pruning, as a retry or subset job must. */
+		liveBlockIds: ReadonlySet<string> | null;
 	}
 ) {
 	const { caches, pointer, etag } = await loadCanonicalCaches(store);
@@ -194,7 +195,10 @@ export async function mergeJobRecords(
 		const records = options.records[stage];
 		if (!records) continue;
 		const codec = stageCodecs[stage] as StageCodec<StageEntries[CacheStage]>;
-		const merged = codec.merge(caches[stage], records, options.liveBlockIds);
+		const live =
+			options.liveBlockIds ??
+			new Set([...caches[stage].keys(), ...records.map(({ block_id }) => block_id)]);
+		const merged = codec.merge(caches[stage], records, live);
 		stages[stage] = await writeSnapshot(store, stage, merged);
 		caches[stage] = new Map(merged.map((entry) => [entry.block_id, entry])) as never;
 	}

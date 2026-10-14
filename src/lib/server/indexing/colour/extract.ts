@@ -1,4 +1,5 @@
 import { downloadCapped } from '../download';
+import { isRetryableStatus } from '../outcome';
 import { runFfmpeg, type PipeFfmpegOptions } from '../ffmpeg';
 import { renditionUrl } from '../vision/rendition';
 import { MAX_SOURCE_BYTES } from '../vision/video';
@@ -18,7 +19,7 @@ const FRAME_BYTES = RASTER_SIZE * RASTER_SIZE * BYTES_PER_PIXEL;
 
 export type MeasureResult =
 	| { kind: 'measured'; weights: ColourWeights; frames: number }
-	| { kind: 'skipped'; cause: 'unreachable' | 'too-large'; reason: string };
+	| { kind: 'skipped'; cause: 'unreachable' | 'too-large'; reason: string; retryable?: boolean };
 
 export interface MeasureOptions extends Omit<PipeFfmpegOptions, 'input' | 'maxOutputBytes'> {
 	fetchFn?: typeof fetch;
@@ -61,7 +62,12 @@ export async function measureImageColours(
 		signal
 	});
 	if (download.kind === 'unreachable')
-		return { kind: 'skipped', cause: 'unreachable', reason: download.reason };
+		return {
+			kind: 'skipped',
+			cause: 'unreachable',
+			reason: download.reason,
+			retryable: isRetryableStatus(download.status)
+		};
 	if (download.kind === 'too-large')
 		return { kind: 'skipped', cause: 'too-large', reason: download.reason };
 	const source = download.bytes;

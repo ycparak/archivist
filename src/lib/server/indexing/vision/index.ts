@@ -7,6 +7,7 @@ import {
 	type VisionInputMode
 } from './cache';
 import { pool } from '../pool';
+import { errorMessage, type BlockOutcome, type OutcomeSink } from '../outcome';
 import type { SyncEventSink, VisionOutcome } from '../progress/events';
 import type { VisionClient, VisionMedia } from './client';
 import { imageSourceHash } from './rendition';
@@ -29,6 +30,8 @@ export interface VisionStageOptions {
 	onEntry?: (entry: VisionCacheEntry) => void;
 	/** Structured progress for a status display. Presentation lives entirely on the other side. */
 	onEvent?: SyncEventSink;
+	/** Called for every block that did not produce an entry, with why. */
+	onOutcome?: OutcomeSink;
 }
 
 export interface VisionFailure {
@@ -126,10 +129,8 @@ export async function describeBlocks(
 		concurrency = DEFAULT_CONCURRENCY,
 		log = noop,
 		signal,
-		now = () => new Date(),
 		onEntry,
-		onEvent = noop,
-		transcodeOptions
+		onEvent = noop
 	} = options;
 
 	const { withImage, cached, pending } = planVisionWork(blocks, { client, cache });
@@ -162,60 +163,81 @@ export async function describeBlocks(
 
 	await pool(pending, concurrency, async (block) => {
 		if (signal?.aborted) return;
-
-		let outcome: VisionOutcome = 'failed';
 		onEvent({ kind: 'vision-started', blockId: block.id });
-
-		try {
-			const unsupported = unsupportedFormatReason(block.imageContentType);
-			if (unsupported) {
-				summary.skippedUnsupported += 1;
-				outcome = 'skipped';
-				log(`  skipped ${block.id}: ${unsupported}`);
-				return;
-			}
-
-			const mode = inputModeFor(block);
-			let media: VisionMedia;
-
-			if (mode === 'video') {
-				const transcoded = await transcodeToVideoDataUrl(block.imageUrl!, {
-					signal,
-					onStage: (stage) => onEvent({ kind: 'vision-stage', blockId: block.id, stage }),
-					...transcodeOptions
-				});
-				if (transcoded.kind === 'skipped') {
-					if (transcoded.cause === 'unreachable') summary.skippedUnreachable += 1;
-					else summary.skippedTooLarge += 1;
-					outcome = 'skipped';
-					log(`  skipped ${block.id}: ${transcoded.reason}`);
-					return;
-				}
-				media = { kind: 'video', dataUrl: transcoded.dataUrl };
+		const outcome = await describeBlock(block, options);
+		if (outcome.kind === 'done') {
+			entries.push(outcome.entry);
+			onEntry?.(outcome.entry);
+			summary.generated += 1;
+			if (outcome.entry.input_mode === 'video') summary.generatedFromVideo += 1;
+		} else {
+			options.onOutcome?.(block.id, outcome);
+			if (outcome.kind === 'failed') {
+				summary.failed.push({ blockId: block.id, error: outcome.error });
+				log(`  failed ${block.id}: ${outcome.error}`);
 			} else {
-				media = { kind: 'image', url: block.imageUrl!, bytes: block.imageBytes };
+				if (outcome.cause === 'unsupported') summary.skippedUnsupported += 1;
+				else if (outcome.cause === 'unreachable') summary.skippedUnreachable += 1;
+				else summary.skippedTooLarge += 1;
+				log(`  skipped ${block.id}: ${outcome.reason}`);
 			}
+		}
+		const settled: VisionOutcome =
+			outcome.kind === 'done' ? 'generated' : outcome.kind === 'skipped' ? 'skipped' : 'failed';
+		onEvent({ kind: 'vision-settled', blockId: block.id, outcome: settled });
+	});
 
-			onEvent({ kind: 'vision-stage', blockId: block.id, stage: 'awaiting-model' });
-			const described = await client.describe({
-				media,
-				block: {
-					type: block.type,
-					title: block.title,
-					description: block.description,
-					sourceTitle: block.sourceTitle
-				},
-				signal
+	return { entries, summary };
+}
+
+/** Describes one block. Never throws: a failure is an outcome, so a caller can retry just it. */
+export async function describeBlock(
+	block: ArchiveBlock,
+	options: Pick<VisionStageOptions, 'client' | 'signal' | 'now' | 'transcodeOptions' | 'onEvent'>
+): Promise<BlockOutcome<VisionCacheEntry>> {
+	const { client, signal, now = () => new Date(), transcodeOptions, onEvent = noop } = options;
+	try {
+		const unsupported = unsupportedFormatReason(block.imageContentType);
+		if (unsupported)
+			return { kind: 'skipped', cause: 'unsupported', reason: unsupported, retryable: false };
+
+		const mode = inputModeFor(block);
+		let media: VisionMedia;
+		if (mode === 'video') {
+			const transcoded = await transcodeToVideoDataUrl(block.imageUrl!, {
+				signal,
+				onStage: (stage) => onEvent({ kind: 'vision-stage', blockId: block.id, stage }),
+				...transcodeOptions
 			});
+			if (transcoded.kind === 'skipped')
+				return {
+					kind: 'skipped',
+					cause: transcoded.cause,
+					reason: transcoded.reason,
+					retryable: transcoded.retryable ?? false
+				};
+			media = { kind: 'video', dataUrl: transcoded.dataUrl };
+		} else {
+			media = { kind: 'image', url: block.imageUrl!, bytes: block.imageBytes };
+		}
 
-			if (described.kind === 'skipped') {
-				summary.skippedTooLarge += 1;
-				outcome = 'skipped';
-				log(`  skipped ${block.id}: ${described.reason}`);
-				return;
-			}
+		onEvent({ kind: 'vision-stage', blockId: block.id, stage: 'awaiting-model' });
+		const described = await client.describe({
+			media,
+			block: {
+				type: block.type,
+				title: block.title,
+				description: block.description,
+				sourceTitle: block.sourceTitle
+			},
+			signal
+		});
+		if (described.kind === 'skipped')
+			return { kind: 'skipped', cause: 'too-large', reason: described.reason, retryable: false };
 
-			const entry = {
+		return {
+			kind: 'done',
+			entry: {
 				...described.result,
 				block_id: block.id,
 				image_src_hash: imageSourceHash(block.imageUrl!),
@@ -224,20 +246,9 @@ export async function describeBlocks(
 				input_mode: mode,
 				provider: described.provider,
 				generated_at: now().toISOString()
-			};
-			entries.push(entry);
-			onEntry?.(entry);
-			summary.generated += 1;
-			outcome = 'generated';
-			if (mode === 'video') summary.generatedFromVideo += 1;
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			summary.failed.push({ blockId: block.id, error: message });
-			log(`  failed ${block.id}: ${message}`);
-		} finally {
-			onEvent({ kind: 'vision-settled', blockId: block.id, outcome });
-		}
-	});
-
-	return { entries, summary };
+			}
+		};
+	} catch (error) {
+		return { kind: 'failed', error: errorMessage(error) };
+	}
 }

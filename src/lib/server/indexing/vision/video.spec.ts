@@ -139,7 +139,8 @@ describe.skipIf(!hasFfmpeg)('transcodeToVideoDataUrl', () => {
 		expect(result).toEqual({
 			kind: 'skipped',
 			cause: 'unreachable',
-			reason: 'source returned HTTP 404'
+			reason: 'source returned HTTP 404',
+			retryable: false
 		});
 	});
 
