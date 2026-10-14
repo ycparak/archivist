@@ -36,7 +36,7 @@ Task: phase 2 of [Trigger.dev workflows](./trigger-workflows.md#phase-2-durable-
 
 ## Remaining maintainer steps
 
-1. Run `wrangler login` (expired on this machine), then create the bucket: `bunx wrangler r2 bucket create archivist-maintenance`.
+1. Done 2026-10-14: created the private bucket `archivist-maintenance` with OAuth wrangler, outside the project. Inside the project, both Bun and wrangler load `.env`, whose `CLOUDFLARE_API_TOKEN` is the Workers AI token and cannot read the account (403). Run account commands from another directory, or with that variable unset plus `--env-file=.env.example`.
 2. In the Cloudflare dashboard, create an R2 API token with Object Read & Write scoped to that bucket. Put `MAINTENANCE_R2_BUCKET`, `MAINTENANCE_R2_ACCESS_KEY_ID` and `MAINTENANCE_R2_SECRET_ACCESS_KEY` in `.env`.
 3. Run `bun run hosted bootstrap`.
 4. With `bunx trigger.dev@4.7.3 dev` running, run `bun run hosted sync --no-colour` from a clean checkout and record the run, job ID, provider calls and report here.
