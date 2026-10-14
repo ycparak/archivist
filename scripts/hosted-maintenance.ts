@@ -38,6 +38,7 @@ const USAGE = `Usage:
   hosted-maintenance.ts bootstrap
   hosted-maintenance.ts pull
   hosted-maintenance.ts sync [--no-colour] [--no-connections] [--no-regression] [--resume <job-id>]
+  hosted-maintenance.ts retry <job-id> [--no-regression]
   hosted-maintenance.ts deploy <job-id> [--dry-run]
   hosted-maintenance.ts identity`;
 
@@ -137,12 +138,7 @@ async function sync() {
 	]);
 	if (args.some((arg) => !known.has(arg))) throw new Error(USAGE);
 	requireCleanCheckout();
-	const jobId =
-		flags.resume ??
-		`sync-${new Date()
-			.toISOString()
-			.replace(/[^0-9]/g, '')
-			.slice(0, 14)}-${Math.random().toString(36).slice(2, 8)}`;
+	const jobId = flags.resume ?? newJobId('sync');
 	const payload = hostedSyncPayloadSchema.parse({
 		jobId,
 		stages: { colour: flags.colour, connections: flags.connections },
@@ -155,6 +151,33 @@ async function sync() {
 		idempotencyKey
 	});
 	console.log(`Triggered ${jobId} as run ${handle.id}. Vision and Are.na write-back are disabled.`);
+}
+
+function newJobId(prefix: string) {
+	const stamp = new Date()
+		.toISOString()
+		.replace(/[^0-9]/g, '')
+		.slice(0, 14);
+	return `${prefix}-${stamp}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Re-runs only the blocks a job left retryable, on that job's pinned discovery, without pruning. */
+async function retry() {
+	const retryOf = jobIdSchema.parse(args[0]);
+	if (args.slice(1).some((arg) => arg !== '--no-regression')) throw new Error(USAGE);
+	requireCleanCheckout();
+	const jobId = newJobId('retry');
+	const payload = hostedSyncPayloadSchema.parse({
+		jobId,
+		retryOf,
+		stages: { colour: true, connections: true },
+		gate: args.includes('--no-regression') ? 'no-regression' : 'strict',
+		source: await sourceIdentity()
+	});
+	const handle = await tasks.trigger<typeof archiveSyncTask>('archive-sync', payload, {
+		idempotencyKey: jobId
+	});
+	console.log(`Retrying ${retryOf}'s failed blocks as ${jobId} (run ${handle.id}).`);
 }
 
 async function deploy() {
@@ -224,7 +247,14 @@ async function identity() {
 	console.log(`Recorded source identity ${value.sourceRevision}.`);
 }
 
-const commands: Record<string, () => Promise<void>> = { bootstrap, pull, sync, deploy, identity };
+const commands: Record<string, () => Promise<void>> = {
+	bootstrap,
+	pull,
+	sync,
+	retry,
+	deploy,
+	identity
+};
 await (commands[command ?? ''] ?? (async () => Promise.reject(new Error(USAGE))))().catch(
 	(error: unknown) => {
 		console.error({

@@ -32,6 +32,7 @@ import { embedEvaluationQueries, evaluationCasesSchema, GATE_POLICIES } from './
 import { acquireLease } from './lease';
 import { loadValidatedRelease } from './release';
 import { getJson, putImmutable, putJson, type ObjectStore } from './store';
+import type { OutcomeSink } from '$lib/server/indexing/outcome';
 
 export const hostedSyncPayloadSchema = z
 	.object({
@@ -41,6 +42,8 @@ export const hostedSyncPayloadSchema = z
 		vision: z.literal(false).default(false),
 		pushArena: z.literal(false).default(false),
 		gate: z.enum(GATE_POLICIES).default('strict'),
+		/** Re-run only the blocks that job left retryable, on its pinned discovery, without pruning. */
+		retryOf: jobIdSchema.optional(),
 		source: z
 			.object({
 				sourceRevision: z.string().regex(/^[a-f0-9]{40}$/),
@@ -55,6 +58,25 @@ export type HostedSyncPayload = z.infer<typeof hostedSyncPayloadSchema>;
 export class HostedJobConfigurationError extends Error {
 	override name = 'HostedJobConfigurationError';
 }
+
+const storedOutcomeSchema = z
+	.object({
+		blockId: z.string(),
+		kind: z.enum(['skipped', 'failed']),
+		cause: z.enum(['unsupported', 'too-large', 'unreachable']).nullable(),
+		retryable: z.boolean(),
+		reason: z.string()
+	})
+	.strict();
+export const jobOutcomesSchema = z
+	.object({
+		colour: z.array(storedOutcomeSchema),
+		connections: z.array(storedOutcomeSchema)
+	})
+	.strict();
+type JobOutcomes = z.infer<typeof jobOutcomesSchema>;
+const retryableCount = (outcomes: JobOutcomes | null) =>
+	outcomes ? [...outcomes.colour, ...outcomes.connections].filter((o) => o.retryable).length : 0;
 
 const jobSchema = z
 	.object({
@@ -129,8 +151,20 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 				{ ifAbsent: true }
 			);
 
-		const discovery = await pinnedDiscovery(store, keys.discovery, deps.discover, signal);
+		const discovery = await pinnedDiscovery(
+			store,
+			keys.discovery,
+			payload.retryOf ? () => originalDiscovery(store, payload.retryOf!) : deps.discover,
+			signal
+		);
 		checkpoint();
+		const retryIds = payload.retryOf
+			? await retryableBlockIds(store, payload.retryOf, payload.stages)
+			: null;
+		// A retry enriches only its failed blocks; the candidate is still built from the whole corpus.
+		const work: DiscoveredArchive = retryIds
+			? { ...discovery, blocks: discovery.blocks.filter(({ id }) => retryIds.has(id)) }
+			: discovery;
 
 		const { caches } = await loadCanonicalCaches(store);
 		const records: Partial<{ [S in CacheStage]: StageEntries[S][] }> = {};
@@ -160,28 +194,44 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			finalCaches = (await loadCanonicalCaches(store)).caches;
 		} else {
 			const writes: Promise<void>[] = [];
+			const outcomes: JobOutcomes = { colour: [], connections: [] };
+			const onOutcome =
+				(stage: keyof JobOutcomes): OutcomeSink =>
+				(blockId, outcome) =>
+					outcomes[stage].push({
+						blockId,
+						kind: outcome.kind,
+						cause: outcome.kind === 'skipped' ? outcome.cause : null,
+						retryable: outcome.kind === 'failed' || outcome.retryable,
+						reason: outcome.kind === 'failed' ? outcome.error : outcome.reason
+					});
 			const onEntry =
 				<S extends CacheStage>(stage: S) =>
 				(entry: StageEntries[S]) => {
 					records[stage]!.push(entry);
 					writes.push(persistRecord(store, payload.jobId, stage, entry));
 				};
-			({ summary } = await deps.enrich(discovery, {
+			({ summary } = await deps.enrich(work, {
 				signal,
 				onEvent: deps.onEvent,
 				visionCache: caches.vision,
 				colourCache: caches.colour,
 				connectionCache: caches.connections,
-				colour: payload.stages.colour ? { onEntry: onEntry('colour') } : undefined,
-				connections: payload.stages.connections ? { onEntry: onEntry('connections') } : undefined
+				colour: payload.stages.colour
+					? { onEntry: onEntry('colour'), onOutcome: onOutcome('colour') }
+					: undefined,
+				connections: payload.stages.connections
+					? { onEntry: onEntry('connections'), onOutcome: onOutcome('connections') }
+					: undefined
 			}));
 			// Every settled entry must be durable before the job can merge or report success.
 			await Promise.all(writes);
+			await putJson(store, keys.outcomes, outcomes);
 			checkpoint();
 			finalCaches = await mergeJobRecords(store, lease, {
 				jobId: payload.jobId,
 				records,
-				liveBlockIds: new Set(discovery.blocks.map(({ id }) => id))
+				liveBlockIds: retryIds ? null : new Set(discovery.blocks.map(({ id }) => id))
 			});
 			await putJson(store, keys.merged, {
 				at: new Date().toISOString(),
@@ -253,6 +303,9 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			status: 'completed',
 			candidateVersion: candidate.release.version,
 			passed: validation.passed,
+			retryable: retryableCount(
+				(await getJson(store, keys.outcomes, jobOutcomesSchema))?.value ?? null
+			),
 			decision: !validation.passed
 				? 'rejected'
 				: production.pointer?.version === candidate.release.version
@@ -303,4 +356,26 @@ async function pinnedDiscovery(
 	});
 	await putImmutable(store, key, new TextEncoder().encode(JSON.stringify(snapshot)));
 	return discovery;
+}
+
+async function originalDiscovery(store: ObjectStore, jobId: string): Promise<DiscoveredArchive> {
+	const existing = await getJson(store, jobKeys(jobId).discovery, discoverySchema);
+	if (!existing)
+		throw new HostedJobConfigurationError(`Job ${jobId} has no pinned discovery to retry`);
+	return { ...existing.value, complete: true };
+}
+
+async function retryableBlockIds(
+	store: ObjectStore,
+	jobId: string,
+	stages: HostedSyncPayload['stages']
+): Promise<Set<string>> {
+	const outcomes = await getJson(store, jobKeys(jobId).outcomes, jobOutcomesSchema);
+	if (!outcomes) throw new HostedJobConfigurationError(`Job ${jobId} recorded no block outcomes`);
+	const ids = new Set<string>();
+	for (const stage of ['colour', 'connections'] as const)
+		if (stages[stage])
+			for (const outcome of outcomes.value[stage]) if (outcome.retryable) ids.add(outcome.blockId);
+	if (!ids.size) throw new HostedJobConfigurationError(`Job ${jobId} left nothing to retry`);
+	return ids;
 }
