@@ -7,6 +7,7 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Changed
 
+- Changed the daily hosted sync to describe new images and animations within a daily cap and write generated titles and descriptions back to Are.na, matching `bun run sync`.
 - Changed search evaluation to report each expected block's rank in the complete ranking rather than the first page only.
 - Aligned documentation with the implemented browser search architecture and added the plan for manually triggered Trigger.dev maintenance workflows.
 - Changed search to submit on Enter or when the input lost focus instead of searching while typing.
