@@ -1,0 +1,13 @@
+{
+	"format": 1,
+	"name": "Ranking and chunking, one change at a time",
+	"discoveryJobId": "daily-20261014",
+	"heldOut": { "count": 200, "seed": 20261014 },
+	"variants": [
+		{ "name": "rrf-k-20", "change": { "kind": "rrf-k", "value": 20 } },
+		{ "name": "rrf-k-120", "change": { "kind": "rrf-k", "value": 120 } },
+		{ "name": "lexical-prefix", "change": { "kind": "lexical-prefix", "value": true } },
+		{ "name": "lexical-fuzzy-0-2", "change": { "kind": "lexical-fuzzy", "value": 0.2 } },
+		{ "name": "chunk-256", "change": { "kind": "chunk-bytes", "value": 256 } }
+	]
+}

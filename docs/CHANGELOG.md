@@ -21,6 +21,7 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Added
 
+- Added reproducible, read-only search experiments with held-out known-item scoring, and a per-case ranking investigation.
 - Added a read-only enrichment coverage report and budget-capped hosted vision backfills with cost estimates.
 - Added per-block enrichment outcomes, `bun run hosted retry` for failed blocks only, and batched child tasks for large backlogs.
 - Added a daily 06:00 UTC hosted archive sync that deploys the site through GitHub Actions when the new release introduces no search regressions.
