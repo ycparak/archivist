@@ -15,6 +15,8 @@ import {
 } from '$lib/server/maintenance/caches';
 import {
 	jobIdSchema,
+	jobKeys,
+	latestCompletedJobId,
 	recordHostedDeployment,
 	stageHostedDeployment
 } from '$lib/server/maintenance/hosted-release';
@@ -22,6 +24,20 @@ import { hostedSyncPayloadSchema } from '$lib/server/maintenance/hosted-sync';
 import { acquireLease } from '$lib/server/maintenance/lease';
 import { createR2Store } from '$lib/server/maintenance/r2';
 import type { archiveSyncTask } from '../src/trigger/sync';
+import type { visionBackfillTask } from '../src/trigger/vision';
+import { DEFAULT_MODEL } from '$lib/server/indexing/vision/client';
+import { PROMPT_VERSION } from '$lib/server/indexing/vision/prompt';
+import {
+	backfillSelectionSchema,
+	estimateBackfillCost,
+	fetchModelPricing,
+	MAX_BACKFILL_BLOCKS,
+	planVisionBackfill,
+	visionBackfillPayloadSchema
+} from '$lib/server/maintenance/backfill';
+import { buildCoverageReport, formatCoverageReport } from '$lib/server/maintenance/coverage';
+import { discoverySchema, jobOutcomesSchema } from '$lib/server/maintenance/job-schemas';
+import { getJson, type ObjectStore } from '$lib/server/maintenance/store';
 import {
 	atomicWrite,
 	fixtureFile,
@@ -40,7 +56,10 @@ const USAGE = `Usage:
   hosted-maintenance.ts sync [--no-colour] [--no-connections] [--no-regression] [--resume <job-id>]
   hosted-maintenance.ts retry <job-id> [--no-regression]
   hosted-maintenance.ts deploy <job-id> [--dry-run]
-  hosted-maintenance.ts identity`;
+  hosted-maintenance.ts identity
+  hosted-maintenance.ts coverage [--job <job-id>]
+  hosted-maintenance.ts backfill --plan|--run [--missing] [--stale] [--ids a,b] [--channels x,y]
+                                 [--max-blocks N] [--budget-usd X] [--job <job-id>]`;
 
 const [command, ...args] = process.argv.slice(2);
 const store = () => createR2Store(process.env);
@@ -247,13 +266,112 @@ async function identity() {
 	console.log(`Recorded source identity ${value.sourceRevision}.`);
 }
 
+function option(name: string): string | undefined {
+	const index = args.indexOf(name);
+	return index >= 0 ? args[index + 1] : undefined;
+}
+
+async function loadCorpus(target: ObjectStore, jobId: string) {
+	const discovery = await getJson(target, jobKeys(jobId).discovery, discoverySchema);
+	if (!discovery) throw new Error(`Job ${jobId} has no pinned discovery`);
+	return discovery.value;
+}
+
+/** Read-only: no model calls, no Are.na requests, nothing written to R2. */
+async function coverage() {
+	const target = store();
+	const jobId = jobIdSchema.parse(option('--job') ?? (await latestCompletedJobId(target)));
+	const report = buildCoverageReport({
+		jobId,
+		blocks: (await loadCorpus(target, jobId)).blocks,
+		caches: (await loadCanonicalCaches(target)).caches,
+		outcomes: (await getJson(target, jobKeys(jobId).outcomes, jobOutcomesSchema))?.value ?? null,
+		vision: { model: DEFAULT_MODEL, promptVersion: PROMPT_VERSION },
+		now: new Date()
+	});
+	const markdown = formatCoverageReport(report);
+	await atomicWrite(
+		new URL('.maintenance/coverage.json', workspace),
+		JSON.stringify(report, null, '\t')
+	);
+	await atomicWrite(new URL('.maintenance/coverage.md', workspace), markdown);
+	console.log(markdown);
+	console.log('Wrote .maintenance/coverage.json and .maintenance/coverage.md.');
+}
+
+async function backfill() {
+	const mode = args.includes('--run') ? 'run' : args.includes('--plan') ? 'plan' : null;
+	if (!mode) throw new Error(USAGE);
+	const target = store();
+	const discoveryJobId = jobIdSchema.parse(option('--job') ?? (await latestCompletedJobId(target)));
+	const list = (name: string) => option(name)?.split(',').filter(Boolean);
+	const selection = backfillSelectionSchema.parse({
+		blockIds: list('--ids'),
+		channels: list('--channels'),
+		include: [
+			...(args.includes('--missing') ? ['missing'] : []),
+			...(args.includes('--stale') ? ['stale'] : [])
+		]
+	});
+	const maxBlocks = Number(option('--max-blocks') ?? MAX_BACKFILL_BLOCKS);
+	const plan = planVisionBackfill({
+		blocks: (await loadCorpus(target, discoveryJobId)).blocks,
+		caches: (await loadCanonicalCaches(target)).caches,
+		client: { model: DEFAULT_MODEL, promptVersion: PROMPT_VERSION },
+		selection,
+		maxBlocks
+	});
+	const estimate = estimateBackfillCost(plan, await fetchModelPricing(DEFAULT_MODEL));
+	console.log(
+		JSON.stringify(
+			{
+				discoveryJobId,
+				model: DEFAULT_MODEL,
+				promptVersion: PROMPT_VERSION,
+				statesInSelection: plan.states,
+				planned: plan.selected.length,
+				images: plan.image,
+				animations: plan.video,
+				beyondMaxBlocks: plan.overLimit,
+				estimate
+			},
+			null,
+			2
+		)
+	);
+	if (mode === 'plan') return console.log('Plan only: nothing was spent or written.');
+	if (!option('--max-blocks') || !option('--budget-usd'))
+		throw new Error('A run needs an explicit --max-blocks and --budget-usd');
+	if (!plan.selected.length) throw new Error('Nothing selected; no run started');
+	const jobId = newJobId('backfill');
+	const payload = visionBackfillPayloadSchema.parse({
+		jobId,
+		discoveryJobId,
+		selection,
+		maxBlocks,
+		budgetUsd: Number(option('--budget-usd'))
+	});
+	const handle = await tasks.trigger<typeof visionBackfillTask>(
+		'archive-vision-backfill',
+		payload,
+		{
+			idempotencyKey: jobId
+		}
+	);
+	console.log(
+		`Started ${jobId} (run ${handle.id}): at most ${maxBlocks} blocks and $${payload.budgetUsd}. The next daily sync publishes the new text.`
+	);
+}
+
 const commands: Record<string, () => Promise<void>> = {
 	bootstrap,
 	pull,
 	sync,
 	retry,
 	deploy,
-	identity
+	identity,
+	coverage,
+	backfill
 };
 await (commands[command ?? ''] ?? (async () => Promise.reject(new Error(USAGE))))().catch(
 	(error: unknown) => {
