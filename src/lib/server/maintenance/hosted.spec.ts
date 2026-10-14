@@ -20,6 +20,9 @@ import {
 } from './hosted-release';
 import { dispatchSiteDeploy } from './github';
 import { pruneArtifacts } from './retention';
+import type { VisionClient } from '$lib/server/indexing/vision/client';
+import { applyWriteBack } from '$lib/server/indexing/vision/writeback';
+import { applyWrittenBack } from '$lib/server/indexing/sync';
 import { BATCH_SIZE, FAN_OUT_THRESHOLD, runEnrichBatch } from './batches';
 import { ARCHIVE_COLOURS } from '$lib/domain/search';
 import {
@@ -164,6 +167,141 @@ describe('archive lease', () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe('daily vision and write-back', () => {
+	const visionEntry = (id: string) => ({
+		block_id: id,
+		image_src_hash: 'hash',
+		prompt_version: 1,
+		model: 'test-model',
+		input_mode: 'image' as const,
+		provider: 'test',
+		generated_at: '2026-10-15T06:00:00.000Z',
+		title: `Seen ${id}`,
+		description: 'Generated.',
+		ocr: '',
+		palette: [],
+		medium: 'photograph' as const,
+		tags: []
+	});
+	const visionClient = () => {
+		const describe = vi.fn<VisionClient['describe']>(async ({ onCost }) => {
+			onCost?.(0.0005);
+			return {
+				kind: 'described',
+				result: {
+					title: 'Seen',
+					description: 'Generated.',
+					ocr: '',
+					palette: [],
+					medium: 'photograph',
+					tags: []
+				},
+				provider: 'test'
+			};
+		});
+		return {
+			describe,
+			client: { model: 'test-model', promptVersion: 1, describe } satisfies VisionClient
+		};
+	};
+	const pricing = { promptUsdPerToken: 1.4e-7, completionUsdPerToken: 2.8e-7 };
+
+	it('describes within the daily block cap, records spend and merges vision entries', async () => {
+		const store = await bootstrapped();
+		const { client, describe } = visionClient();
+		const enrich: HostedSyncDependencies['enrich'] = async (discovery, options) => {
+			for (const { id } of discovery.blocks) {
+				try {
+					await options.vision!.client.describe({
+						media: { kind: 'image', url: 'u' },
+						block: { type: 'Image' }
+					});
+					options.vision!.onEntry?.(visionEntry(id));
+				} catch (error) {
+					options.vision!.onOutcome?.(id, { kind: 'failed', error: String(error) });
+				}
+			}
+			return { summary: discovery.summary };
+		};
+		const report = await runHostedSync(
+			{ ...payload(), vision: { maxBlocks: 1, budgetUsd: 0.5 } },
+			dependencies(store, { enrich, vision: { client, pricing } })
+		);
+		expect(describe).toHaveBeenCalledTimes(1);
+		expect(report.stages.visionSpend).toMatchObject({ blocks: 1, requests: 1, spentUsd: 0.0005 });
+		expect(report.retryable).toBe(1);
+		expect([...(await loadCanonicalCaches(store)).caches.vision.keys()]).toEqual(['1']);
+	});
+
+	it('skips vision rather than spending blind when pricing is unavailable', async () => {
+		const store = await bootstrapped();
+		const { client } = visionClient();
+		const enrich = vi.fn<HostedSyncDependencies['enrich']>(async (discovery) => ({
+			summary: discovery.summary
+		}));
+		const report = await runHostedSync(
+			{ ...payload(), vision: { maxBlocks: 5, budgetUsd: 0.5 } },
+			dependencies(store, { enrich, vision: { client, pricing: null } })
+		);
+		expect(enrich.mock.calls[0][1].vision).toBeUndefined();
+		expect(report.stages.visionSpend).toEqual({ skipped: expect.stringContaining('pricing') });
+	});
+
+	it('builds with written-back titles and never repeats a write on resume', async () => {
+		const store = await bootstrapped();
+		let calls = 0;
+		const enrich: HostedSyncDependencies['enrich'] = async (discovery, options) => {
+			calls += 1;
+			expect(options.pushArena).toBe(true);
+			if (!options.writeBack?.skip?.has('1'))
+				await options.writeBack!.onWritten!({
+					blockId: '1',
+					arenaUrl: 'https://www.are.na/block/1',
+					title: { action: { kind: 'add' }, from: null, to: 'Written title' },
+					description: null,
+					update: { title: 'Written title' }
+				});
+			if (calls === 1) throw new Error('Worker replaced');
+			expect(options.writeBack?.skip?.has('1')).toBe(true);
+			return { summary: discovery.summary };
+		};
+		await expect(
+			runHostedSync({ ...payload(), pushArena: true }, dependencies(store, { enrich }))
+		).rejects.toThrow('Worker replaced');
+		const report = await runHostedSync(
+			{ ...payload(), pushArena: true },
+			dependencies(store, { enrich })
+		);
+		const release = await loadStoredRelease(store, report.candidateVersion);
+		const titles = release.metadata.documents.map(({ result }) => result.title);
+		expect(titles).toContain('Written title');
+	});
+
+	it('reports each successful local write and applies it to the built blocks', async () => {
+		const written: string[] = [];
+		const summary = await applyWriteBack(
+			[
+				{
+					blockId: '1',
+					arenaUrl: 'https://www.are.na/block/1',
+					title: { action: { kind: 'add' }, from: null, to: 'New' },
+					description: null,
+					update: { title: 'New' }
+				}
+			],
+			{ notOwned: 0, noVisionResult: 0, nothingToChange: 0 },
+			{
+				updateBlock: async () => {},
+				delayMs: 0,
+				onWritten: ({ blockId }) => void written.push(blockId)
+			}
+		);
+		expect(summary.blocksUpdated).toBe(1);
+		expect(written).toEqual(['1']);
+		expect(applyWrittenBack([block('1')], new Map([['1', { title: 'New' }]]))[0].title).toBe('New');
 	});
 });
 
