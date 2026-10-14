@@ -10,6 +10,33 @@ import {
 import { ARCHIVE_BLOCK_TYPES, ARCHIVE_COLOURS } from './search';
 
 describe('toSearchDocument', () => {
+	it('keeps upload filenames and opaque titles out of indexed text but not the record', () => {
+		const junk = 'original-0280b5e43cfe8440ab66b40e1ec7162d.png?compress=1-resize=1905x1429';
+		const document = toSearchDocument(
+			archiveBlockSchema.parse({
+				id: 7,
+				type: 'Image',
+				title: junk,
+				sourceTitle: junk,
+				description: 'A grid of dashboard widgets',
+				arenaUrl: 'https://www.are.na/block/7',
+				channels: [{ slug: 'ui', title: 'Interfaces' }]
+			})
+		);
+		expect(document.search_text).toBe('A grid of dashboard widgets\nInterfaces');
+		expect(document.title).toBe(junk);
+		const informative = toSearchDocument(
+			archiveBlockSchema.parse({
+				id: 8,
+				type: 'Link',
+				title: 'Someone on X: "widgets everywhere"',
+				arenaUrl: 'https://www.are.na/block/8',
+				channels: []
+			})
+		);
+		expect(informative.search_text).toContain('widgets everywhere');
+	});
+
 	it('builds stable searchable text without inventing image content', () => {
 		const document = toSearchDocument(
 			archiveBlockSchema.parse({
