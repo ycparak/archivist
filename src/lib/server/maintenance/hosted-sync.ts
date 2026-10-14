@@ -143,11 +143,22 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			for (const entry of records.connections) caches.connections.set(entry.block_id, entry);
 		}
 
-		const merged = await getJson(store, keys.merged, z.object({ at: z.string() }));
+		const merged = await getJson(
+			store,
+			keys.merged,
+			z.object({ at: z.string(), colour: z.unknown(), connections: z.unknown() })
+		);
 		let summary: SyncSummary = discovery.summary;
 		let finalCaches: ArchiveCaches;
-		if (merged) finalCaches = (await loadCanonicalCaches(store)).caches;
-		else {
+		if (merged) {
+			// A resumed attempt reports the stage results the merging attempt recorded.
+			summary = {
+				...summary,
+				colour: (merged.value.colour ?? null) as SyncSummary['colour'],
+				connections: (merged.value.connections ?? null) as SyncSummary['connections']
+			};
+			finalCaches = (await loadCanonicalCaches(store)).caches;
+		} else {
 			const writes: Promise<void>[] = [];
 			const onEntry =
 				<S extends CacheStage>(stage: S) =>
@@ -172,7 +183,11 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 				records,
 				liveBlockIds: new Set(discovery.blocks.map(({ id }) => id))
 			});
-			await putJson(store, keys.merged, { at: new Date().toISOString() });
+			await putJson(store, keys.merged, {
+				at: new Date().toISOString(),
+				colour: summary.colour,
+				connections: summary.connections
+			});
 		}
 
 		deps.onEvent?.({ kind: 'phase', phase: 'building' });

@@ -250,6 +250,29 @@ describe('hosted sync', () => {
 		expect(report.passed).toBe(true);
 	});
 
+	it('keeps stage results when an attempt fails after merging', async () => {
+		const store = await bootstrapped();
+		const stats = { blocks: 2, cacheHits: 0, counted: 2, failed: [] };
+		const deps = (embed: HostedSyncDependencies['embed']) =>
+			dependencies(store, {
+				embed,
+				enrich: async (discovery, options) => {
+					for (const { id } of discovery.blocks) options.connections?.onEntry?.(counted(id));
+					return { summary: { ...discovery.summary, connections: stats } };
+				}
+			});
+		await expect(
+			runHostedSync(
+				payload(),
+				deps(async () => {
+					throw new Error('Embedding outage');
+				})
+			)
+		).rejects.toThrow('Embedding outage');
+		const report = await runHostedSync(payload(), deps(dependencies(store).embed));
+		expect(report.stages.connections).toEqual(stats);
+	});
+
 	it('never persists or prunes after incomplete discovery', async () => {
 		const store = await bootstrapped();
 		const before = await store.get(CACHE_POINTER_KEY);

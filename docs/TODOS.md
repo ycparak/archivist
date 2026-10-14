@@ -10,12 +10,11 @@ _(none)_
 
 ## Up Next
 
-- [ ] **Daily scheduled sync and automatic deployment.** Implement phase 3 of the [Trigger.dev plan](./specs/trigger-workflows.md#phase-3-daily-scheduled-sync-and-automatic-deployment).
 - [ ] **Block retries and hosted media processing.** Implement phase 4 of the [Trigger.dev plan](./specs/trigger-workflows.md#phase-4-block-retries-and-hosted-media-processing).
 
 ## Needs Input
 
-_(none)_
+- [~] **Daily scheduled sync and automatic deployment.** Phase 3 code is complete; configure the production credentials and alert, merge to `main`, then record the first scheduled run in the [worksheet](./specs/worksheet-daily-sync.md).
 
 ## Backlog
 

@@ -83,5 +83,8 @@ export function createR2Store(env: Record<string, string | undefined>): ObjectSt
 function sanitized(error: unknown, key: string) {
 	const status = error instanceof S3ServiceException ? error.$metadata.httpStatusCode : undefined;
 	const name = error instanceof Error ? error.name : 'UnknownError';
-	return new Error(`R2 request failed for ${key} (${name}${status ? ` ${status}` : ''})`);
+	// Network codes such as ECONNRESET are safe to keep; messages may echo signed URLs.
+	const code = (error as { code?: unknown } | null)?.code;
+	const detail = [name, status, typeof code === 'string' ? code : undefined].filter(Boolean);
+	return new Error(`R2 request failed for ${key} (${detail.join(' ')})`);
 }
