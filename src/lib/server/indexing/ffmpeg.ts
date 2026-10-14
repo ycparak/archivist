@@ -67,7 +67,11 @@ export function runFfmpeg(args: string[], options: PipeFfmpegOptions = {}): Prom
 			child.stdin?.end(input);
 		}
 
-		const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+		let timedOut = false;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			child.kill('SIGKILL');
+		}, timeoutMs);
 
 		child.on('error', (error: NodeJS.ErrnoException) => {
 			clearTimeout(timer);
@@ -77,6 +81,7 @@ export function runFfmpeg(args: string[], options: PipeFfmpegOptions = {}): Prom
 		child.on('close', (code) => {
 			clearTimeout(timer);
 			if (overflowed) reject(new Error(`ffmpeg wrote more than ${maxOutputBytes} bytes`));
+			else if (timedOut) reject(new Error(`ffmpeg timed out after ${timeoutMs}ms`));
 			else if (code === 0) resolve(Buffer.concat(chunks));
 			else reject(new Error(`ffmpeg exited with code ${code}: ${stderr.trim() || 'no output'}`));
 		});
