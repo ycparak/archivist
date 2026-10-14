@@ -183,7 +183,9 @@ async function sync() {
 	const handle = await tasks.trigger<typeof archiveSyncTask>('archive-sync', payload, {
 		idempotencyKey
 	});
-	console.log(`Triggered ${jobId} as run ${handle.id}. Vision and Are.na write-back are disabled.`);
+	console.log(
+		`Triggered ${jobId} as run ${handle.id}. Vision: ${payload.vision ? `up to ${payload.vision.maxBlocks} blocks, $${payload.vision.budgetUsd}` : 'off'}. Are.na write-back: ${payload.pushArena ? 'on' : 'off'}.`
+	);
 }
 
 function newJobId(prefix: string) {
