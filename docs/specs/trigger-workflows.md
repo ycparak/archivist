@@ -1,7 +1,7 @@
 # Trigger.dev maintenance workflows
 
-Status: proposed implementation plan; scope selected by the maintainer on 2026-10-14.
-The current runtime is described in [architecture](../architecture.md). This document does not claim these workflows are implemented.
+Status: phase 1 implemented locally; phases 2–5 planned; scope selected by the maintainer on 2026-10-14.
+The current runtime is described in [architecture](../architecture.md). Phase 1 provides local candidate commands and a synthetic Trigger validation task (evidence in the [phase 1 worksheet](../history/worksheets/worksheet-candidate-validation.md)); remaining phases are proposed work.
 
 ## Outcome and scope
 
@@ -21,7 +21,7 @@ Automatic scheduled sync, Are.na write-back preview/approval UI, uptime monitori
 
 ## Code baseline and gaps
 
-- `trigger.config.ts` discovers `src/trigger/`, uses Node 24 and currently limits runs to 3,600 seconds with three default attempts. SDK/build packages are pinned to 4.7.3. Only `example.ts` exists; the setup worksheet recorded a successful development run, not an archive workflow deployment.
+- `trigger.config.ts` discovers `src/trigger/`, uses Node 24 and currently limits runs to 3,600 seconds with three default attempts. SDK/build packages are pinned to 4.7.3. The original baseline had only `example.ts`; the setup worksheet recorded a successful development run, not an archive workflow deployment.
 - `scripts/sync.ts` parses opt-out flags, loads/writes committed caches, renders terminal progress, calls `syncArchive`, publishes local assets and writes the channel manifest. CLI vision/write-back are enabled by default; the reusable `syncArchive` does not enable either unless requested.
 - `syncArchive` discovers owned public/closed channels, deduplicates blocks, runs colour → connections → vision → optional write-back, then constructs documents. Export mode rejects vision/write-back and refuses incomplete/empty discovery. Normal sync checks completeness in the CLI before local publication, after cache persistence.
 - Enrichment stages use an in-process pool and collect failures in summaries instead of throwing. Current default concurrency is 32 for vision and 4 each for colour/connections. Cache merges preserve old entries on failures and unseen entries on incomplete discovery.
