@@ -12,7 +12,7 @@ This is an **agent router**: concise context loaded every session, read by both 
 
 Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, MiniSearch and static vector snapshots (search datastore), Are.na V3 (source of truth for content).
 
-- `src/lib/domain/`: framework-free domain types and transformations. `titles.ts` decides which Are.na titles carry no information; write-back and captions both use it. `search.ts` (the URL grammar, `SearchResult`, `ArchiveSearchState`) ships to the browser, so it must stay free of Zod schemas, provider shapes, and any runtime validation library. `archive.ts` (`ArchiveBlock`, `SearchDocument`, `toSearchDocument`) is imported only from `src/lib/server/` and does use Zod; never import it from a component or route markup. Provider validation and provider shapes live under `src/lib/server/`.
+- `src/lib/domain/`: framework-free domain types and transformations. `titles.ts` decides which Are.na titles carry no information; write-back and captions both use it. `search.ts` (the URL grammar, `SearchResult`, `ArchiveSearchState`) ships to the browser, so it must stay free of Zod schemas, provider shapes, and any runtime validation library. `archive.ts` (`ArchiveBlock`, `SearchDocument`, `toSearchDocument`) is used by server modules and maintenance CLIs and does use Zod; never import it from a component or route markup. Provider validation and provider shapes live under `src/lib/server/`.
 - `src/lib/server/arena/`: Are.na transport, payload schemas, and pagination only.
 - `src/lib/server/indexing/`: normalization, channel filtering, the channel manifest, sync orchestration, the colour stage (`colour/`), the connections stage (`connections/`), the vision stage (`vision/`), and CLI progress reporting (`progress/`). It also holds the four committed files the sync writes: `channel-manifest.json`, `colour-cache.jsonl`, `connections-cache.jsonl` and `vision-cache.jsonl`.
 - `src/lib/search/`: client-safe search validation, snapshot schemas, lexical/vector ranking, RRF, colour thresholds and the browser Web Worker/client. Keep provider normalization and credentials server-only.
@@ -21,6 +21,7 @@ Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, MiniSearch and st
 - `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
 - `src/routes/`: HTTP and UI composition only. Provider calls and ranking expressions do not belong in route files.
 - `src/styles/`: fonts, Tailwind theme tokens and the semantic colour roles. The visual system is documented in [docs/design.md](./docs/design.md).
+- `src/trigger/`: Trigger.dev task entrypoints; currently only the hello-world example, with maintenance workflows planned in [docs/specs/trigger-workflows.md](./docs/specs/trigger-workflows.md).
 - `scripts/`: the manual CLIs (`sync.ts`, `evaluate-search.ts`, `calibrate-colour.ts`), the search evaluation fixture, and `worktree.sh`.
 
 Full technical detail: [docs/architecture.md](./docs/architecture.md).
@@ -69,7 +70,7 @@ in `./docs/decisions/`.
 
 ## Scope
 
-Archivist is a public gallery and search surface for one maintainer's Are.na archive. A new plan is being written; until it lands, the points below describe what the code does and are the boundary for changes. Anything beyond them needs the maintainer's explicit go-ahead.
+Archivist is a public gallery and search surface for one maintainer's Are.na archive. The points below describe current behavior. The accepted maintenance scope and proposed implementation are in [Trigger.dev workflows](./docs/specs/trigger-workflows.md); those tasks are not implemented yet. Anything beyond them needs the maintainer's explicit go-ahead.
 
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
 - Query time is free of generative LLMs. Browser search uses Workers AI only to embed queries; the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
@@ -79,7 +80,7 @@ Archivist is a public gallery and search surface for one maintainer's Are.na arc
 
 - Use the canonical `search_text` composition in `docs/architecture.md` for lexical indexing and embeddings; browser embeddings use bounded complete-text chunks.
 - `src/lib/domain/search.ts` owns the URL search grammar (parameter names, the implicit-mode rule, the date format). The server parser and the UI both consume it; do not restate a parameter name anywhere else.
-- In browser builds, filter the complete eligible corpus before lexical/vector ranking, aggregate chunk scores to one block, and fuse complete ranked lists with RRF (`k=60`) in `src/lib/search/`, with stable ID ties and release pinning. No raw score arithmetic belongs in UI components.
+- Filter the complete eligible corpus before lexical/vector ranking, aggregate chunk scores to one block, and fuse complete ranked lists with RRF (`k=60`) in `src/lib/search/`, with stable ID ties and release pinning. No raw score arithmetic belongs in UI components.
 - Hybrid uses ranked-list RRF in the search Worker; ranking never belongs in UI markup.
 - Filters cover kind, channel membership, connected/created dates and colour weights. Query results always rank by relevance; browse sorts use stable ID tiebreaks.
 - Incompatible snapshot or embedding changes require a new release/version.
@@ -98,7 +99,7 @@ Archivist is a public gallery and search surface for one maintainer's Are.na arc
 - TypeScript strictness is non-negotiable. Validate untrusted API/config input at the boundary with Zod.
 - Keep code comments exceptionally rare. Add one only when it records non-obvious reasoning, an external constraint, or a deliberate tradeoff that cannot be made clear through names and structure; never narrate what the code already says.
 - Add a focused unit test for every normalizer, filter builder, and search-result mapper. Test behavior, not private implementation details.
-- Use accessible native controls, URL-backed browse/search state, server-side data access, and responsive image dimensions.
+- Use accessible native controls, URL-backed browse/search state, server-only provider access, and responsive image dimensions.
 - Write every Tailwind class in its canonical form: `@container-size`, not `[container-type:size]`; `max-h-lh`, not `max-h-[1lh]`. This is Tailwind IntelliSense's `suggestCanonicalClasses` rule, and `bun run lint` enforces it through `bun run check:classes`, which prints the canonical spelling for each offender. Never silence it with a raw arbitrary property when a utility exists. Follow [docs/design.md](./docs/design.md) for every other UI decision.
 - Keep secrets server-only; do not log tokens, full raw API payloads, or user search queries.
 - When changing `docs/CHANGELOG.md` or `docs/TODOS.md`, keep one consistent format by matching the existing entries: the changelog sits under `## Unreleased` in `Added` / `Changed` / `Removed` / `Fixed` groups, newest first, one past-tense line per change; TODOs keep their fixed sections, with items written as `- [ ] **Title.** One sentence.`
