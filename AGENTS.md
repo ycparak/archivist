@@ -22,7 +22,7 @@ Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, MiniSearch and st
 - `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
 - `src/routes/`: HTTP and UI composition only. Provider calls and ranking expressions do not belong in route files.
 - `src/styles/`: fonts, Tailwind theme tokens and the semantic colour roles. The visual system is documented in [docs/design.md](./docs/design.md).
-- `src/trigger/`: Trigger.dev task entrypoints (hello-world, synthetic validation, the manual `archive-sync` and the scheduled `daily-archive-sync`); `source-identity.ts` is overwritten by CI. Later maintenance workflows are planned in [docs/specs/trigger-workflows.md](./docs/specs/trigger-workflows.md).
+- `src/trigger/`: Trigger.dev task entrypoints (hello-world, synthetic validation, the manual `archive-sync`, the scheduled `daily-archive-sync` and the `archive-enrich-batch` child); `source-identity.ts` is overwritten by CI. Later maintenance workflows are planned in [docs/specs/trigger-workflows.md](./docs/specs/trigger-workflows.md).
 - `scripts/`: the manual CLIs (`sync.ts`, `evaluate-search.ts`, `candidate-search.ts`, `hosted-maintenance.ts`, `calibrate-colour.ts`), the search evaluation fixture, and `worktree.sh`.
 
 Full technical detail: [docs/architecture.md](./docs/architecture.md).
@@ -71,7 +71,7 @@ in `./docs/decisions/`.
 
 ## Scope
 
-Archivist is a public gallery and search surface for one maintainer's Are.na archive. The points below describe current behavior. The accepted maintenance scope and proposed implementation are in [Trigger.dev workflows](./docs/specs/trigger-workflows.md); phases 1–2 (candidate validation, hosted storage and manual sync) are implemented. Phase 3 (a daily 06:00 UTC hosted sync with automatic regression-gated deployment) is live in production. Anything beyond them needs the maintainer's explicit go-ahead.
+Archivist is a public gallery and search surface for one maintainer's Are.na archive. The points below describe current behavior. The accepted maintenance scope and proposed implementation are in [Trigger.dev workflows](./docs/specs/trigger-workflows.md); phases 1–2 (candidate validation, hosted storage and manual sync) are implemented. Phase 3 (a daily 06:00 UTC hosted sync with automatic regression-gated deployment) is live in production, and phase 4 (per-block outcomes, retries and batched children) is implemented. Anything beyond them needs the maintainer's explicit go-ahead.
 
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
 - Query time is free of generative LLMs. Browser search uses Workers AI only to embed queries; the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
