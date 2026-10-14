@@ -117,7 +117,7 @@ The current integration is SDK/build package 4.7.3, `trigger.config.ts` using No
 
 ### Hosted maintenance
 
-`archive-sync` runs on the `archive-maintenance` queue (concurrency 1) with two attempts. Its payload selects the colour and connections stages; vision and Are.na write-back are rejected by schema. Persistence and coordination are described in [ADR 0005](./decisions/0005-hosted-maintenance-storage.md). A job:
+`archive-sync` runs on the `archive-maintenance` queue (concurrency 1) with two attempts. Its payload selects the colour and connections stages, and optionally vision (with a per-run block cap and budget) and Are.na write-back; both default off for manual jobs. Persistence and coordination are described in [ADR 0005](./decisions/0005-hosted-maintenance-storage.md). A job:
 
 1. Takes the archive lease.
 2. Pins one complete discovery via `discoverArchive`; incomplete or empty discovery persists nothing.
@@ -168,7 +168,14 @@ It refuses to run without pricing, never writes to Are.na, and does not build a 
 
 ### Daily sync and deployment
 
-`daily-archive-sync` runs at 06:00 UTC in production only, as job `daily-YYYYMMDD`, so a duplicate fire or retry resumes the same job. It runs colour (ffmpeg comes from the Trigger build extension) and connections with the `no-regression` gate. Then:
+`daily-archive-sync` runs at 06:00 UTC in production only, as job `daily-YYYYMMDD`, so a duplicate fire or retry resumes the same job. It is the hosted equivalent of `bun run sync`:
+
+- **Enrichment:** colour (ffmpeg comes from the Trigger build extension) and connections.
+- **Vision:** describes missing or stale blocks through the spend limiter, at most 50 blocks and $0.50 a day. Anything beyond waits for the next morning. If pricing is unavailable, vision is skipped for the run rather than spending blind.
+- **Write-back:** sends generated titles and descriptions to the maintainer's own Are.na blocks, under the owner-only rules in `writeback.ts`, with no cap on writes. Each successful write is recorded under the job, so a resumed attempt never repeats it, and that morning's build uses the written text.
+- **Gate:** the `no-regression` gate applies before deployment.
+
+Then:
 
 - `rejected` fails the run, which triggers Trigger's alert email.
 - `deploy` dispatches the `Deploy site` GitHub workflow (`.github/workflows/deploy-site.yml`) with the job ID and revision.
@@ -185,7 +192,7 @@ The job refuses to run without the source identity that CI bakes into `src/trigg
 - `identity` writes the clean checkout's source identity into the Trigger bundle; CI runs it.
 - `deploy <job> [--dry-run]` stages and deploys a job's candidate. It verifies the job report, checkout identity, supersession and recomputed evaluation, moves existing local search assets aside, and publishes only the deployed baseline and the candidate. It then builds, deploys, and records the production pointer.
 
-No task writes to Are.na or generates vision. Only the daily schedule runs automatically, and only the site workflow deploys.
+Only the daily schedule runs automatically, and only it writes to Are.na. Paid vision runs only in that capped daily stage or in a manually triggered, budgeted backfill. Only the site workflow deploys.
 
 ## Build and local binding emulation
 

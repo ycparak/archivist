@@ -75,7 +75,7 @@ Archivist is a public gallery and search surface for one maintainer's Are.na arc
 
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
 - Query time is free of generative LLMs. Browser search uses Workers AI only to embed queries; the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
-- Sync is manual. A plain `bun run sync` is maintainer-only; agents may run the flagged variants described under Hard Rules. Public requests download versioned public assets and call a bounded embedding endpoint. Public requests must never proxy to Are.na.
+- The production `daily-archive-sync` is the maintainer-approved hosted equivalent of a plain sync. It generates vision within a daily cap and writes back to Are.na. Do not change its caps or write-back without the maintainer. A plain local `bun run sync` is maintainer-only; agents may run the flagged variants described under Hard Rules. Public requests download versioned public assets and call a bounded embedding endpoint. Public requests must never proxy to Are.na.
 
 ## Search Invariants
 

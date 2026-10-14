@@ -18,7 +18,7 @@ Move archive maintenance into observable hosted jobs. Every morning a scheduled 
 | 8             | Enrichment coverage and freshness reports                                       |
 | 9             | Isolated search experiment batches and comparison reports                       |
 
-Are.na write-back preview/approval UI, uptime monitoring, backups and a public admin interface are outside this plan. Keep the existing owner-only write-back code, but disable it in hosted tasks. Scheduled jobs never generate paid vision. Release retention (phase 3) is the only automated pruning.
+Are.na write-back preview/approval UI, uptime monitoring, backups and a public admin interface are outside this plan. On 2026-10-14 the maintainer made the daily sync a full hosted equivalent of `bun run sync`. It generates vision for missing or stale blocks (at most 50 blocks and $0.50 a day) and writes generated titles and descriptions back to the maintainer's own Are.na blocks, under the existing owner-only rules, with no cap on writes. Release retention (phase 3) is the only automated pruning.
 
 Cost constraint: everything runs within free allowances:
 
@@ -96,7 +96,7 @@ Requested by the maintainer on 2026-10-14: each morning the sync runs, and the s
 - Deployment requires intact files and no regression against the live release, rather than every fixture case passing. A pre-existing miss such as widget-grid is reported but does not block new content.
 
 1. **Schedule.** Add `daily-archive-sync` as a `schedules.task` with `cron: { pattern: "0 6 * * *", environments: ["PRODUCTION"] }`, so it never fires in development.
-   - It calls `runHostedSync` with colour and connections enabled. Vision and write-back stay disabled.
+   - It calls `runHostedSync` with colour and connections enabled. Since 2026-10-14 it also enables capped vision and Are.na write-back (see the scope note above).
    - The job ID is derived from the scheduled date (`daily-YYYYMMDD`), so a duplicate fire or a retry resumes the same job instead of starting a second one.
    - It uses the `archive-maintenance` queue, so it cannot overlap a manual job; the lease already enforces this durably.
    - Measure peak memory and use `small-2x` if it fits; otherwise keep `medium-1x`. One run is about 2 minutes, roughly $0.01 a day and $0.30 a month of the $5 credit.
