@@ -56,7 +56,11 @@ export function hostedDependencies(signal: AbortSignal): HostedSyncDependencies 
 
 /** Configuration, lease and payload contradictions fail once; everything else may retry. */
 export function rethrowForTrigger(error: unknown): never {
-	if (error instanceof ZodError) throw new AbortTaskRunError('Invalid configuration');
+	// Issue paths name the setting (an environment variable or payload field), never its value.
+	if (error instanceof ZodError)
+		throw new AbortTaskRunError(
+			`Invalid configuration: ${[...new Set(error.issues.map(({ path }) => path.join('.') || 'value'))].join(', ')}`
+		);
 	if (error instanceof LeaseHeldError || error instanceof HostedJobConfigurationError)
 		throw new AbortTaskRunError(error.message);
 	throw error;
