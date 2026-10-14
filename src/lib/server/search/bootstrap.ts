@@ -4,7 +4,7 @@ import { readArchiveSearchState } from '$lib/domain/search';
 
 export async function loadSearchBootstrap(fetchFn: typeof fetch) {
 	const response = await fetchFn('/search/manifest.json');
-	if (!response.ok) throw new Error('Run bun run export:search before building browser search');
+	if (!response.ok) throw new Error('Run bun run sync --export before building browser search');
 	const release = releaseSchema.parse(await response.json());
 	const bytes = await checkedAsset(release, release.bootstrap, fetchFn);
 	const bootstrap = bootstrapSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));

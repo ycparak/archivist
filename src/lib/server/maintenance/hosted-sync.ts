@@ -8,7 +8,7 @@ import {
 	type EnrichmentOptions,
 	type SyncSummary
 } from '$lib/server/indexing/sync';
-import { buildSearchRelease, sha256 } from '$lib/server/search/release-builder';
+import { buildSearchRelease, sha256 } from '$lib/server/release/release-builder';
 import {
 	hostedEmbeddingCache,
 	loadCanonicalCaches,

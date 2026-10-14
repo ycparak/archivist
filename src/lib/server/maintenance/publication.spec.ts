@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { withFileLock } from '../../../../scripts/file-lock';
 import { localEmbeddingCache } from '../../../../scripts/maintenance-files';
 import { publishSearchRelease } from '../../../../scripts/search-files';
-import { buildSearchRelease } from '$lib/server/search/release-builder';
+import { buildSearchRelease } from '$lib/server/release/release-builder';
 import { toSearchDocument } from '$lib/domain/archive';
 import { EMBEDDING } from '$lib/search/embedding';
 import { releaseSchema } from '$lib/search/snapshot';

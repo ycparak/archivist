@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { searchEvaluationCasesSchema } from '$lib/server/search/evaluation';
+import { searchEvaluationCasesSchema } from '$lib/server/release/evaluation';
 import { EMBEDDING } from '$lib/search/embedding';
-import { sha256 } from '$lib/server/search/release-builder';
+import { sha256 } from '$lib/server/release/release-builder';
 import {
 	evaluationCasesSchema,
 	evaluateRelease,

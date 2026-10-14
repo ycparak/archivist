@@ -7,7 +7,7 @@ import type { PublicDocument } from './snapshot';
 
 export const lexicalOptions = { fields: ['search_text'], idField: 'id' };
 
-/** What a search experiment may vary. Production uses exactly these values. */
+/** The ranking parameters; production uses PRODUCTION_RANKING. */
 export interface RankingOptions {
 	rrfK: number;
 	prefix: boolean;

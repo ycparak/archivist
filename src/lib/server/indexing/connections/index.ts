@@ -24,7 +24,7 @@ export interface ConnectionStageOptions {
 	onProgress?: (done: number, total: number) => void;
 }
 
-export interface ConnectionFailure {
+interface ConnectionFailure {
 	blockId: string;
 	error: string;
 }

@@ -18,7 +18,7 @@ import {
 	type SnapshotAsset
 } from '$lib/search/snapshot';
 import { validateLexical } from './lexical';
-import { sha256 } from '$lib/server/search/release-builder';
+import { sha256 } from '$lib/server/release/release-builder';
 
 export function releaseAssets(release: SearchRelease): SnapshotAsset[] {
 	return [release.metadata, release.lexical, release.bootstrap, ...release.vectors];

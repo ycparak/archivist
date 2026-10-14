@@ -15,7 +15,7 @@ import { lowQualityTitleReason, type LowQualityTitleReason } from '$lib/domain/t
  *   (see `titles.ts`).
  */
 
-export type TitleAction = { kind: 'add' } | { kind: 'replace'; reason: LowQualityTitleReason };
+type TitleAction = { kind: 'add' } | { kind: 'replace'; reason: LowQualityTitleReason };
 
 export interface WriteBackPlan {
 	blockId: string;
@@ -97,7 +97,7 @@ export function planWriteBack(
 	return { plans, skipped };
 }
 
-export interface WriteBackFailure {
+interface WriteBackFailure {
 	blockId: string;
 	error: string;
 }

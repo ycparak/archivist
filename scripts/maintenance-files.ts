@@ -3,8 +3,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
 import { EMBEDDING, embeddingVectorSchema } from '$lib/search/embedding';
-import { sha256 } from '$lib/server/search/release-builder';
-import { createCloudflareEmbedder } from '$lib/server/search/export';
+import { sha256 } from '$lib/server/release/release-builder';
+import { createCloudflareEmbedder } from '$lib/server/release/export';
 import { parseVisionCache } from '$lib/server/indexing/vision/cache';
 import { parseColourCache } from '$lib/server/indexing/colour/cache';
 import { withFileLock } from './file-lock';
@@ -15,9 +15,9 @@ export const fixtureFile = new URL('./fixtures/search-cases.json', import.meta.u
 export const workspace = new URL('../', import.meta.url);
 /** The committed enrichment caches: a portable seed for hosted maintenance and a reviewable record. */
 export const cacheFiles = {
-	colour: new URL('../src/lib/server/indexing/colour-cache.jsonl', import.meta.url),
-	connections: new URL('../src/lib/server/indexing/connections-cache.jsonl', import.meta.url),
-	vision: new URL('../src/lib/server/indexing/vision-cache.jsonl', import.meta.url)
+	colour: new URL('../data/colour-cache.jsonl', import.meta.url),
+	connections: new URL('../data/connections-cache.jsonl', import.meta.url),
+	vision: new URL('../data/vision-cache.jsonl', import.meta.url)
 } as const;
 
 export async function optionalRead(url: URL): Promise<string | undefined> {
@@ -96,6 +96,7 @@ export async function sourceIdentity() {
 		'src/lib/domain/',
 		'src/lib/search/',
 		'src/lib/server/search/',
+		'src/lib/server/release/',
 		'src/lib/server/indexing/',
 		'src/lib/server/arena/',
 		'src/lib/server/maintenance/',

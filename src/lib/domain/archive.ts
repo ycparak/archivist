@@ -52,7 +52,7 @@ type BlockVisionText = {
 /** Per-mille share of the image in each colour, structurally matching a colour cache entry's weights. */
 type BlockColourWeights = Record<ArchiveColour, number>;
 
-export type ColourAttribute = `colour_${ArchiveColour}`;
+type ColourAttribute = `colour_${ArchiveColour}`;
 
 function colourAttribute(colour: ArchiveColour): ColourAttribute {
 	return `colour_${colour}`;
