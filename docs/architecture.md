@@ -166,6 +166,30 @@ It also reports the job's recorded failures and coverage by channel and block ty
 
 It refuses to run without pricing, never writes to Are.na, and does not build a candidate: the next daily sync publishes the new text through the usual gate.
 
+### Search experiments
+
+`bun run hosted experiment <spec.json>` runs a pinned, local experiment. The spec names a job's frozen corpus, a held-out set size and seed, and up to eight variants. Each variant changes exactly one thing against the production control:
+
+- RRF `k` (production 60);
+- MiniSearch `prefix` or `fuzzy` matching (production off);
+- embedding chunk bytes (production 384, at most 500).
+
+The corpus, canonical caches and embeddings are read through `readOnlyStore`, which refuses writes. New chunk embeddings, query vectors and reports are kept in `.maintenance/experiments/<spec hash>/`, so a rerun reproduces identical scores without provider calls. The report records the pinned corpus, caches, fixture, live baseline, source revision and embedding version.
+
+Each variant is scored on:
+
+- fixture first-page passes and per-case expected ranks;
+- fixture MRR and recall at the first page;
+- a held-out set of known-item queries, drawn deterministically from unique, informative titles;
+- invariants: filters respected, no duplicates, exact browse order and determinism;
+- vectors, raw and gzip bytes, Node search time, and texts embedded.
+
+The tool may suggest a variant that keeps every fixture pass and invariant and beats the control. It never changes production configuration.
+
+`bun run hosted investigate <case>` reports a fixture case's lexical, semantic and hybrid ranks, matched terms, best chunk and text, against the top results.
+
+Workers AI query embeddings vary slightly with batch composition. Ranks deep in a list are therefore noisy across runs; compare first-page and held-out metrics, and rely on saved query vectors for reproducibility.
+
 ### Daily sync and deployment
 
 `daily-archive-sync` runs at 06:00 UTC in production only, as job `daily-YYYYMMDD`, so a duplicate fire or retry resumes the same job. It is the hosted equivalent of `bun run sync`:

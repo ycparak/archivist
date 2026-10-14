@@ -50,6 +50,8 @@ bun run hosted deploy <job-id> --dry-run
 bun run hosted retry <job-id>
 bun run hosted coverage
 bun run hosted backfill --plan --missing
+bun run hosted investigate vision-widget-grid
+bun run hosted experiment scripts/fixtures/experiments/ranking-and-chunking.json
 ```
 
 A vision backfill (`backfill --run --missing --max-blocks 50 --budget-usd 1`) spends OpenRouter credit up to its explicit budget, and needs `OPENROUTER_API_KEY` in the Trigger environment that runs it.

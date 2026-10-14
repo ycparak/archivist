@@ -17,6 +17,8 @@ import {
 	jobIdSchema,
 	jobKeys,
 	latestCompletedJobId,
+	PRODUCTION_POINTER_KEY,
+	productionPointerSchema,
 	recordHostedDeployment,
 	stageHostedDeployment
 } from '$lib/server/maintenance/hosted-release';
@@ -38,8 +40,24 @@ import {
 import { buildCoverageReport, formatCoverageReport } from '$lib/server/maintenance/coverage';
 import { discoverySchema, jobOutcomesSchema } from '$lib/server/maintenance/job-schemas';
 import { getJson, type ObjectStore } from '$lib/server/maintenance/store';
+import { gzipSync } from 'node:zlib';
+import { EMBEDDING } from '$lib/search/embedding';
+import { buildChannelManifest } from '$lib/server/indexing/channel-manifest';
+import { applyWrittenBack, buildDocuments } from '$lib/server/indexing/sync';
+import { evaluationRequest } from '$lib/server/maintenance/evaluate';
+import {
+	experimentSpecSchema,
+	formatExperimentReport,
+	investigateCase,
+	readOnlyStore,
+	runExperiment
+} from '$lib/server/maintenance/experiments';
+import { loadValidatedRelease } from '$lib/server/maintenance/release';
+import { searchEvaluationCasesSchema } from '$lib/server/search/evaluation';
+import { buildSearchRelease, sha256 } from '$lib/server/search/release-builder';
 import {
 	atomicWrite,
+	configuredEmbedder,
 	fixtureFile,
 	loadArchiveCaches,
 	localEmbeddingCache,
@@ -60,7 +78,9 @@ const USAGE = `Usage:
   hosted-maintenance.ts identity
   hosted-maintenance.ts coverage [--job <job-id>]
   hosted-maintenance.ts backfill --plan|--run [--missing] [--stale] [--ids a,b] [--channels x,y]
-                                 [--max-blocks N] [--budget-usd X] [--job <job-id>]`;
+                                 [--max-blocks N] [--budget-usd X] [--job <job-id>]
+  hosted-maintenance.ts experiment <spec.json>
+  hosted-maintenance.ts investigate <fixture-case-id> [--job <job-id>]`;
 
 const [command, ...args] = process.argv.slice(2);
 const store = () => createR2Store(process.env);
@@ -379,6 +399,127 @@ async function backfill() {
 	);
 }
 
+/**
+ * The pinned corpus as a search release would see it: a job's discovery with that job's Are.na
+ * write-back applied, enriched from the canonical caches. Everything is read through a store that
+ * refuses writes.
+ */
+async function experimentCorpus(jobId: string) {
+	const target = readOnlyStore(store());
+	const raw = await target.get(jobKeys(jobId).discovery);
+	if (!raw) throw new Error(`Job ${jobId} has no pinned discovery (retention keeps 30 days)`);
+	const discovery = discoverySchema.parse(JSON.parse(new TextDecoder().decode(raw.bytes)));
+	const written = new Map<string, { title?: string; description?: string }>();
+	for (const key of await target.list(`jobs/${jobId}/writeback/`)) {
+		const record = await getJson(
+			target,
+			key,
+			z.object({
+				blockId: z.string(),
+				title: z.string().optional(),
+				description: z.string().optional()
+			})
+		);
+		if (record) written.set(record.value.blockId, record.value);
+	}
+	const { caches, pointer } = await loadCanonicalCaches(target);
+	const production = await getJson(target, PRODUCTION_POINTER_KEY, productionPointerSchema);
+	return {
+		target,
+		documents: buildDocuments(
+			applyWrittenBack(discovery.blocks, written),
+			caches.vision,
+			caches.colour,
+			caches.connections
+		),
+		channels: buildChannelManifest(discovery.channels),
+		pins: {
+			discovery: await sha256(raw.bytes),
+			caches: await sha256(new TextEncoder().encode(JSON.stringify(pointer.stages))),
+			fixture: await sha256(await readFile(fixtureFile)),
+			baseline: production?.value.version ?? 'none',
+			source: git('rev-parse', 'HEAD'),
+			embedding: EMBEDDING.version
+		}
+	};
+}
+
+async function readJsonFile<T>(file: URL, schema: z.ZodType<T>, fallback: T): Promise<T> {
+	const text = await optionalRead(file);
+	return text === undefined ? fallback : schema.parse(JSON.parse(text));
+}
+
+/** Runs a pinned, single-change experiment locally. It never writes to R2, Are.na or the site. */
+async function experiment() {
+	if (args.length !== 1) throw new Error(USAGE);
+	const spec = experimentSpecSchema.parse(JSON.parse(await readFile(args[0], 'utf8')));
+	const corpus = await experimentCorpus(spec.discoveryJobId);
+	const directory = new URL(
+		`.maintenance/experiments/${(await sha256(new TextEncoder().encode(JSON.stringify(spec)))).slice(0, 16)}/`,
+		workspace
+	);
+	const vectors = z.record(z.string(), z.array(z.number()));
+	const hosted = (await hostedEmbeddingCache(corpus.target)).entries;
+	const local = await readJsonFile(new URL('embeddings.json', directory), vectors, {});
+	const embeddings = new Map([...hosted, ...Object.entries(local)]);
+	const report = await runExperiment(spec, {
+		documents: corpus.documents,
+		channels: corpus.channels,
+		fixture: searchEvaluationCasesSchema.parse(JSON.parse(await readFile(fixtureFile, 'utf8'))),
+		embeddings,
+		// Only embeddings the hosted cache lacks are kept, and only in this experiment's directory.
+		saveEmbeddings: (cache) =>
+			atomicWrite(
+				new URL('embeddings.json', directory),
+				JSON.stringify(Object.fromEntries([...cache].filter(([key]) => !hosted.has(key))))
+			),
+		queryVectors: await readJsonFile(new URL('query-vectors.json', directory), vectors, {}),
+		saveQueryVectors: (queries) =>
+			atomicWrite(new URL('query-vectors.json', directory), JSON.stringify(queries)),
+		embed: configuredEmbedder(),
+		gzipSize: async (bytes) => gzipSync(bytes).length,
+		pins: corpus.pins
+	});
+	const markdown = formatExperimentReport(report);
+	await atomicWrite(new URL('report.json', directory), JSON.stringify(report, null, '\t'));
+	await atomicWrite(new URL('report.md', directory), markdown);
+	console.log(markdown);
+	console.log(`Wrote ${fileURLToPath(directory)}report.{json,md}`);
+}
+
+async function investigate() {
+	const caseId = args[0];
+	const fixture = searchEvaluationCasesSchema.parse(
+		JSON.parse(await readFile(fixtureFile, 'utf8'))
+	);
+	const testCase = fixture.find(({ id }) => id === caseId);
+	if (!testCase) throw new Error(`No fixture case named ${caseId}`);
+	const jobId = jobIdSchema.parse(option('--job') ?? (await latestCompletedJobId(store())));
+	const corpus = await experimentCorpus(jobId);
+	const embeddings = (await hostedEmbeddingCache(corpus.target)).entries;
+	const embed = configuredEmbedder();
+	const built = await buildSearchRelease(corpus.documents, corpus.channels, embed, embeddings);
+	const release = await loadValidatedRelease(built.release, async (asset) =>
+		built.assets.get(asset.file)!
+	);
+	const input = evaluationRequest(testCase);
+	const [queryVector] =
+		input.mode === 'hybrid' || input.mode === 'semantic'
+			? await embed([EMBEDDING.queryPrefix + input.query])
+			: [undefined];
+	const evidence = await investigateCase({
+		release,
+		documents: corpus.documents,
+		embeddings,
+		testCase,
+		queryVector
+	});
+	const file = new URL(`.maintenance/investigations/${caseId}.json`, workspace);
+	await atomicWrite(file, JSON.stringify({ jobId, pins: corpus.pins, ...evidence }, null, '\t'));
+	console.log(JSON.stringify(evidence, null, 2));
+	console.log(`Wrote ${fileURLToPath(file)}`);
+}
+
 const commands: Record<string, () => Promise<void>> = {
 	bootstrap,
 	pull,
@@ -387,7 +528,9 @@ const commands: Record<string, () => Promise<void>> = {
 	deploy,
 	identity,
 	coverage,
-	backfill
+	backfill,
+	experiment,
+	investigate
 };
 await (commands[command ?? ''] ?? (async () => Promise.reject(new Error(USAGE))))().catch(
 	(error: unknown) => {

@@ -1,6 +1,12 @@
 import MiniSearch from 'minisearch';
 import { ARCHIVE_RESULT_LIMIT } from '$lib/domain/search';
-import { ArchiveSearchEngine, compareBrowse, lexicalOptions } from '$lib/search/core';
+import {
+	ArchiveSearchEngine,
+	compareBrowse,
+	lexicalOptions,
+	PRODUCTION_RANKING,
+	type RankingOptions
+} from '$lib/search/core';
 import { decodeVectors } from '$lib/search/assets';
 import { parseArchiveSearchRequest } from '$lib/search/request';
 import {
@@ -48,7 +54,8 @@ export async function releaseVersion(release: SearchRelease): Promise<string> {
 
 export async function loadValidatedRelease(
 	manifest: unknown,
-	read: (asset: SnapshotAsset) => Promise<Uint8Array>
+	read: (asset: SnapshotAsset) => Promise<Uint8Array>,
+	ranking: RankingOptions = PRODUCTION_RANKING
 ) {
 	const release = releaseSchema.parse(manifest);
 	if ((await releaseVersion(release)) !== release.version)
@@ -77,7 +84,12 @@ export async function loadValidatedRelease(
 		metadata.documents.some(({ result }) => !lexical.has(result.id))
 	)
 		throw new Error('Lexical IDs do not match metadata');
-	const engine = new ArchiveSearchEngine(metadata.documents, lexical, metadata.vectorBlocks);
+	const engine = new ArchiveSearchEngine(
+		metadata.documents,
+		lexical,
+		metadata.vectorBlocks,
+		ranking
+	);
 	const vectors = new Float32Array(release.vectorCount * release.dimensions);
 	let offset = 0;
 	for (const asset of release.vectors) {
@@ -101,7 +113,7 @@ export async function loadValidatedRelease(
 		JSON.stringify(bootstrap.results) !== JSON.stringify(expected)
 	)
 		throw new Error('Bootstrap does not match default browse');
-	return { release, assets, metadata, engine };
+	return { release, assets, metadata, engine, lexical, vectors };
 }
 
 export type ValidatedRelease = Awaited<ReturnType<typeof loadValidatedRelease>>;

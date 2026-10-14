@@ -10,7 +10,7 @@ _(none)_
 
 ## Up Next
 
-- [ ] **Isolated search experiment batches.** Implement phase 6 of the [Trigger.dev plan](./specs/trigger-workflows.md#phase-6-isolated-search-experiment-batches).
+- [ ] **Exclude uninformative titles from search text.** The widget-grid investigation found a junk filename title repeated in `search_text`; test excluding such titles in an experiment, then version the change if it helps ([worksheet](./history/worksheets/worksheet-search-experiments.md)).
 
 ## Needs Input
 
@@ -22,6 +22,7 @@ _(none)_
 
 ## Done
 
+- [x] **Isolated search experiment batches.** Implemented phase 6 of the [Trigger.dev plan](./specs/trigger-workflows.md) ([worksheet](./history/worksheets/worksheet-search-experiments.md)).
 - [x] **Targeted vision backfills and coverage reports.** Implemented phase 5 of the [Trigger.dev plan](./specs/trigger-workflows.md) ([worksheet](./history/worksheets/worksheet-vision-backfills.md)).
 - [x] **Block retries and hosted media processing.** Implemented phase 4 of the [Trigger.dev plan](./specs/trigger-workflows.md): per-block outcomes, `hosted retry`, batched children and bounded animation downloads ([worksheet](./history/worksheets/worksheet-block-retries.md)).
 - [x] **Daily scheduled sync and automatic deployment.** Implemented phase 3 of the [Trigger.dev plan](./specs/trigger-workflows.md); the first production run deployed the site automatically ([worksheet](./history/worksheets/worksheet-daily-sync.md)).
