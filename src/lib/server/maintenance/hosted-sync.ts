@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { archiveBlockSchema } from '$lib/domain/archive';
 import { buildChannelManifest } from '$lib/server/indexing/channel-manifest';
 import type { SyncEventSink } from '$lib/server/indexing/progress/events';
 import {
@@ -32,6 +31,16 @@ import { embedEvaluationQueries, evaluationCasesSchema, GATE_POLICIES } from './
 import { acquireLease } from './lease';
 import { loadValidatedRelease } from './release';
 import { getJson, putImmutable, putJson, type ObjectStore } from './store';
+import { discoverySchema, jobOutcomesSchema, storedOutcome, type JobOutcomes } from './job-schemas';
+import {
+	BATCH_STAGES,
+	chunk,
+	FAN_OUT_THRESHOLD,
+	loadBatchOutcomes,
+	type BatchStage
+} from './batches';
+import { planColourWork } from '$lib/server/indexing/colour';
+import { planConnectionWork } from '$lib/server/indexing/connections';
 import type { OutcomeSink } from '$lib/server/indexing/outcome';
 
 export const hostedSyncPayloadSchema = z
@@ -59,22 +68,6 @@ export class HostedJobConfigurationError extends Error {
 	override name = 'HostedJobConfigurationError';
 }
 
-const storedOutcomeSchema = z
-	.object({
-		blockId: z.string(),
-		kind: z.enum(['skipped', 'failed']),
-		cause: z.enum(['unsupported', 'too-large', 'unreachable']).nullable(),
-		retryable: z.boolean(),
-		reason: z.string()
-	})
-	.strict();
-export const jobOutcomesSchema = z
-	.object({
-		colour: z.array(storedOutcomeSchema),
-		connections: z.array(storedOutcomeSchema)
-	})
-	.strict();
-type JobOutcomes = z.infer<typeof jobOutcomesSchema>;
 const retryableCount = (outcomes: JobOutcomes | null) =>
 	outcomes ? [...outcomes.colour, ...outcomes.connections].filter((o) => o.retryable).length : 0;
 
@@ -86,18 +79,6 @@ const jobSchema = z
 		createdAt: z.string()
 	})
 	.strict();
-const discoverySchema = z
-	.object({
-		format: z.literal(1),
-		complete: z.literal(true),
-		ownerId: z.number().int(),
-		channels: z.array(z.object({ slug: z.string().min(1), title: z.string().min(1) }).strict()),
-		blocks: z.array(archiveBlockSchema).min(1),
-		summary: z.custom<SyncSummary>((value) => typeof value === 'object' && value !== null),
-		discoveredAt: z.iso.datetime()
-	})
-	.strict();
-
 /** How far a known failure's expected ranks may slip before the no-regression gate rejects it. */
 export const NO_REGRESSION_RANK_TOLERANCE = 10;
 
@@ -117,6 +98,11 @@ export interface HostedSyncDependencies {
 	leaseTtlMs?: number;
 	/** When set and no production pointer exists, adopt the release this site serves as the baseline. */
 	liveSite?: { url: string; fetchFn?: typeof fetch };
+	/**
+	 * Runs a stage's batches as separate child runs and resolves once all of them finish. When
+	 * set, a stage with more than `FAN_OUT_THRESHOLD` pending blocks fans out instead of running here.
+	 */
+	fanOut?: (jobId: string, stage: BatchStage, batches: string[][]) => Promise<void>;
 	now?: () => number;
 }
 
@@ -197,35 +183,63 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			const outcomes: JobOutcomes = { colour: [], connections: [] };
 			const onOutcome =
 				(stage: keyof JobOutcomes): OutcomeSink =>
-				(blockId, outcome) =>
-					outcomes[stage].push({
-						blockId,
-						kind: outcome.kind,
-						cause: outcome.kind === 'skipped' ? outcome.cause : null,
-						retryable: outcome.kind === 'failed' || outcome.retryable,
-						reason: outcome.kind === 'failed' ? outcome.error : outcome.reason
-					});
+				(...args) =>
+					outcomes[stage].push(storedOutcome(...args));
 			const onEntry =
 				<S extends CacheStage>(stage: S) =>
 				(entry: StageEntries[S]) => {
 					records[stage]!.push(entry);
 					writes.push(persistRecord(store, payload.jobId, stage, entry));
 				};
+			const pending: Record<BatchStage, string[]> = {
+				colour: payload.stages.colour
+					? planColourWork(work.blocks, caches.colour).pending.map(({ id }) => id)
+					: [],
+				connections: payload.stages.connections
+					? planConnectionWork(work.blocks, caches.connections, new Date()).pending.map(
+							({ id }) => id
+						)
+					: []
+			};
+			const fanned = BATCH_STAGES.filter(
+				(stage) => deps.fanOut && pending[stage].length > FAN_OUT_THRESHOLD
+			);
+			const inProcess = (stage: BatchStage) => payload.stages[stage] && !fanned.includes(stage);
 			({ summary } = await deps.enrich(work, {
 				signal,
 				onEvent: deps.onEvent,
 				visionCache: caches.vision,
 				colourCache: caches.colour,
 				connectionCache: caches.connections,
-				colour: payload.stages.colour
+				colour: inProcess('colour')
 					? { onEntry: onEntry('colour'), onOutcome: onOutcome('colour') }
 					: undefined,
-				connections: payload.stages.connections
+				connections: inProcess('connections')
 					? { onEntry: onEntry('connections'), onOutcome: onOutcome('connections') }
 					: undefined
 			}));
 			// Every settled entry must be durable before the job can merge or report success.
 			await Promise.all(writes);
+			for (const stage of fanned) {
+				checkpoint();
+				const batches = chunk(pending[stage]);
+				await deps.fanOut!(payload.jobId, stage, batches);
+				// The wait may have suspended this process; renewal proves the lease is still ours.
+				await lease.renew();
+				checkpoint();
+				const settled = await loadRecords(store, payload.jobId, stage);
+				(records as Record<BatchStage, unknown[]>)[stage] = settled;
+				outcomes[stage] = await loadBatchOutcomes(store, payload.jobId, stage);
+				summary = {
+					...summary,
+					[stage]: {
+						batches: batches.length,
+						pending: pending[stage].length,
+						entries: settled.length,
+						outcomes: outcomes[stage].length
+					} as never
+				};
+			}
 			await putJson(store, keys.outcomes, outcomes);
 			checkpoint();
 			finalCaches = await mergeJobRecords(store, lease, {
