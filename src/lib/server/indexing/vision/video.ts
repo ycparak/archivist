@@ -1,6 +1,7 @@
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { downloadCapped } from '../download';
 import { runFfmpeg, type RunFfmpegOptions } from '../ffmpeg';
 import { isAnimatedImage } from '$lib/domain/archive';
 
@@ -58,23 +59,16 @@ export async function transcodeToVideoDataUrl(
 	} = options;
 
 	onStage?.('downloading');
-	const response = await fetchFn(url, { headers: { 'User-Agent': 'archivist' } });
-	if (!response.ok) {
-		return {
-			kind: 'skipped',
-			cause: 'unreachable',
-			reason: `source returned HTTP ${response.status}`
-		};
-	}
-
-	const source = Buffer.from(await response.arrayBuffer());
-	if (source.byteLength > maxSourceBytes) {
-		return {
-			kind: 'skipped',
-			cause: 'too-large',
-			reason: `source is ${(source.byteLength / 1024 / 1024).toFixed(1)}MB, over the ${maxSourceBytes / 1024 / 1024}MB download limit`
-		};
-	}
+	const download = await downloadCapped(url, {
+		fetchFn,
+		maxBytes: maxSourceBytes,
+		signal: ffmpegOptions.signal
+	});
+	if (download.kind === 'unreachable')
+		return { kind: 'skipped', cause: 'unreachable', reason: download.reason };
+	if (download.kind === 'too-large')
+		return { kind: 'skipped', cause: 'too-large', reason: download.reason };
+	const source = download.bytes;
 
 	const directory = await mkdtemp(join(tmpdir(), TEMP_PREFIX));
 	try {
@@ -113,14 +107,16 @@ export async function transcodeToVideoDataUrl(
 		// once ffmpeg has read it.
 		await rm(input, { force: true });
 
-		const encoded = await readFile(output);
-		if (encoded.byteLength > maxTranscodedBytes) {
+		// Checked on disk first, so an oversized encode is never read into memory.
+		const { size } = await stat(output);
+		if (size > maxTranscodedBytes) {
 			return {
 				kind: 'skipped',
 				cause: 'too-large',
-				reason: `transcoded to ${(encoded.byteLength / 1024 / 1024).toFixed(1)}MB, over the ${maxTranscodedBytes / 1024 / 1024}MB inline limit`
+				reason: `transcoded to ${(size / 1024 / 1024).toFixed(1)}MB, over the ${maxTranscodedBytes / 1024 / 1024}MB inline limit`
 			};
 		}
+		const encoded = await readFile(output);
 
 		return {
 			kind: 'video',
