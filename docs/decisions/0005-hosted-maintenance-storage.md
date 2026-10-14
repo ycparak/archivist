@@ -1,6 +1,6 @@
 # 0005: Hosted maintenance storage on private R2
 
-Status: accepted and implemented in code on 2026-10-14; the bucket and credentials still need provisioning.
+Status: accepted and implemented on 2026-10-14; the `archivist-maintenance` bucket is provisioned and a hosted development run succeeded.
 
 ## Decision
 
