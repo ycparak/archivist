@@ -273,6 +273,72 @@ describe('hosted sync', () => {
 		expect(report.stages.connections).toEqual(stats);
 	});
 
+	it('records retryable outcomes and retries only those blocks without pruning', async () => {
+		const store = await bootstrapped();
+		const flaky: HostedSyncDependencies['enrich'] = async (discovery, options) => {
+			for (const { id } of discovery.blocks) {
+				if (options.connectionCache?.has(id)) continue;
+				if (id === '2')
+					options.connections?.onOutcome?.(id, { kind: 'failed', error: 'Are.na 503' });
+				else options.connections?.onEntry?.(counted(id));
+			}
+			return { summary: discovery.summary };
+		};
+		const first = await runHostedSync(payload(), dependencies(store, { enrich: flaky }));
+		expect(first.retryable).toBe(1);
+		expect([...(await loadCanonicalCaches(store)).caches.connections.keys()]).toEqual(['1']);
+
+		const discover = vi.fn(async () => discovered());
+		const seen: string[] = [];
+		const retry = await runHostedSync(
+			{ ...payload('job-retry'), retryOf: 'job-one' },
+			dependencies(store, {
+				discover,
+				enrich: async (discovery, options) => {
+					for (const { id } of discovery.blocks) {
+						seen.push(id);
+						options.connections?.onEntry?.(counted(id));
+					}
+					return { summary: discovery.summary };
+				}
+			})
+		);
+		expect(discover).not.toHaveBeenCalled();
+		expect(seen).toEqual(['2']);
+		expect(retry).toMatchObject({ retryable: 0, blocks: 2, passed: true });
+		expect([...(await loadCanonicalCaches(store)).caches.connections.keys()].sort()).toEqual([
+			'1',
+			'2'
+		]);
+		await expect(
+			runHostedSync({ ...payload('job-again'), retryOf: 'job-retry' }, dependencies(store))
+		).rejects.toThrow('nothing to retry');
+	});
+
+	it('retries without pruning blocks the original job never saw', async () => {
+		const store = await bootstrapped();
+		await runHostedSync(
+			payload(),
+			dependencies(store, {
+				enrich: async (discovery, options) => {
+					options.connections?.onOutcome?.('1', { kind: 'failed', error: 'timeout' });
+					return { summary: discovery.summary };
+				}
+			})
+		);
+		const pruned = [...(await loadCanonicalCaches(store)).caches.connections.keys()];
+		expect(pruned).not.toContain('9');
+		const lease = await acquireLease(store, { holder: 'seed', renew: false });
+		await mergeJobRecords(store, lease, {
+			jobId: 'seed',
+			records: { connections: [counted('9', 1)] },
+			liveBlockIds: null
+		});
+		await lease.release();
+		await runHostedSync({ ...payload('job-retry'), retryOf: 'job-one' }, dependencies(store));
+		expect([...(await loadCanonicalCaches(store)).caches.connections.keys()]).toContain('9');
+	});
+
 	it('never persists or prunes after incomplete discovery', async () => {
 		const store = await bootstrapped();
 		const before = await store.get(CACHE_POINTER_KEY);

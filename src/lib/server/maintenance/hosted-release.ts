@@ -28,6 +28,7 @@ export const ADOPTED_LIVE_JOB_ID = 'live-adopted';
 export const jobKeys = (jobId: string) => ({
 	job: `jobs/${jobId}/job.json`,
 	discovery: `jobs/${jobId}/discovery.json`,
+	outcomes: `jobs/${jobId}/outcomes.json`,
 	merged: `jobs/${jobId}/merged.json`,
 	origin: `jobs/${jobId}/origin.json`,
 	validation: `jobs/${jobId}/validation.json`,
@@ -85,6 +86,8 @@ export const jobReportSchema = z
 		passed: z.boolean(),
 		/** `deploy` only for a passing candidate that differs from the live release. */
 		decision: z.enum(['deploy', 'unchanged', 'rejected']),
+		/** Blocks whose enrichment failed transiently; `hosted retry` re-runs exactly these. */
+		retryable: z.number().int().nonnegative().default(0),
 		sourceRevision: z.string().min(1),
 		blocks: z.number().int().nonnegative(),
 		channels: z.number().int().nonnegative(),

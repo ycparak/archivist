@@ -24,6 +24,7 @@ import {
 	type ConnectionCacheEntry
 } from './connections/cache';
 import { toArchiveBlock } from './normalize';
+import type { OutcomeSink } from './outcome';
 import { describeBlocks, type VisionStageSummary } from './vision';
 import { mergeVisionCache, type VisionCache, type VisionCacheEntry } from './vision/cache';
 import type { VisionClient } from './vision/client';
@@ -66,6 +67,8 @@ export interface ConnectionsSyncOptions {
 	onEntry?: (entry: ConnectionCacheEntry) => void;
 	/** Replaces asking Are.na for a block's total; for tests. */
 	count?: ConnectionStageOptions['count'];
+	/** Every block that produced no entry, with why. */
+	onOutcome?: OutcomeSink;
 }
 
 export interface ColourSyncOptions {
@@ -73,6 +76,8 @@ export interface ColourSyncOptions {
 	onEntry?: (entry: ColourCacheEntry) => void;
 	/** Replaces fetching and decoding each image; for tests. */
 	measure?: ColourStageOptions['measure'];
+	/** Every block that produced no entry, with why. */
+	onOutcome?: OutcomeSink;
 }
 
 export interface VisionSyncOptions {
@@ -322,6 +327,7 @@ export async function enrichArchive(discovery: DiscoveredArchive, options: Enric
 			log,
 			signal,
 			onEntry: colour.onEntry,
+			onOutcome: colour.onOutcome,
 			measure: colour.measure,
 			onProgress: (done, total) => onEvent({ kind: 'position', done, total })
 		});
@@ -348,6 +354,7 @@ export async function enrichArchive(discovery: DiscoveredArchive, options: Enric
 			log,
 			signal,
 			onEntry: connections.onEntry,
+			onOutcome: connections.onOutcome,
 			onProgress: (done, total) => onEvent({ kind: 'position', done, total })
 		});
 		summary.connections = connectionSummary;

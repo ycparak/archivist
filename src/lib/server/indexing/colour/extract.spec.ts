@@ -91,8 +91,18 @@ describe.runIf(hasFfmpeg)('measureImageColours', () => {
 		expect(result).toEqual({
 			kind: 'skipped',
 			cause: 'unreachable',
-			reason: 'source returned HTTP 404'
+			reason: 'source returned HTTP 404',
+			retryable: false
 		});
+	});
+
+	it('marks a server error or rate limit as worth retrying', async () => {
+		for (const status of [429, 503]) {
+			const result = await measureImageColours(STILL_URL, {
+				fetchFn: respondWith(new Uint8Array(), { status })
+			});
+			expect(result).toMatchObject({ kind: 'skipped', cause: 'unreachable', retryable: true });
+		}
 	});
 
 	it('skips a source that declares itself over the download limit', async () => {

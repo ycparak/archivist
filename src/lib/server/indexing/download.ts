@@ -2,7 +2,7 @@ export const DOWNLOAD_TIMEOUT_MS = 60_000;
 
 export type CappedDownload =
 	| { kind: 'ok'; bytes: Uint8Array }
-	| { kind: 'unreachable'; reason: string }
+	| { kind: 'unreachable'; reason: string; status: number }
 	| { kind: 'too-large'; reason: string };
 
 export interface CappedDownloadOptions {
@@ -30,7 +30,11 @@ export async function downloadCapped(
 	});
 	if (!response.ok) {
 		await response.body?.cancel();
-		return { kind: 'unreachable', reason: `source returned HTTP ${response.status}` };
+		return {
+			kind: 'unreachable',
+			reason: `source returned HTTP ${response.status}`,
+			status: response.status
+		};
 	}
 	const tooLarge = {
 		kind: 'too-large',
