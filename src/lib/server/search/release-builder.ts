@@ -22,7 +22,9 @@ export async function buildSearchRelease(
 	channels: ChannelManifestEntry[],
 	embed: (texts: string[]) => Promise<number[][]>,
 	cache = new Map<string, number[]>(),
-	checkpoint: (cache: Map<string, number[]>) => Promise<void> = async () => {}
+	checkpoint: (cache: Map<string, number[]>) => Promise<void> = async () => {},
+	/** Experiments only; published releases use the default chunk size their version implies. */
+	options: { chunkBytes?: number } = {}
 ) {
 	assertPublicExport(documents, channels);
 	const encoder = new TextEncoder();
@@ -32,7 +34,7 @@ export async function buildSearchRelease(
 	const chunkKeys: string[] = [];
 	const missing = new Map<string, string>();
 	for (const [index, document] of sorted.entries()) {
-		for (const chunk of embeddingChunks(document.search_text)) {
+		for (const chunk of embeddingChunks(document.search_text, options.chunkBytes)) {
 			const key = await sha256(encoder.encode(`${EMBEDDING.version}\n${chunk}`));
 			vectorBlocks.push(index);
 			chunkKeys.push(key);
