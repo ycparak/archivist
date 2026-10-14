@@ -17,7 +17,7 @@ import {
 const MIN_PER_PAGE = 1;
 const MAX_PER_PAGE = 100;
 
-export type ArenaContentSort =
+type ArenaContentSort =
 	| 'position_asc'
 	| 'position_desc'
 	| 'created_at_asc'
@@ -31,26 +31,26 @@ export interface ArenaBlockUpdate {
 	metadata?: Record<string, string | number | boolean | null>;
 }
 
-export interface ArenaClientOptions {
+interface ArenaClientOptions {
 	accessToken: string;
 	fetchFn?: typeof fetch;
 	baseUrl?: string;
 }
 
-export interface FetchChannelContentsPageOptions {
+interface FetchChannelContentsPageOptions {
 	page?: number;
 	per?: number;
 	sort?: ArenaContentSort;
 	signal?: AbortSignal;
 }
 
-export interface FetchOwnedChannelsPageOptions {
+interface FetchOwnedChannelsPageOptions {
 	page?: number;
 	per?: number;
 	signal?: AbortSignal;
 }
 
-export interface ArenaRateLimitInfo {
+interface ArenaRateLimitInfo {
 	limit: number | null;
 	remaining: number | null;
 	reset: number | null;
@@ -58,15 +58,15 @@ export interface ArenaRateLimitInfo {
 	tier: string | null;
 }
 
-export type ArenaChannelContentsPage = ArenaChannelContentsResponse & {
+type ArenaChannelContentsPage = ArenaChannelContentsResponse & {
 	rateLimit: ArenaRateLimitInfo;
 };
 
-export type ArenaOwnedChannelsPage = ArenaOwnedChannelsResponse & {
+type ArenaOwnedChannelsPage = ArenaOwnedChannelsResponse & {
 	rateLimit: ArenaRateLimitInfo;
 };
 
-export interface ArenaBlockConnectionCount {
+interface ArenaBlockConnectionCount {
 	/** Every connection to the block on Are.na, by the token's owner and by anyone else. */
 	total: number;
 	rateLimit: ArenaRateLimitInfo;
@@ -270,7 +270,7 @@ export class ArenaClient {
 	}
 }
 
-export interface PaginateOptions {
+interface PaginateOptions {
 	per?: number;
 	signal?: AbortSignal;
 	requestDelayMs?: number;
@@ -279,7 +279,7 @@ export interface PaginateOptions {
 	rateLimitSafetyMargin?: number;
 }
 
-export interface PaginateChannelContentsOptions extends PaginateOptions {
+interface PaginateChannelContentsOptions extends PaginateOptions {
 	sort?: ArenaContentSort;
 }
 
@@ -383,7 +383,7 @@ export function paginateOwnedChannels(
 	);
 }
 
-export interface CountBlockConnectionsOptions {
+interface CountBlockConnectionsOptions {
 	signal?: AbortSignal;
 	maxRetries?: number;
 	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;

@@ -42,7 +42,7 @@ const STAGE_LABELS: Record<VisionWorkStage, string> = {
 	'awaiting-model': 'awaiting model'
 };
 
-export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 
 const LABEL_WIDTH = 12;
 const BAR_WIDTH = 18;

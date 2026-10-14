@@ -1,15 +1,16 @@
 import { toSearchDocument, type ArchiveBlock, type SearchDocument } from '$lib/domain/archive';
 import {
 	ArenaClient,
+	type ArenaBlockUpdate,
 	ArenaRequestError,
 	countBlockConnections,
 	delay,
 	paginateChannelContents,
 	paginateOwnedChannels
 } from '$lib/server/arena/client';
-import { EMPTY_CHANNEL_FILTER, exclusionReason, type ChannelFilter } from './channel-filter';
+import { exclusionReason } from './channel-filter';
 import type { SyncEventSink } from './progress/events';
-import type { ChannelManifestEntry } from './channel-manifest';
+import type { ChannelManifestEntry } from '$lib/domain/search';
 import { measureBlocks, type ColourStageOptions, type ColourStageSummary } from './colour';
 import { mergeColourCache, type ColourCache, type ColourCacheEntry } from './colour/cache';
 import {
@@ -24,10 +25,16 @@ import {
 	type ConnectionCacheEntry
 } from './connections/cache';
 import { toArchiveBlock } from './normalize';
+import type { OutcomeSink } from './outcome';
 import { describeBlocks, type VisionStageSummary } from './vision';
 import { mergeVisionCache, type VisionCache, type VisionCacheEntry } from './vision/cache';
 import type { VisionClient } from './vision/client';
-import { applyWriteBack, planWriteBack, type WriteBackSummary } from './vision/writeback';
+import {
+	applyWriteBack,
+	planWriteBack,
+	type WriteBackPlan,
+	type WriteBackSummary
+} from './vision/writeback';
 
 export interface SyncOptions {
 	accessToken: string;
@@ -40,7 +47,8 @@ export interface SyncOptions {
 	channelDelayMs?: number;
 	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
 	maxLeadingChannelFailures?: number;
-	channelFilter?: ChannelFilter;
+	/** Slugs of public or closed channels to leave out; private channels are always left out. */
+	ignoreChannels?: ReadonlySet<string>;
 	/**
 	 * Generated text to index. Supplied on every run, not only when the stage is enabled — a sync
 	 * without `vision` must still index what previous runs generated, or it would silently strip
@@ -51,6 +59,11 @@ export interface SyncOptions {
 	vision?: VisionSyncOptions;
 	/** Write generated titles and descriptions back to Are.na. Off by default. */
 	pushArena?: boolean;
+	/** Hosted resumability: blocks already written by an earlier attempt, and a hook per write. */
+	writeBack?: {
+		skip?: ReadonlySet<string>;
+		onWritten?: (plan: WriteBackPlan) => Promise<void> | void;
+	};
 	/** Measured colour weights to index. Supplied on every run, for the same reason as `visionCache`. */
 	colourCache?: ColourCache;
 	/** Omit to index the existing colour cache without measuring anything new. */
@@ -61,27 +74,34 @@ export interface SyncOptions {
 	connections?: ConnectionsSyncOptions;
 }
 
-export interface ConnectionsSyncOptions {
+interface ConnectionsSyncOptions {
 	/** Called as each entry lands, so an interrupted run keeps what it counted. */
 	onEntry?: (entry: ConnectionCacheEntry) => void;
 	/** Replaces asking Are.na for a block's total; for tests. */
 	count?: ConnectionStageOptions['count'];
+	/** Every block that produced no entry, with why. */
+	onOutcome?: OutcomeSink;
 }
 
-export interface ColourSyncOptions {
+interface ColourSyncOptions {
 	/** Called as each entry lands, so an interrupted run keeps what it measured. */
 	onEntry?: (entry: ColourCacheEntry) => void;
 	/** Replaces fetching and decoding each image; for tests. */
 	measure?: ColourStageOptions['measure'];
+	/** Every block that produced no entry, with why. */
+	onOutcome?: OutcomeSink;
 }
 
 export interface VisionSyncOptions {
 	client: VisionClient;
+	concurrency?: number;
+	/** Every block that produced no entry, with why. */
+	onOutcome?: OutcomeSink;
 	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
 	onEntry?: (entry: VisionCacheEntry) => void;
 }
 
-export interface ChannelSyncFailure {
+interface ChannelSyncFailure {
 	slug: string;
 	error: string;
 }
@@ -148,15 +168,29 @@ function exportBlockReason(
 	return null;
 }
 
-export async function syncArchive(options: SyncOptions): Promise<{
+export type DiscoveryOptions = Pick<
+	SyncOptions,
+	| 'accessToken'
+	| 'fetchFn'
+	| 'signal'
+	| 'log'
+	| 'onEvent'
+	| 'channelDelayMs'
+	| 'delayFn'
+	| 'maxLeadingChannelFailures'
+	| 'ignoreChannels'
+>;
+
+export interface DiscoveredArchive {
+	ownerId: number;
 	blocks: ArchiveBlock[];
-	documents: SearchDocument[];
 	channels: ChannelManifestEntry[];
-	visionCache: VisionCacheEntry[] | null;
-	colourCache: ColourCacheEntry[] | null;
-	connectionCache: ConnectionCacheEntry[] | null;
 	summary: SyncSummary;
-}> {
+	/** Every eligible channel was fetched; only a complete discovery may remove cached work. */
+	complete: boolean;
+}
+
+export async function discoverArchive(options: DiscoveryOptions): Promise<DiscoveredArchive> {
 	const {
 		accessToken,
 		fetchFn,
@@ -166,18 +200,8 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		channelDelayMs = DEFAULT_CHANNEL_DELAY_MS,
 		delayFn = delay,
 		maxLeadingChannelFailures = DEFAULT_MAX_LEADING_CHANNEL_FAILURES,
-		channelFilter = EMPTY_CHANNEL_FILTER,
-		visionCache: existingVisionCache = new Map<string, VisionCacheEntry>(),
-		vision,
-		pushArena,
-		colourCache: existingColourCache = new Map<string, ColourCacheEntry>(),
-		colour,
-		connectionCache: existingConnectionCache = new Map<string, ConnectionCacheEntry>(),
-		connections
+		ignoreChannels = new Set<string>()
 	} = options;
-	if (options.output === 'export' && (vision || pushArena)) {
-		throw new Error('Export cannot generate vision text or write to Are.na');
-	}
 	const client = new ArenaClient({ accessToken, fetchFn });
 
 	const summary: SyncSummary = {
@@ -204,7 +228,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	for await (const page of paginateOwnedChannels(client, me.id, { signal })) {
 		for (const channel of page.data) {
 			summary.channelsDiscovered += 1;
-			const reason = exclusionReason(channel, { ...channelFilter, allowPrivate: new Set() });
+			const reason = exclusionReason(channel, ignoreChannels);
 			if (reason === 'ignored') summary.channelsIgnored += 1;
 			else if (reason === 'private') summary.channelsPrivateSkipped += 1;
 			else channels.push({ slug: channel.slug, title: channel.title });
@@ -272,13 +296,42 @@ export async function syncArchive(options: SyncOptions): Promise<{
 	summary.uniqueBlocks = blocksById.size;
 
 	const blocks = [...blocksById.values()];
+	return {
+		ownerId: me.id,
+		blocks,
+		channels,
+		summary,
+		complete: summary.channelsFailed.length === 0 && !signal?.aborted
+	};
+}
+
+export type EnrichmentOptions = Omit<SyncOptions, keyof DiscoveryOptions | 'output'> &
+	Pick<SyncOptions, 'accessToken' | 'fetchFn' | 'signal' | 'log' | 'onEvent' | 'delayFn'>;
+
+export async function enrichArchive(discovery: DiscoveredArchive, options: EnrichmentOptions) {
+	const {
+		accessToken,
+		fetchFn,
+		signal,
+		log = noop,
+		onEvent = noop,
+		delayFn = delay,
+		visionCache: existingVisionCache = new Map<string, VisionCacheEntry>(),
+		vision,
+		pushArena,
+		colourCache: existingColourCache = new Map<string, ColourCacheEntry>(),
+		colour,
+		connectionCache: existingConnectionCache = new Map<string, ConnectionCacheEntry>(),
+		connections
+	} = options;
+	const client = new ArenaClient({ accessToken, fetchFn });
+	const { blocks, channels } = discovery;
+	const summary: SyncSummary = { ...discovery.summary };
 	// Preserve cached entries after incomplete discovery: a failed channel's blocks only look gone, and so do an aborted run's,
 	// so their cached work stays.
 	const fetchedIds = new Set(blocks.map((block) => block.id));
 	const liveIds = (cache: ReadonlyMap<string, unknown>) =>
-		summary.channelsFailed.length > 0 || signal?.aborted
-			? new Set([...fetchedIds, ...cache.keys()])
-			: fetchedIds;
+		!discovery.complete || signal?.aborted ? new Set([...fetchedIds, ...cache.keys()]) : fetchedIds;
 
 	let colourCache: ColourCacheEntry[] | null = null;
 	let colourWeights: ColourCache = existingColourCache;
@@ -289,6 +342,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 			log,
 			signal,
 			onEntry: colour.onEntry,
+			onOutcome: colour.onOutcome,
 			measure: colour.measure,
 			onProgress: (done, total) => onEvent({ kind: 'position', done, total })
 		});
@@ -315,6 +369,7 @@ export async function syncArchive(options: SyncOptions): Promise<{
 			log,
 			signal,
 			onEntry: connections.onEntry,
+			onOutcome: connections.onOutcome,
 			onProgress: (done, total) => onEvent({ kind: 'position', done, total })
 		});
 		summary.connections = connectionSummary;
@@ -343,30 +398,88 @@ export async function syncArchive(options: SyncOptions): Promise<{
 		visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
 	}
 
+	const written = new Map<string, ArenaBlockUpdate>();
 	if (pushArena) {
 		onEvent({ kind: 'phase', phase: 'writing-back' });
-		const { plans, skipped } = planWriteBack(blocks, visionText, { ownerId: me.id });
+		const planned = planWriteBack(blocks, visionText, { ownerId: discovery.ownerId });
+		const plans = planned.plans.filter(({ blockId }) => !options.writeBack?.skip?.has(blockId));
 		log(`Are.na write-back: updating ${plans.length} block(s)`);
-		summary.writeBack = await applyWriteBack(plans, skipped, {
+		summary.writeBack = await applyWriteBack(plans, planned.skipped, {
 			updateBlock: (id, body) => client.updateBlock(id, body),
 			log,
-			signal
+			signal,
+			onWritten: async (plan) => {
+				written.set(plan.blockId, plan.update);
+				await options.writeBack?.onWritten?.(plan);
+			}
 		});
 	}
 
 	onEvent({ kind: 'phase', phase: 'building' });
-	const documents = blocks.map((block) =>
+	// Written titles and descriptions are what Are.na now holds, so this build uses them too.
+	const updated = applyWrittenBack(blocks, written);
+	const documents = buildDocuments(updated, visionText, colourWeights, connectionTotals);
+	return {
+		blocks: updated,
+		documents,
+		channels,
+		visionCache,
+		colourCache,
+		connectionCache,
+		summary
+	};
+}
+
+export function applyWrittenBack(
+	blocks: ArchiveBlock[],
+	written: ReadonlyMap<string, Pick<ArenaBlockUpdate, 'title' | 'description'>>
+): ArchiveBlock[] {
+	return blocks.map((block) => {
+		const update = written.get(block.id);
+		return update
+			? {
+					...block,
+					title: update.title ?? block.title,
+					description: update.description ?? block.description
+				}
+			: block;
+	});
+}
+
+export function buildDocuments(
+	blocks: ArchiveBlock[],
+	vision: VisionCache,
+	colour: ColourCache,
+	connections: ConnectionCache
+): SearchDocument[] {
+	return blocks.map((block) =>
 		toSearchDocument(
 			block,
-			visionText.get(block.id),
-			colourWeights.get(block.id)?.weights,
-			connectionTotals.get(block.id)?.total
+			vision.get(block.id),
+			colour.get(block.id)?.weights,
+			connections.get(block.id)?.total
 		)
 	);
+}
+
+export async function syncArchive(options: SyncOptions): Promise<{
+	blocks: ArchiveBlock[];
+	documents: SearchDocument[];
+	channels: ChannelManifestEntry[];
+	visionCache: VisionCacheEntry[] | null;
+	colourCache: ColourCacheEntry[] | null;
+	connectionCache: ConnectionCacheEntry[] | null;
+	summary: SyncSummary;
+}> {
+	if (options.output === 'export' && (options.vision || options.pushArena)) {
+		throw new Error('Export cannot generate vision text or write to Are.na');
+	}
+	const discovery = await discoverArchive(options);
+	const result = await enrichArchive(discovery, options);
 	if (options.output === 'export') {
-		const reason = exportBlockReason(summary, documents.length, signal);
+		const reason = exportBlockReason(result.summary, result.documents.length, options.signal);
 		if (reason) throw new Error('Export refused: ' + reason);
 	}
-	onEvent({ kind: 'phase', phase: 'done' });
-	return { blocks, documents, channels, visionCache, colourCache, connectionCache, summary };
+	options.onEvent?.({ kind: 'phase', phase: 'done' });
+	return result;
 }

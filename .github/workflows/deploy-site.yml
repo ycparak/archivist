@@ -1,0 +1,42 @@
+name: Deploy site
+
+# Dispatched by the daily Trigger.dev job after a candidate passes the no-regression gate.
+# `bun run hosted deploy` repeats every check before anything is built or deployed.
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Hosted maintenance job whose candidate to deploy
+        required: true
+        type: string
+      revision:
+        description: Source revision the job recorded
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-site
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.revision }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - run: bun install --frozen-lockfile
+      - name: Deploy validated release
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_DEPLOY_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_API_TOKEN }}
+          MAINTENANCE_R2_BUCKET: ${{ secrets.MAINTENANCE_R2_BUCKET }}
+          MAINTENANCE_R2_ACCESS_KEY_ID: ${{ secrets.MAINTENANCE_R2_ACCESS_KEY_ID }}
+          MAINTENANCE_R2_SECRET_ACCESS_KEY: ${{ secrets.MAINTENANCE_R2_SECRET_ACCESS_KEY }}
+        run: bun run hosted deploy "$JOB_ID"

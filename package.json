@@ -4,26 +4,37 @@
 	"version": "0.0.1",
 	"license": "MIT",
 	"type": "module",
+	"prettier": {
+		"useTabs": true,
+		"singleQuote": true,
+		"trailingComma": "none",
+		"printWidth": 100,
+		"plugins": [
+			"prettier-plugin-svelte",
+			"prettier-plugin-tailwindcss"
+		],
+		"tailwindStylesheet": "./src/routes/layout.css",
+		"overrides": [
+			{
+				"files": "*.svelte",
+				"options": {
+					"parser": "svelte"
+				}
+			}
+		]
+	},
 	"scripts": {
 		"dev": "vite dev",
-		"build": "bun run gen && vite build",
-		"deploy": "bun run build && wrangler deploy --env-file=.env.example",
+		"build": "vite build",
 		"preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
-		"prepare": "wrangler types --env-file=.env.example || echo ''; svelte-kit sync || echo ''",
-		"check": "bun run gen && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit --project scripts/tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"lint": "prettier --check . && eslint . && bun run check:classes",
-		"check:classes": "bun run scripts/check-classes.ts",
+		"deploy": "vite build && wrangler deploy --env-file=.env.example",
+		"prepare": "wrangler types --env-file=.env.example && svelte-kit sync",
+		"check": "wrangler types --env-file=.env.example && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit --project scripts/tsconfig.json",
+		"lint": "prettier --check . && eslint . && bun run scripts/check-classes.ts",
 		"format": "prettier --write .",
-		"test:unit": "vitest",
-		"test": "npm run test:unit -- --run",
-		"gen": "wrangler types --env-file=.env.example",
+		"test": "vitest run",
 		"sync": "bun run scripts/sync.ts",
-		"evaluate:search": "bun run scripts/evaluate-search.ts",
-		"calibrate:colour": "bun run scripts/calibrate-colour.ts",
-		"export:search": "bun run scripts/export-search.ts",
-		"build:browser": "bun run build",
-		"dev:browser": "bun run dev"
+		"hosted": "bun run scripts/hosted-maintenance.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -53,6 +64,7 @@
 	},
 	"dependencies": {
 		"@aredotna/sdk": "^0.1.1",
+		"@aws-sdk/client-s3": "3.700.0",
 		"@chenglou/pretext": "^0.0.9",
 		"@trigger.dev/sdk": "4.7.3",
 		"minisearch": "^7.2.0",

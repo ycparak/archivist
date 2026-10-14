@@ -1,41 +1,23 @@
-import { publishArchiveSearch } from './publish-search';
-import { readFile, writeFile } from 'node:fs/promises';
-import {
-	buildChannelManifest,
-	serializeChannelManifest
-} from '$lib/server/indexing/channel-manifest';
+import { publishArchiveSearch } from './search-files';
+import { writeFile } from 'node:fs/promises';
 import { parseSlugList } from '$lib/server/indexing/channel-filter';
+import { serializeColourCache, type ColourCacheEntry } from '$lib/server/indexing/colour/cache';
 import {
-	parseColourCache,
-	serializeColourCache,
-	type ColourCacheEntry
-} from '$lib/server/indexing/colour/cache';
-import {
-	parseConnectionCache,
 	serializeConnectionCache,
 	type ConnectionCacheEntry
 } from '$lib/server/indexing/connections/cache';
 import { createSyncReporter } from '$lib/server/indexing/progress/reporter';
+import { formatSyncSummary } from '$lib/server/indexing/progress/summary';
 import { syncArchive, type VisionSyncOptions } from '$lib/server/indexing/sync';
 import { createVisionClient } from '$lib/server/indexing/vision/client';
-import {
-	parseVisionCache,
-	serializeVisionCache,
-	type VisionCacheEntry
-} from '$lib/server/indexing/vision/cache';
-
-const VISION_CACHE_URL = new URL('../src/lib/server/indexing/vision-cache.jsonl', import.meta.url);
-const COLOUR_CACHE_URL = new URL('../src/lib/server/indexing/colour-cache.jsonl', import.meta.url);
-const CONNECTIONS_CACHE_URL = new URL(
-	'../src/lib/server/indexing/connections-cache.jsonl',
-	import.meta.url
-);
+import { serializeVisionCache, type VisionCacheEntry } from '$lib/server/indexing/vision/cache';
+import { cacheFiles, loadArchiveCaches } from './maintenance-files';
 
 /**
- * Vision and Are.na write-back are on by default, so a mistyped opt-out (`--no-vison`) must not be
- * ignored: it would run the stage, and write to the maintainer's archive, anyway.
+ * Vision (which spends credit) and Are.na write-back (which edits your blocks) are opt-in, so a
+ * mistyped flag must fail instead of being ignored: a stage you asked for would silently not run.
  */
-const KNOWN_FLAGS = new Set(['no-vision', 'no-push-arena', 'no-colour', 'no-connections']);
+const KNOWN_FLAGS = new Set(['export', 'vision', 'push-arena', 'no-colour', 'no-connections']);
 
 const unknownFlags = process.argv
 	.slice(2)
@@ -51,25 +33,19 @@ function hasFlag(name: string): boolean {
 	return process.argv.includes(`--${name}`);
 }
 
-async function readCache<T>(
-	url: URL,
-	parse: (contents: string) => Map<string, T>
-): Promise<Map<string, T>> {
-	try {
-		return parse(await readFile(url, 'utf8'));
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Map();
-		throw error;
-	}
-}
+/**
+ * `--export` publishes a release from the local caches alone: no vision, no Are.na write-back and
+ * no fresh colour or connection measurement. The sync refuses an incomplete archive in this mode.
+ */
+const exportOnly = hasFlag('export');
 
 function resolveVisionOptions(): Omit<VisionSyncOptions, 'onEntry'> | undefined {
-	if (hasFlag('no-vision')) return undefined;
+	if (exportOnly || !hasFlag('vision')) return undefined;
 
 	const apiKey = process.env.OPENROUTER_API_KEY;
 	if (!apiKey) {
 		console.error(
-			'OPENROUTER_API_KEY must be set to run the vision stage. Copy .env.example to .env and fill it in, or pass --no-vision.'
+			'OPENROUTER_API_KEY must be set to run the vision stage. Copy .env.example to .env and fill it in, or leave out --vision.'
 		);
 		process.exit(1);
 	}
@@ -83,13 +59,18 @@ if (!accessToken) {
 	process.exit(1);
 }
 
+if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_API_TOKEN) {
+	console.error(
+		'CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set: every sync embeds its search release with Workers AI.'
+	);
+	process.exit(1);
+}
+
 const vision = resolveVisionOptions();
-const pushArena = !hasFlag('no-push-arena');
-const measureColour = !hasFlag('no-colour');
-const countConnections = !hasFlag('no-connections');
-const visionCache = await readCache(VISION_CACHE_URL, parseVisionCache);
-const colourCache = await readCache(COLOUR_CACHE_URL, parseColourCache);
-const connectionCache = await readCache(CONNECTIONS_CACHE_URL, parseConnectionCache);
+const pushArena = !exportOnly && hasFlag('push-arena');
+const measureColour = !exportOnly && !hasFlag('no-colour');
+const countConnections = !exportOnly && !hasFlag('no-connections');
+const { visionCache, colourCache, connectionCache } = await loadArchiveCaches();
 const reporter = createSyncReporter();
 const abort = new AbortController();
 
@@ -139,15 +120,15 @@ function cacheWriter<T extends { block_id: string }>(
 }
 
 async function writeVisionCache(entries: Iterable<VisionCacheEntry>) {
-	await writeFile(VISION_CACHE_URL, serializeVisionCache(entries));
+	await writeFile(cacheFiles.vision, serializeVisionCache(entries));
 }
 
 async function writeColourCache(entries: Iterable<ColourCacheEntry>) {
-	await writeFile(COLOUR_CACHE_URL, serializeColourCache(entries));
+	await writeFile(cacheFiles.colour, serializeColourCache(entries));
 }
 
 async function writeConnectionCache(entries: Iterable<ConnectionCacheEntry>) {
-	await writeFile(CONNECTIONS_CACHE_URL, serializeConnectionCache(entries));
+	await writeFile(cacheFiles.connections, serializeConnectionCache(entries));
 }
 
 const visionWriter = cacheWriter(visionCache, writeVisionCache);
@@ -164,6 +145,7 @@ try {
 		summary
 	} = await syncArchive({
 		accessToken,
+		output: exportOnly ? 'export' : undefined,
 		signal: abort.signal,
 		log: (message) => reporter.log(message),
 		onEvent: (event) => reporter.emit(event),
@@ -174,10 +156,7 @@ try {
 		colour: measureColour ? { onEntry: colourWriter.onEntry } : undefined,
 		connectionCache,
 		connections: countConnections ? { onEntry: connectionWriter.onEntry } : undefined,
-		channelFilter: {
-			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
-			allowPrivate: new Set()
-		}
+		ignoreChannels: parseSlugList(process.env.ARENA_IGNORE_CHANNELS)
 	});
 
 	// Before anything is printed: the summary is the part people copy, and it must not be written
@@ -201,96 +180,8 @@ try {
 	if (summary.channelsFailed.length || abort.signal.aborted || !documents.length)
 		throw new Error('Cannot publish an incomplete archive');
 	await publishArchiveSearch(documents, channels, abort.signal);
-	const manifest = buildChannelManifest(channels);
-	const manifestPath = new URL('../src/lib/server/indexing/channel-manifest.json', import.meta.url);
-	await writeFile(manifestPath, serializeChannelManifest(manifest));
-	console.log(`Wrote channel manifest: ${manifest.length} channel(s)`);
 
-	console.log('');
-	console.log('Sync summary:');
-	console.log(`  Channels discovered: ${summary.channelsDiscovered}`);
-	console.log(`  Channels ignored:    ${summary.channelsIgnored}`);
-	console.log(`  Private skipped:     ${summary.channelsPrivateSkipped}`);
-	console.log(`  Channels synced:     ${summary.channelsSynced}`);
-	if (summary.channelsFailed.length > 0) {
-		console.log(`  Channels failed:     ${summary.channelsFailed.length}`);
-		for (const failure of summary.channelsFailed) {
-			console.log(`    - ${failure.slug}: ${failure.error}`);
-		}
-	}
-	console.log(`  Blocks fetched:      ${summary.blocksFetched}`);
-	console.log(`  Items skipped:       ${summary.itemsSkipped} (nested channels, not blocks)`);
-	console.log(`  Unique blocks:       ${summary.uniqueBlocks} (after dedup across channels)`);
-	if (summary.colour) {
-		const c = summary.colour;
-		console.log(`  Colour cache hits:   ${c.cacheHits} (no download)`);
-		console.log(`  Colour measured:     ${c.measured}`);
-		if (c.skippedTooLarge) console.log(`  Colour skipped:      ${c.skippedTooLarge} (too large)`);
-		if (c.skippedUnreachable)
-			console.log(
-				`  Colour skipped:      ${c.skippedUnreachable} (source could not be downloaded)`
-			);
-		if (c.skippedUnsupported)
-			console.log(`  Colour skipped:      ${c.skippedUnsupported} (format not readable)`);
-		if (c.failed.length) {
-			console.log(`  Colour failed:       ${c.failed.length}`);
-			for (const failure of c.failed.slice(0, 10)) {
-				console.log(`    - ${failure.blockId}: ${failure.error}`);
-			}
-			if (c.failed.length > 10) console.log(`    ... and ${c.failed.length - 10} more`);
-		}
-	}
-	if (summary.connections) {
-		const n = summary.connections;
-		console.log(`  Connections cached:  ${n.cacheHits} (no request)`);
-		console.log(`  Connections counted: ${n.counted}`);
-		if (n.failed.length) {
-			console.log(`  Connections failed:  ${n.failed.length}`);
-			for (const failure of n.failed.slice(0, 10)) {
-				console.log(`    - ${failure.blockId}: ${failure.error}`);
-			}
-			if (n.failed.length > 10) console.log(`    ... and ${n.failed.length - 10} more`);
-		}
-	}
-	if (summary.vision) {
-		const v = summary.vision;
-		console.log(`  Blocks with image:   ${v.blocksWithImage}`);
-		console.log(`  Vision cache hits:   ${v.cacheHits} (no model call, no cost)`);
-		console.log(`  Vision generated:    ${v.generated}`);
-		if (v.generatedFromVideo) console.log(`  Vision from video:   ${v.generatedFromVideo}`);
-		if (v.skippedTooLarge)
-			console.log(`  Vision skipped:      ${v.skippedTooLarge} (media too large)`);
-		if (v.skippedUnreachable)
-			console.log(
-				`  Vision skipped:      ${v.skippedUnreachable} (source could not be downloaded)`
-			);
-		if (v.skippedUnsupported)
-			console.log(`  Vision skipped:      ${v.skippedUnsupported} (format not describable)`);
-		if (v.failed.length) {
-			console.log(`  Vision failed:       ${v.failed.length}`);
-			for (const failure of v.failed.slice(0, 10)) {
-				console.log(`    - ${failure.blockId}: ${failure.error}`);
-			}
-			if (v.failed.length > 10) console.log(`    ... and ${v.failed.length - 10} more`);
-		}
-	}
-	if (summary.writeBack) {
-		const w = summary.writeBack;
-		console.log(`  Are.na written:      ${w.blocksUpdated} of ${w.blocksPlanned} planned block(s)`);
-		console.log(`    titles replaced:   ${w.titlesReplaced}`);
-		console.log(`    titles added:      ${w.titlesAdded}`);
-		console.log(`    descriptions:      ${w.descriptionsAdded}`);
-		console.log(
-			`    skipped:           ${w.skipped.notOwned} not yours, ${w.skipped.noVisionResult} no description, ${w.skipped.nothingToChange} already fine`
-		);
-		if (w.failed.length) {
-			console.log(`    FAILED:            ${w.failed.length}`);
-			for (const failure of w.failed.slice(0, 10)) {
-				console.log(`      - ${failure.blockId}: ${failure.error}`);
-			}
-			if (w.failed.length > 10) console.log(`      ... and ${w.failed.length - 10} more`);
-		}
-	}
+	console.log(formatSyncSummary(summary).join('\n'));
 } catch (error) {
 	reporter.stop();
 	console.error({ event: 'sync_failed', name: error instanceof Error ? error.name : 'unknown' });

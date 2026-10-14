@@ -1,7 +1,7 @@
 import { access } from 'node:fs/promises';
 import { toSearchDocument } from '$lib/domain/archive';
 import { EMBEDDING } from '$lib/search/embedding';
-import { buildSearchRelease } from '$lib/server/search/release-builder';
+import { buildSearchRelease } from '$lib/server/release/release-builder';
 import { publishSearchRelease } from './search-files';
 
 const output = new URL('../static/search/', import.meta.url);

@@ -23,7 +23,7 @@ export const SHELF = {
 export type ShelfChannel = ChannelManifestEntry & { symbol?: string | null };
 
 /** `ratio` is the fixed shape of a cover or text page; an image page has none, its image sizes it. */
-export type ShelfItem =
+type ShelfItem =
 	| { kind: 'cover'; id: string; ratio: number }
 	| { kind: 'block'; id: string; ratio: number | null; result: SearchResult };
 

@@ -15,7 +15,7 @@ import { lowQualityTitleReason, type LowQualityTitleReason } from '$lib/domain/t
  *   (see `titles.ts`).
  */
 
-export type TitleAction = { kind: 'add' } | { kind: 'replace'; reason: LowQualityTitleReason };
+type TitleAction = { kind: 'add' } | { kind: 'replace'; reason: LowQualityTitleReason };
 
 export interface WriteBackPlan {
 	blockId: string;
@@ -97,7 +97,7 @@ export function planWriteBack(
 	return { plans, skipped };
 }
 
-export interface WriteBackFailure {
+interface WriteBackFailure {
 	blockId: string;
 	error: string;
 }
@@ -114,7 +114,7 @@ export interface WriteBackSummary {
 	skipped: WriteBackSkips;
 }
 
-export interface ApplyWriteBackOptions {
+interface ApplyWriteBackOptions {
 	updateBlock: (id: number, body: ArenaBlockUpdate) => Promise<void>;
 	/** Are.na is rate-limited and this is a write path; requests are paced, not parallelised. */
 	delayMs?: number;
@@ -123,6 +123,8 @@ export interface ApplyWriteBackOptions {
 	signal?: AbortSignal;
 	/** How many times one block waits out a rate limit before it is recorded as failed. */
 	rateLimitRetries?: number;
+	/** Called after each successful write, before the next one starts. */
+	onWritten?: (plan: WriteBackPlan) => Promise<void> | void;
 }
 
 const noop = () => {};
@@ -151,7 +153,8 @@ export async function applyWriteBack(
 		delayFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 		log = noop,
 		signal,
-		rateLimitRetries = DEFAULT_RATE_LIMIT_RETRIES
+		rateLimitRetries = DEFAULT_RATE_LIMIT_RETRIES,
+		onWritten
 	} = options;
 
 	// Every count here describes what was actually written, not what was planned — a summary that
@@ -185,6 +188,7 @@ export async function applyWriteBack(
 		}
 
 		if (lastError === undefined) {
+			await onWritten?.(plan);
 			summary.blocksUpdated += 1;
 			if (plan.title?.action.kind === 'add') summary.titlesAdded += 1;
 			if (plan.title?.action.kind === 'replace') summary.titlesReplaced += 1;

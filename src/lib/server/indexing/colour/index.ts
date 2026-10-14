@@ -4,6 +4,7 @@ import { imageSourceHash } from '../vision/rendition';
 import { unsupportedFormatReason } from '../vision';
 import { COLOUR_VERSION, isColourCacheHit, type ColourCache, type ColourCacheEntry } from './cache';
 import { measureImageColours, type MeasureResult } from './extract';
+import { errorMessage, type BlockOutcome, type OutcomeSink } from '../outcome';
 
 export interface ColourStageOptions {
 	cache: ColourCache;
@@ -15,10 +16,12 @@ export interface ColourStageOptions {
 	measure?: (url: string, signal?: AbortSignal) => Promise<MeasureResult>;
 	/** Called as each entry lands, so an interrupted run keeps what it measured. */
 	onEntry?: (entry: ColourCacheEntry) => void;
+	/** Called for every block that did not produce an entry, with why. */
+	onOutcome?: OutcomeSink;
 	onProgress?: (done: number, total: number) => void;
 }
 
-export interface ColourFailure {
+interface ColourFailure {
 	blockId: string;
 	error: string;
 }
@@ -33,7 +36,7 @@ export interface ColourStageSummary {
 	failed: ColourFailure[];
 }
 
-export interface ColourStageResult {
+interface ColourStageResult {
 	entries: ColourCacheEntry[];
 	summary: ColourStageSummary;
 }
@@ -66,6 +69,44 @@ export function planColourWork(
 	return { withImage, cached, pending };
 }
 
+/** Measures one block. Never throws: every result, including a failure, is an outcome. */
+export async function measureBlock(
+	block: ArchiveBlock,
+	options: Pick<ColourStageOptions, 'measure' | 'signal' | 'now'> = {}
+): Promise<BlockOutcome<ColourCacheEntry>> {
+	const {
+		signal,
+		now = () => new Date(),
+		measure = (url, signal) => measureImageColours(url, { signal })
+	} = options;
+	try {
+		const unsupported = unsupportedFormatReason(block.imageContentType);
+		if (unsupported)
+			return { kind: 'skipped', cause: 'unsupported', reason: unsupported, retryable: false };
+		const result = await measure(block.imageUrl!, signal);
+		if (result.kind === 'skipped')
+			return {
+				kind: 'skipped',
+				cause: result.cause,
+				reason: result.reason,
+				retryable: result.retryable ?? false
+			};
+		return {
+			kind: 'done',
+			entry: {
+				block_id: block.id,
+				image_src_hash: imageSourceHash(block.imageUrl!),
+				colour_version: COLOUR_VERSION,
+				frames: result.frames,
+				measured_at: now().toISOString(),
+				weights: result.weights
+			}
+		};
+	} catch (error) {
+		return { kind: 'failed', error: errorMessage(error) };
+	}
+}
+
 /**
  * Measures every block with an image that is not already cached. Failures are collected rather
  * than thrown, and a block without an entry is simply measured again next run.
@@ -79,11 +120,10 @@ export async function measureBlocks(
 		concurrency = DEFAULT_CONCURRENCY,
 		log = noop,
 		signal,
-		now = () => new Date(),
-		measure = (url, signal) => measureImageColours(url, { signal }),
 		onEntry,
-		onProgress = noop
+		onOutcome
 	} = options;
+	const onProgress = options.onProgress ?? noop;
 
 	const { withImage, cached, pending } = planColourWork(blocks, cache);
 	const summary: ColourStageSummary = {
@@ -107,40 +147,24 @@ export async function measureBlocks(
 
 	await pool(pending, concurrency, async (block) => {
 		if (signal?.aborted) return;
-		try {
-			const unsupported = unsupportedFormatReason(block.imageContentType);
-			if (unsupported) {
-				summary.skippedUnsupported += 1;
-				log(`  colour skipped ${block.id}: ${unsupported}`);
-				return;
-			}
-
-			const result = await measure(block.imageUrl!, signal);
-			if (result.kind === 'skipped') {
-				if (result.cause === 'unreachable') summary.skippedUnreachable += 1;
-				else summary.skippedTooLarge += 1;
-				log(`  colour skipped ${block.id}: ${result.reason}`);
-				return;
-			}
-
-			const entry: ColourCacheEntry = {
-				block_id: block.id,
-				image_src_hash: imageSourceHash(block.imageUrl!),
-				colour_version: COLOUR_VERSION,
-				frames: result.frames,
-				measured_at: now().toISOString(),
-				weights: result.weights
-			};
-			entries.push(entry);
-			onEntry?.(entry);
+		const outcome = await measureBlock(block, options);
+		if (outcome.kind === 'done') {
+			entries.push(outcome.entry);
+			onEntry?.(outcome.entry);
 			summary.measured += 1;
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			summary.failed.push({ blockId: block.id, error: message });
-			log(`  colour failed ${block.id}: ${message}`);
-		} finally {
-			onProgress(++settled, pending.length);
+		} else {
+			onOutcome?.(block.id, outcome);
+			if (outcome.kind === 'failed') {
+				summary.failed.push({ blockId: block.id, error: outcome.error });
+				log(`  colour failed ${block.id}: ${outcome.error}`);
+			} else {
+				if (outcome.cause === 'unsupported') summary.skippedUnsupported += 1;
+				else if (outcome.cause === 'unreachable') summary.skippedUnreachable += 1;
+				else summary.skippedTooLarge += 1;
+				log(`  colour skipped ${block.id}: ${outcome.reason}`);
+			}
 		}
+		onProgress(++settled, pending.length);
 	});
 
 	return { entries, summary };

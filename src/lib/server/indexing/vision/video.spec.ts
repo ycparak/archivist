@@ -13,7 +13,7 @@ import {
  * a mocked child process would pass with any arguments at all, and these arguments have been wrong
  * twice.
  *
- * `--no-vision` makes a machine without ffmpeg a supported way to run this project, so the
+ * Leaving out `--vision` (with `--no-colour`) makes a machine without ffmpeg a supported way to run this project, so the
  * suites that need it skip rather than fail there. CI installs it and the check below asserts it,
  * so a skip can never quietly turn into missing coverage on the branch gate.
  */
@@ -139,7 +139,8 @@ describe.skipIf(!hasFfmpeg)('transcodeToVideoDataUrl', () => {
 		expect(result).toEqual({
 			kind: 'skipped',
 			cause: 'unreachable',
-			reason: 'source returned HTTP 404'
+			reason: 'source returned HTTP 404',
+			retryable: false
 		});
 	});
 

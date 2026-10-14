@@ -21,7 +21,7 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
  * prose where this code expects JSON — intermittently, which is worse than failing. The explicit
  * order also keeps runs reproducible; `require_parameters` is what actually enforces the contract.
  */
-export const DEFAULT_PROVIDER_ORDER = ['deepinfra', 'streamlake', 'venice'] as const;
+const DEFAULT_PROVIDER_ORDER = ['deepinfra', 'streamlake', 'venice'] as const;
 
 /**
  * The common denominator across providers that fetch the image themselves. Are.na's GIFs cannot be
@@ -95,7 +95,7 @@ const completionSchema = z.object({
 	provider: z.string().nullable().optional()
 });
 
-export interface VisionClientOptions {
+interface VisionClientOptions {
 	apiKey: string;
 	fetchFn?: typeof fetch;
 	model?: string;
@@ -120,7 +120,15 @@ export interface DescribeInput {
 	media: VisionMedia;
 	block: BlockContext;
 	signal?: AbortSignal;
+	/**
+	 * Called once per request that may have been billed: with OpenRouter's reported `usage.cost`
+	 * (credits, priced 1:1 with USD), or null when a timeout or network failure leaves it unknown.
+	 */
+	onCost?: (usd: number | null) => void;
 }
+
+const usageSchema = z.object({ usage: z.object({ cost: z.number().nonnegative() }) });
+const reportedCost = (body: unknown) => usageSchema.safeParse(body).data?.usage.cost ?? null;
 
 export type DescribeOutcome =
 	| { kind: 'described'; result: VisionResult; provider: string | null }
@@ -242,7 +250,7 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 		model,
 		promptVersion: PROMPT_VERSION,
 
-		async describe({ media, block, signal }): Promise<DescribeOutcome> {
+		async describe({ media, block, signal, onCost }): Promise<DescribeOutcome> {
 			let mediaPart: Record<string, unknown>;
 
 			if (media.kind === 'video') {
@@ -293,7 +301,12 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 					if (response.ok) {
 						// The body read is inside the timeout as well: a stall after the headers arrive
 						// is the shape this actually fails in, and it used to escape unretried.
-						const { content, provider, finishReason } = extractContent(await response.json());
+						const json: unknown = await response.json().catch((error: unknown) => {
+							onCost?.(null);
+							throw error;
+						});
+						onCost?.(reportedCost(json));
+						const { content, provider, finishReason } = extractContent(json);
 						return {
 							kind: 'described',
 							result: parseResult(content, block, finishReason),
@@ -318,6 +331,7 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
 					if (signal?.aborted) throw error;
 
 					if (timeout.aborted) {
+						onCost?.(null);
 						timeoutAttempts += 1;
 						if (lastAttempt || timeoutAttempts >= maxTimeoutAttempts) {
 							throw new VisionRequestError(

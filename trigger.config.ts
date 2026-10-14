@@ -1,7 +1,9 @@
+import { ffmpeg } from '@trigger.dev/build/extensions/core';
 import { defineConfig } from '@trigger.dev/sdk';
+import { siteConfig } from './site.config';
 
 export default defineConfig({
-	project: 'proj_yepyanjcjevddergrczr',
+	project: siteConfig.triggerProject,
 	runtime: 'node-24',
 	logLevel: 'log',
 	maxDuration: 3600,
@@ -15,5 +17,7 @@ export default defineConfig({
 			randomize: true
 		}
 	},
-	dirs: ['./src/trigger']
+	dirs: ['./src/trigger'],
+	// Colour measurement decodes images and animations through the shared ffmpeg subprocess.
+	build: { extensions: [ffmpeg()] }
 });

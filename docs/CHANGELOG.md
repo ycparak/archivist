@@ -1,104 +1,58 @@
 # Changelog
 
-User-visible changes, newest first. The format is set in [`AGENTS.md`](../AGENTS.md#engineering-guardrails).
+User-visible changes, newest first. The format is set in [AGENTS.md](../AGENTS.md#engineering-guardrails).
+Superseded unreleased implementation notes were consolidated on 2026-10-14; Git retains the earlier history.
 
 ## Unreleased
 
 ### Changed
 
-- Changed search to submit on Enter or when the input loses focus instead of searching while typing.
-
+- Changed `bun run sync` to be read-only toward Are.na and free of vision spend by default: `--vision` and `--push-arena` are now opt-in, and the old `--no-vision` and `--no-push-arena` flags were removed.
+- Changed the enrichment caches in `data/` to be git-ignored local files rather than committed, since they hold generated text and OCR of other people's blocks.
+- Changed the Trigger.dev deploy job to skip itself when `TRIGGER_ACCESS_TOKEN` is not set, pinned GitHub Actions and the MCP servers to exact versions, and turned off `workers.dev` and preview URLs.
+- Rewrote the README getting-started path so a plain sync with three credentials is enough.
+- Split `src/lib/server/search/` so release-building code lives in `src/lib/server/release/` and only request-time Worker code stays in `search/`; moved the sync summary printing out of `scripts/sync.ts` into `progress/summary.ts`.
+- Moved the committed enrichment caches from `src/lib/server/indexing/` to `data/`.
+- Changed keyword search to match word prefixes, so a search for "widget" also finds "widgets".
+- Changed the daily sync to deploy new site code even when the search content is unchanged.
+- Changed search indexing to omit upload filenames and opaque tokens used as titles, which only diluted the text of the blocks that had them.
+- Changed the daily hosted sync to describe new images and animations within a daily cap and write generated titles and descriptions back to Are.na, matching `bun run sync`.
+- Changed search evaluation to report each expected block's rank in the complete ranking rather than the first page only.
+- Aligned documentation with the implemented browser search architecture and added the plan for manually triggered Trigger.dev maintenance workflows.
+- Changed search to submit on Enter or when the input lost focus instead of searching while typing.
 - Aligned sans typography, colour primitives, spacing, capsule actions and date-slider controls with Yusufparak while preserving Archivist serif styling.
+- Redesigned the gallery as a horizontal sheet with channel shelves, captions and reveal motion.
 
 ### Removed
 
-- Removed Turbopuffer entirely and made static MiniSearch plus semantic browser search the default; maintenance commands now use public search snapshots.
+- Trimmed the generic guidance in `AGENTS.md` and condensed the review protocol.
+- Removed the retired `/api/search` endpoint, the `hosted experiment` and `hosted investigate` commands, and the example experiment spec.
+- Removed the `export:search` and `calibrate:colour` package scripts: use `bun run sync --export`, and `bun run scripts/calibrate-colour.ts` for the read-only colour contact sheet.
+- Removed the local `prepare:search`, `validate:search`, `promote:search` and `evaluate:search` commands; `bun run hosted sync` and `hosted deploy` run the same validation.
+- Removed the `hello-world` and `validate-search-smoke` Trigger.dev tasks.
+- Removed the unused committed channel manifest and the always-empty private channel allow-list.
+- Removed the TODO list, feature specs, worksheets and the agent loop after consolidating current behavior into the owning docs.
+- Removed Turbopuffer and the backend opt-in switch, making browser search the sole backend and retiring `/api/search`.
 
 ### Added
 
-- Added the production deployment at archivist.yusufparak.com and a repeatable `bun run deploy` command.
-
+- Added `site.config.ts` as the single place that names the deployment, plus `CONTRIBUTING.md`, `SECURITY.md`, a bug report template and Dependabot updates for GitHub Actions.
+- Added reproducible, read-only search experiments with held-out known-item scoring, and a per-case ranking investigation.
+- Added a read-only enrichment coverage report and budget-capped hosted vision backfills with cost estimates.
+- Added per-block enrichment outcomes, `bun run hosted retry` for failed blocks only, and batched child tasks for large backlogs.
+- Added a daily 06:00 UTC hosted archive sync that deploys the site through GitHub Actions when the new release introduces no search regressions.
+- Added the manually triggered `archive-sync` Trigger.dev task with leased, resumable R2-backed caches and a `bun run hosted` CLI for bootstrap, cache import, sync and guarded deployment.
+- Added separate search candidate preparation, full-ranking validation reports and guarded local promotion, plus a non-mutating Trigger.dev validation smoke task.
+- Added the production deployment at archivist.yusufparak.com and the `bun run deploy` command.
 - Added Trigger.dev development support with a typed `hello-world` task.
-
-- Added an opt-in free browser search build using MiniSearch, exact semantic vector search and Workers AI query embeddings, with public-only exports, preserved filters/sorts/paging, and a prerendered default gallery.
-
-- Added a Most connected sort that ranks blocks by every connection they have on Are.na, yours and everyone else's, newest created first on a tie. Takes effect after `bun run sync`.
-- Added a connections stage to `bun run sync`, which asks Are.na for each block's total connections and caches them in `connections-cache.jsonl`, recounting a block once its count is a week old. A first run takes about nine minutes. Skip it with `--no-connections`.
-- Added a Created filter, a month slider from February 2014, beside Connected. Takes effect after `bun run sync`.
-- Added Video and GIF to Block type, under Image, and renamed Link to Web. Block type now filters a new `kind` attribute. Takes effect after `bun run sync`.
-- Added six browse orders: newest and oldest created, newest and oldest connected, and most and least connected. `?sort=` takes the new names.
-- Added `bun run check:classes`, part of `bun run lint`, which fails on any Tailwind class not written in its canonical form.
-
-- Added the number of blocks in the archive to the footer, beside the number of channels. It replaces the results sentence and Turbopuffer timings, which screen readers still hear.
-- Added a Sort by filter for browsing: most connected (the default), newest or oldest, as `?sort=`. A search term still ranks by relevance.
-- Added colour swatches and a connected-date slider to the filters, so the colour filter finally has a control.
-
-- Added a colour filter to search. `?colour=blue` lists blocks with enough blue, and browsing with a colour puts the most strongly coloured first; repeat `colour` for blocks with every colour named. The colours are red, orange, yellow, green, blue, purple, pink, brown, grey, black, white and `mono` for black and white. There is no control for it in the gallery yet. Takes effect after `bun run sync`.
-- Added a colour stage to `bun run sync`, which measures how much of each image is each colour with ffmpeg, in memory, and caches the result in `colour-cache.jsonl`. Skip it with `--no-colour`.
-- Added `bun run calibrate:colour`, which writes a read-only contact sheet of measured colours for checking the colour boundaries by eye.
-- Added a favicon, with an `.ico` next to the SVG for browsers that cannot show an SVG icon.
-- Added search over the tags the vision model makes, such as `cyberpunk` and `dark mode`. Tags match without regard to case or hyphens, so `web design` and `web-design` are the same. Takes effect after `bun run sync`.
-- Added video playback in the gallery. Video blocks play muted, looping and inline, only while visible, and stay still when reduced motion is on. Takes effect after `bun run sync`.
-- Added a live status area to `bun run sync` that shows the phase, what is running now and an estimated finish time. It falls back to plain lines when piped or when `NO_COLOR` is set.
-- Added search by what an image looks like. A vision model describes every block with an image, and that text is indexed with the block's own metadata. Takes effect after `bun run sync`.
-- Added write-back of generated titles and descriptions to Are.na for blocks you own. It only replaces titles that carry no information, such as filenames and hashes, and never overwrites a description you wrote.
-- Added pruning to `bun run sync`, which deletes documents for blocks that left your archive or sit in ignored or private channels. Pruning is skipped if a channel failed or if it would delete more than half the index.
-- Added infinite scroll to the gallery. With no search term it lists the most-connected blocks first, and the newest first on ties. Takes effect after `bun run sync`.
-- Added `ARENA_ALLOW_PRIVATE_CHANNELS` and `ARENA_IGNORE_CHANNELS` to choose which channels `bun run sync` indexes. Private channels are now skipped by default, and the ignore list wins.
-- Added a shared edge rate limit for the gallery and `/api/search`, with a short retry page and a 429 reply. Logs never record search terms or visitor addresses.
-- Added Are.na alt text and real image sizes to result images, so cards no longer use a fixed crop. Takes effect after `bun run sync`.
-- Added an `/about` page with notes on the archive, the search modes and how the app is built.
-- Added the search-first home page. It shows original Are.na blocks with a search box, a ranking choice, and block-type and date filters, all kept in the URL, and it works without JavaScript.
-- Added result cards that link to the original block on Are.na and label untitled blocks by their type.
-- Added loading, no-result, unreadable-search and unavailable states that keep your query and filters on screen.
-- Added `GET /api/search` with browse, lexical, semantic and hybrid modes, channel, type and date filters, and a 400 or 503 reply for bad or failed requests.
-- Added public evaluation cases and `bun run evaluate:search` to check expected blocks against your namespace.
-- Added `bun run sync`, which finds every channel your account owns, merges duplicate blocks and upserts them into Turbopuffer. It needs `ARENA_ACCESS_TOKEN`, `TURBOPUFFER_API_KEY` and `TURBOPUFFER_REGION`.
-
-### Changed
-
-- Changed the default browse order from newest created to My most connected, the blocks held by the most of your channels, newest connected first on a tie. Browsing with a colour puts the strongest colour first, then the most connected.
-- Changed the four orders that count only your own channels to My most connected, My least connected, My newest connected and My oldest connected, as `?sort=my-most-connected`, `my-least-connected`, `my-newest-connected` and `my-oldest-connected`. Their earlier names `newest-connected`, `oldest-connected` and `least-connected` are now rejected, and `?sort=most-connected` means the total on Are.na instead of your channels, so My most connected is the default and never appears in a URL.
-- Changed the Sort by list to run My most connected, My least connected, My newest connected, My oldest connected, Most connected, Newest created, Oldest created.
-- Changed the default browse order to newest created first. Most connected is still a Sort by option, as `?sort=most-connected`.
-- Changed the colour filter to show every image with any of the first colour chosen when browsing in the default order, strongest first, so weaker matches appear further down the scroll instead of not at all. Elsewhere a colour now needs 1% of the image, down from 5%; black and white is unchanged.
-- Changed Search type so it can be chosen before typing a query; the choice stays in the URL and ranks the next search. A request without a query now browses whatever `mode` says, instead of being rejected.
-- Changed channel covers to show the channel's symbol, or "Are.na" when it has none, and the search placeholder to `foreground-elevated`. Page padding is 16px.
-
-- Changed the whole UI to a horizontal library modelled on Seth Thompson's: one sideways-scrolling sheet with the filters as columns of links on the left, and results on a grey shelf, grouped by channel behind a channel cover, captioned above and below with the date and the matched words. Shelves slide in as they scroll into view, a search glides the sheet to the shelf, and dark mode follows the system.
-- Changed the colour swatches to nine that fill the column: pink, black and white are no longer offered, even from a URL.
-- Changed the shelf to a pale grey band with pages a fifth shorter than their row, closer in height to the reference. Channel names lose their leading symbols, black and white are no longer offered as colours, all filters sit in the first column, and captions use one weight with black headings over grey text.
-- Changed all text to trim to cap height and baseline, on a 14px line height, with spacing set to keep a baseline grid.
-- Changed the type to ABC Areal at 14–15px for the app, with Newsreader for the search box, the wordmark and channel covers.
-
-- Changed the sync rules so agents may run `bun run sync` with `--no-vision`, `--no-push-arena` or both. A plain `bun run sync` is still the maintainer's alone.
-- Changed `bun run sync` to run the vision stage and the Are.na write-back by default. Opt out with `--no-vision` and `--no-push-arena`. It now needs `OPENROUTER_API_KEY` and a read + write Are.na token unless opted out, and it rejects unknown flags.
-- Changed a stalled vision request to retry once instead of four times, so one stuck block no longer holds a worker for twenty minutes. Rate limits and 503s keep the full retry budget.
-- Changed the result status to show Turbopuffer timings, such as `time: 0.85s (query: 0.02s, rerank: 0.00s)`. Screen readers still hear the sentence it replaced.
-- Changed the look of the app to ABC Areal, a 13px size, an oklch gray ramp, blue accents and square 1px-bordered controls. Colour tokens are role-based and live in `src/styles/globals.css`.
-- Changed the layout to a recessed sidebar beside a gray pane, with a justified-row gallery where each row of images shares a height. Cards show only the image and title.
-- Changed the form and page details: links open in a new tab, fields are rounded and white, pane padding is 24px, the sidebar stays fixed while scrolling, and filter-row text lines up on one baseline.
-- Changed the Channel filter to list every channel in the archive, using a manifest that `bun run sync` writes. It adds no Are.na calls and no cost per request.
-
-### Removed
-
-- Removed the `bun run sync` flags `--vision-dry-run` and `--no-vision-video`. Animated blocks are always read as video, which needs ffmpeg.
-- Removed the `bun run sync` flags `--vision-limit`, `--vision-concurrency`, `--revision`, `--push-arena`, `--push-arena-limit` and `--allow-large-prune`. Vision uses 32 workers and describes every uncached block, and deleting a line from `vision-cache.jsonl` redoes one block. A prune of more than half the index is still refused, with no override.
-- Removed the active-filter pills under the search bar. The Channel and Block type menus show a count instead.
-- Removed the `/about` page and its sidebar link.
+- Added public-only static releases with MiniSearch, chunked semantic browser search, Workers AI query embeddings and a prerendered default gallery.
+- Added My connection orders and Most connected sorting with cached total Are.na connection counts.
+- Added connected/created date filters, block-kind filters and pixel-derived colour filtering.
+- Added sync-time vision descriptions, OCR and tags for retrieval, with optional owner-only title/description write-back to Are.na.
+- Added visible-only muted video playback and reduced-motion support.
 
 ### Fixed
 
-- Fixed blocks being cropped. A page is now exactly as wide as its image needs to show all of it, where before images wider than 3 : 1 or taller than 1 : 2 were trimmed, and GIFs and a few other blocks whose size Are.na lacks or gets wrong were cut to a guessed 4 : 3 or 1 : 1. The browser sizes each page from its image, so nothing is measured in script.
-- Fixed the first filter column clipping the selected colour's ring and the slider's right thumb.
-- Fixed the search caret and selection sitting off-centre from the text: Newsreader's metrics now centre its capitals in the line.
-
-- Fixed clamped captions and channel covers that showed the top of a hidden line or cut off descenders, and the search clear button sitting below the search text.
-
-- Fixed browsing so a block can no longer appear twice, or never, while scrolling. 104 blocks share both their connection count and the time they were added with another block, and Turbopuffer may return such ties in a different order on each page; browse now breaks ties by block id.
-- Fixed the `bun run sync` summary counting an animation that could not be downloaded as "media too large". It now has its own line.
-- Fixed `bun run sync` dropping saved vision descriptions for blocks in a channel that failed that run. Nothing is dropped from the cache unless every channel synced.
-- Fixed the missing-ffmpeg error from `bun run sync`, which suggested the removed `--no-vision-video` flag. It now suggests `--no-vision`.
-- Fixed runaway generated text. Three blocks had text that repeated one phrase, one of them 270,000 characters long, and all of it was indexed. Generated text is now capped and repetition is discarded. Takes effect after `bun run sync`.
-- Fixed hybrid results so they are capped at the same server limit as other modes after de-duplication, which keeps the result count and status in step.
-- Fixed `GET /api/search` so blank parameters count as missing, and a `type` outside Are.na's five block types returns a 400 instead of an empty result.
+- Fixed animation downloads buffering oversized sources and ignoring timeouts and cancellation.
+- Fixed CI builds by generating synthetic search assets without provider credentials and disabling remote binding emulation during builds.
+- Stabilized local development with remote Workers AI and disabled persisted platform-proxy state.

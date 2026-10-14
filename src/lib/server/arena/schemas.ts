@@ -66,35 +66,35 @@ const baseContentItemFieldsSchema = z.object({
 	connection: embeddedConnectionSchema
 });
 
-export const arenaTextBlockSchema = baseContentItemFieldsSchema.extend({
+const arenaTextBlockSchema = baseContentItemFieldsSchema.extend({
 	type: z.literal('Text'),
 	content: markdownContentSchema
 });
 
-export const arenaImageBlockSchema = baseContentItemFieldsSchema.extend({
+const arenaImageBlockSchema = baseContentItemFieldsSchema.extend({
 	type: z.literal('Image'),
 	image: blockImageSchema
 });
 
-export const arenaLinkBlockSchema = baseContentItemFieldsSchema.extend({
+const arenaLinkBlockSchema = baseContentItemFieldsSchema.extend({
 	type: z.literal('Link'),
 	image: blockImageSchema.nullable().optional(),
 	content: markdownContentSchema.nullable().optional()
 });
 
-export const arenaAttachmentBlockSchema = baseContentItemFieldsSchema.extend({
+const arenaAttachmentBlockSchema = baseContentItemFieldsSchema.extend({
 	type: z.literal('Attachment'),
 	attachment: blockAttachmentSchema,
 	image: blockImageSchema.nullable().optional()
 });
 
-export const arenaEmbedBlockSchema = baseContentItemFieldsSchema.extend({
+const arenaEmbedBlockSchema = baseContentItemFieldsSchema.extend({
 	type: z.literal('Embed'),
 	embed: blockEmbedSchema,
 	image: blockImageSchema.nullable().optional()
 });
 
-export const arenaChannelItemSchema = z.object({
+const arenaChannelItemSchema = z.object({
 	id: z.number(),
 	type: z.literal('Channel'),
 	slug: z.string(),
@@ -111,7 +111,7 @@ export const arenaContentItemSchema = z.discriminatedUnion('type', [
 	arenaChannelItemSchema
 ]);
 
-export type ArenaContentItem = z.infer<typeof arenaContentItemSchema>;
+type ArenaContentItem = z.infer<typeof arenaContentItemSchema>;
 export type ArenaBlockItem = Exclude<ArenaContentItem, { type: 'Channel' }>;
 
 const paginationMetaSchema = z.object({
@@ -122,8 +122,6 @@ const paginationMetaSchema = z.object({
 	total_count: z.number(),
 	has_more_pages: z.boolean()
 });
-
-export type ArenaPaginationMeta = z.infer<typeof paginationMetaSchema>;
 
 export const arenaChannelContentsResponseSchema = z.object({
 	data: z.array(arenaContentItemSchema),

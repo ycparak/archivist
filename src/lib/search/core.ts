@@ -6,6 +6,18 @@ import { EMBEDDING, normalizeVector } from './embedding';
 import type { PublicDocument } from './snapshot';
 
 export const lexicalOptions = { fields: ['search_text'], idField: 'id' };
+
+/** The ranking parameters; production uses PRODUCTION_RANKING. */
+export interface RankingOptions {
+	rrfK: number;
+	prefix: boolean;
+	fuzzy: number;
+}
+/**
+ * Prefix matching lets "widget" find "widgets"; adopted after the 2026-10-14 experiment, which
+ * moved the widget-grid case onto the first page at a cost of 2 in 200 held-out top-1 results.
+ */
+export const PRODUCTION_RANKING: RankingOptions = { rrfK: 60, prefix: true, fuzzy: 0 };
 const compareIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 export function matchesFilters(document: PublicDocument, input: ArchiveSearchInput): boolean {
@@ -79,11 +91,14 @@ export function compareBrowse(
 	return difference || compareIds(a.result.id, b.result.id);
 }
 
-export function reciprocalRankFusion(lists: readonly string[][]): string[] {
+export function reciprocalRankFusion(
+	lists: readonly string[][],
+	k: number = PRODUCTION_RANKING.rrfK
+): string[] {
 	const scores = new Map<string, number>();
 	for (const list of lists) {
 		for (const [rank, id] of [...new Set(list)].entries()) {
-			scores.set(id, (scores.get(id) ?? 0) + 1 / (60 + rank + 1));
+			scores.set(id, (scores.get(id) ?? 0) + 1 / (k + rank + 1));
 		}
 	}
 	return [...scores.keys()].sort((a, b) => scores.get(b)! - scores.get(a)! || compareIds(a, b));
@@ -93,7 +108,8 @@ export class ArchiveSearchEngine {
 	constructor(
 		readonly documents: readonly PublicDocument[],
 		private lexical: MiniSearch,
-		private readonly vectorBlocks: readonly number[]
+		private readonly vectorBlocks: readonly number[],
+		private readonly ranking: RankingOptions = PRODUCTION_RANKING
 	) {}
 	private vectors?: Float32Array;
 	setLexical(lexical: MiniSearch): void {
@@ -131,6 +147,8 @@ export class ArchiveSearchEngine {
 				: this.lexical
 						.search(input.query, {
 							combineWith: 'OR',
+							prefix: this.ranking.prefix,
+							fuzzy: this.ranking.fuzzy,
 							filter: (result) => eligible.has(String(result.id))
 						})
 						.sort((a, b) => b.score - a.score || compareIds(String(a.id), String(b.id)))
@@ -150,7 +168,10 @@ export class ArchiveSearchEngine {
 		const semantic = [...scores.keys()].sort(
 			(a, b) => scores.get(b)! - scores.get(a)! || compareIds(a, b)
 		);
-		const ranked = input.mode === 'semantic' ? semantic : reciprocalRankFusion([lexical, semantic]);
+		const ranked =
+			input.mode === 'semantic'
+				? semantic
+				: reciprocalRankFusion([lexical, semantic], this.ranking.rrfK);
 		return ranked.map((id) => eligible.get(id)!.result);
 	}
 }

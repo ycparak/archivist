@@ -25,7 +25,7 @@ export function packIntoColumns<T>(
 	return columns;
 }
 
-export type TextStyle = { font: string; lineHeight: number; letterSpacing: number };
+type TextStyle = { font: string; lineHeight: number; letterSpacing: number };
 
 export function readTextStyle(element: Element): TextStyle {
 	const style = getComputedStyle(element);

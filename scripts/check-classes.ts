@@ -1,9 +1,7 @@
 /**
  * Fails when a Tailwind class has a canonical spelling it is not written in: the same rule as the
  * Tailwind IntelliSense `suggestCanonicalClasses` lint (`[container-type:size]` → `@container-size`),
- * run over every source file so it holds outside the editor too.
- *
- *   bun run check:classes
+ * run over every source file by `bun run lint` so it holds outside the editor too.
  */
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';

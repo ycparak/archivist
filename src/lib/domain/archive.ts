@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { ARCHIVE_COLOURS, type ArchiveBlockType, type ArchiveColour } from './search';
+import { lowQualityTitleReason } from './titles';
 
-export const blockTypeSchema = z.string().trim().min(1);
+const blockTypeSchema = z.string().trim().min(1);
 
 export const archiveBlockSchema = z.object({
 	id: z.union([z.string(), z.number()]).transform(String),
@@ -40,7 +41,7 @@ export type ArchiveBlock = z.infer<typeof archiveBlockSchema>;
  * Generated text for one block, structurally matching a vision cache entry. Declared here rather
  * than imported so the domain layer stays independent of the indexing pipeline.
  */
-export type BlockVisionText = {
+type BlockVisionText = {
 	title: string;
 	description: string;
 	ocr: string;
@@ -49,11 +50,11 @@ export type BlockVisionText = {
 };
 
 /** Per-mille share of the image in each colour, structurally matching a colour cache entry's weights. */
-export type BlockColourWeights = Record<ArchiveColour, number>;
+type BlockColourWeights = Record<ArchiveColour, number>;
 
-export type ColourAttribute = `colour_${ArchiveColour}`;
+type ColourAttribute = `colour_${ArchiveColour}`;
 
-export function colourAttribute(colour: ArchiveColour): ColourAttribute {
+function colourAttribute(colour: ArchiveColour): ColourAttribute {
 	return `colour_${colour}`;
 }
 
@@ -152,6 +153,18 @@ const normalizeTags = (tags: readonly string[] | null | undefined): string[] =>
 	].sort();
 
 /**
+ * Upload filenames and opaque tokens (`original-0280b5e4….png?compress=1-resize=1905x1429`) carry
+ * no meaning, so they are kept out of indexed text: in the reference archive one such title,
+ * repeated as title and source title, sank its block to rank 90 for a query its description
+ * answers. Measured over a 200-query held-out set, dropping them changed no known-item result.
+ * Boilerplate titles stay, since they usually carry post text.
+ */
+function indexableTitle(title: string | null | undefined, description: string | null | undefined) {
+	const reason = lowQualityTitleReason(title, description);
+	return reason === 'filename' || reason === 'opaque' ? null : title;
+}
+
+/**
  * `vision` is the generated description for this block, when one exists. It is appended to
  * `search_text` after the block's own metadata so a block that already describes itself keeps
  * leading the corpus, and omitted entirely when absent.
@@ -171,10 +184,10 @@ export function toSearchDocument(
 ): SearchDocument {
 	const channels = [...new Map(block.channels.map((channel) => [channel.slug, channel])).values()];
 	const searchText = [
-		block.title,
+		indexableTitle(block.title, block.description),
 		block.description,
 		block.content,
-		block.sourceTitle,
+		indexableTitle(block.sourceTitle, block.description),
 		...channels.map((channel) => channel.title),
 		vision?.description,
 		clampOcr(vision?.ocr ?? ''),

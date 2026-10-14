@@ -1,4 +1,4 @@
-import type { SearchResult, ArchiveSearchState, SearchTimings } from '$lib/domain/search';
+import type { SearchResult, ArchiveSearchState } from '$lib/domain/search';
 import type { SearchRelease } from './snapshot';
 
 export type BrowserSearchOutcome =
@@ -7,7 +7,6 @@ export type BrowserSearchOutcome =
 			state: ArchiveSearchState;
 			results: SearchResult[];
 			hasMore: boolean;
-			timings: SearchTimings;
 	  }
 	| { kind: 'invalid'; state: ArchiveSearchState }
 	| { kind: 'unavailable'; state: ArchiveSearchState; correlationId: string };

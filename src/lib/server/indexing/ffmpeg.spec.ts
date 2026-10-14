@@ -64,4 +64,28 @@ describe('runFfmpeg', () => {
 			})
 		).rejects.toThrow(/ffmpeg exited with code/);
 	});
+
+	const endless = [
+		'-loglevel',
+		'error',
+		'-re',
+		'-f',
+		'lavfi',
+		'-i',
+		'color=c=red:size=16x16:rate=5:duration=30',
+		'-f',
+		'null',
+		'-'
+	];
+
+	it.runIf(hasFfmpeg)('kills and reports a decode that runs past its timeout', async () => {
+		await expect(runFfmpeg(endless, { timeoutMs: 300 })).rejects.toThrow(/timed out after 300ms/);
+	});
+
+	it.runIf(hasFfmpeg)('stops ffmpeg when the caller cancels', async () => {
+		const abort = new AbortController();
+		const running = runFfmpeg(endless, { signal: abort.signal });
+		setTimeout(() => abort.abort(), 100);
+		await expect(running).rejects.toThrow(/abort/i);
+	});
 });

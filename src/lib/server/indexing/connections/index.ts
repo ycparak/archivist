@@ -1,5 +1,6 @@
 import type { ArchiveBlock } from '$lib/domain/archive';
 import { pool } from '../pool';
+import { errorMessage, type BlockOutcome, type OutcomeSink } from '../outcome';
 import {
 	CONNECTION_COUNT_MAX_AGE_MS,
 	isConnectionCacheHit,
@@ -18,10 +19,12 @@ export interface ConnectionStageOptions {
 	signal?: AbortSignal;
 	/** Called as each entry lands, so an interrupted run keeps what it counted. */
 	onEntry?: (entry: ConnectionCacheEntry) => void;
+	/** Called for every block that did not produce an entry, with why. */
+	onOutcome?: OutcomeSink;
 	onProgress?: (done: number, total: number) => void;
 }
 
-export interface ConnectionFailure {
+interface ConnectionFailure {
 	blockId: string;
 	error: string;
 }
@@ -33,7 +36,7 @@ export interface ConnectionStageSummary {
 	failed: ConnectionFailure[];
 }
 
-export interface ConnectionStageResult {
+interface ConnectionStageResult {
 	entries: ConnectionCacheEntry[];
 	summary: ConnectionStageSummary;
 }
@@ -58,6 +61,20 @@ export function planConnectionWork(
 	return { cached: blocks.length - pending.length, pending };
 }
 
+/** Counts one block's connections. Never throws: a failure is an outcome. */
+export async function countBlock(
+	block: ArchiveBlock,
+	options: Pick<ConnectionStageOptions, 'count' | 'signal' | 'now'>
+): Promise<BlockOutcome<ConnectionCacheEntry>> {
+	const { count, signal, now = () => new Date() } = options;
+	try {
+		const total = await count(Number(block.id), signal);
+		return { kind: 'done', entry: { block_id: block.id, total, counted_at: now().toISOString() } };
+	} catch (error) {
+		return { kind: 'failed', error: errorMessage(error) };
+	}
+}
+
 /**
  * Counts every block whose cached total is missing or old. Failures are collected rather than
  * thrown, and a block without an entry is simply counted again next run.
@@ -68,13 +85,13 @@ export async function countConnections(
 ): Promise<ConnectionStageResult> {
 	const {
 		cache,
-		count,
 		concurrency = CONNECTION_CONCURRENCY,
 		maxAgeMs = CONNECTION_COUNT_MAX_AGE_MS,
 		now = () => new Date(),
 		log = noop,
 		signal,
 		onEntry,
+		onOutcome,
 		onProgress = noop
 	} = options;
 
@@ -97,23 +114,19 @@ export async function countConnections(
 
 	await pool(pending, concurrency, async (block) => {
 		if (signal?.aborted) return;
-		try {
-			const total = await count(Number(block.id), signal);
-			const entry: ConnectionCacheEntry = {
-				block_id: block.id,
-				total,
-				counted_at: now().toISOString()
-			};
-			entries.push(entry);
-			onEntry?.(entry);
+		const outcome = await countBlock(block, options);
+		if (outcome.kind === 'done') {
+			entries.push(outcome.entry);
+			onEntry?.(outcome.entry);
 			summary.counted += 1;
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			summary.failed.push({ blockId: block.id, error: message });
-			log(`  connections failed ${block.id}: ${message}`);
-		} finally {
-			onProgress(++settled, pending.length);
+		} else {
+			onOutcome?.(block.id, outcome);
+			if (outcome.kind === 'failed') {
+				summary.failed.push({ blockId: block.id, error: outcome.error });
+				log(`  connections failed ${block.id}: ${outcome.error}`);
+			}
 		}
+		onProgress(++settled, pending.length);
 	});
 
 	return { entries, summary };
