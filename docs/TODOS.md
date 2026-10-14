@@ -14,7 +14,7 @@ _(none)_
 
 ## Needs Input
 
-- [~] **Durable hosted storage and manual sync.** Phase 2 code is complete; provision the R2 bucket and credentials, then run the hosted development smoke test in the [worksheet](./specs/worksheet-hosted-sync.md).
+_(none)_
 
 ## Backlog
 
@@ -22,5 +22,6 @@ _(none)_
 
 ## Done
 
+- [x] **Durable hosted storage and manual sync.** Implemented phase 2 of the [Trigger.dev plan](./specs/trigger-workflows.md) and demonstrated a resumable hosted development run ([worksheet](./history/worksheets/worksheet-hosted-sync.md)).
 - [x] **Extract maintenance services and candidate validation.** Implemented phase 1 of the [Trigger.dev plan](./specs/trigger-workflows.md) with guarded local promotion and a synthetic Trigger smoke task ([worksheet](./history/worksheets/worksheet-candidate-validation.md)).
 - [x] **Align documentation and plan Trigger.dev workflows.** Consolidated current behavior, removed obsolete documents and recorded the [implementation plan](./specs/trigger-workflows.md).
