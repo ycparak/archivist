@@ -36,7 +36,7 @@ interface VisionStageOptions {
 	onCost?: (usd: number | null) => void;
 }
 
-export interface VisionFailure {
+interface VisionFailure {
 	blockId: string;
 	error: string;
 }

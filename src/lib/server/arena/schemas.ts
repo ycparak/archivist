@@ -111,7 +111,7 @@ export const arenaContentItemSchema = z.discriminatedUnion('type', [
 	arenaChannelItemSchema
 ]);
 
-export type ArenaContentItem = z.infer<typeof arenaContentItemSchema>;
+type ArenaContentItem = z.infer<typeof arenaContentItemSchema>;
 export type ArenaBlockItem = Exclude<ArenaContentItem, { type: 'Channel' }>;
 
 const paginationMetaSchema = z.object({

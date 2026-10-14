@@ -14,7 +14,7 @@ This is an **agent router**, read every session by both Claude Code and Codex. I
 - [docs/architecture.md](./docs/architecture.md) — repository layout, query path, releases, sync and enrichment, hosted maintenance, build and CI
 - [docs/svelte-guidelines.md](./docs/svelte-guidelines.md) — Svelte 5 runes, component and data-loading conventions, the Svelte MCP server
 - [docs/decisions/](./docs/decisions/) — architecture decision records
-- [docs/workflows/agent-review.md](./docs/workflows/agent-review.md) — review personas, findings format and quality checklist
+- [docs/workflows/agent-review.md](./docs/workflows/agent-review.md) — review focus areas, checklist and findings format
 - [docs/workflows/worktrees.md](./docs/workflows/worktrees.md) — parallel worktrees with `scripts/worktree.sh`
 - [docs/CHANGELOG.md](./docs/CHANGELOG.md) — user-visible changes
 
@@ -31,7 +31,7 @@ This is an **agent router**, read every session by both Claude Code and Codex. I
 
 - Load only the docs relevant to the task. If a behavior or rule changes, update the owning doc in the same change.
 - Update [docs/CHANGELOG.md](./docs/CHANGELOG.md) for user-visible work.
-- Never run a plain `bun run sync`: it calls OpenRouter and writes titles and descriptions to Are.na. Use `--no-vision --no-push-arena` unless those stages are explicitly needed. Sync always rebuilds public search assets with Workers AI embeddings. `bun run export:search` uses the committed caches without vision generation or Are.na write-back. Run either only after code and tests pass, and report the command in the handoff.
+- Never run a plain `bun run sync`: it calls OpenRouter and writes titles and descriptions to Are.na. Use `--no-vision --no-push-arena` unless those stages are explicitly needed. Sync always rebuilds public search assets with Workers AI embeddings. `bun run sync --export` uses the committed caches without vision generation, colour or connection measurement, or Are.na write-back. Run either only after code and tests pass, and report the command in the handoff.
 - Never start a paid vision backfill without the maintainer's explicit approval of its block cap and budget.
 - Do not install Mastra or add agent behavior unless the maintainer explicitly asks for it.
 
@@ -40,7 +40,7 @@ This is an **agent router**, read every session by both Claude Code and Codex. I
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
 - Query time is free of generative LLMs. Browser search uses Workers AI only to embed queries. The sync-time vision stage describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval; generated tags are indexed but not shown. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`.
 - Public requests download versioned public assets and call a bounded embedding endpoint. They never proxy to Are.na.
-- The production `daily-archive-sync` is the maintainer-approved hosted equivalent of a plain sync: it generates vision within a daily cap and writes back to Are.na. Do not change its caps or write-back without the maintainer. A search experiment never changes production ranking on its own.
+- The production `daily-archive-sync` is the maintainer-approved hosted equivalent of a plain sync: it generates vision within a daily cap and writes back to Are.na. Do not change its caps or write-back without the maintainer.
 - Auth, accounts, analytics, link crawling, query-time LLMs and chat UI need an explicit maintainer decision.
 
 ## Search Invariants
@@ -54,21 +54,15 @@ This is an **agent router**, read every session by both Claude Code and Codex. I
 
 ## Engineering Guardrails
 
-- Prefer the smallest change that is correct, robust, and easy to reason about.
-- Avoid fragile logic, hidden coupling, edge-case traps, and assumptions about incidental execution order.
-- Keep async flows and shared state race-safe. Use explicit sequencing, cancellation, idempotency, or clear ownership where needed.
-- Do not introduce unnecessary performance regressions. Avoid extra renders, allocations, subscriptions, scans, blocking work, or I/O unless clearly justified.
-- Fail explicitly. Surface invalid states and unexpected errors clearly instead of silently swallowing them or masking them with fallback behavior.
-- Preserve testability. Keep side effects at the boundaries, make dependencies explicit, and structure logic so it can be exercised in isolation when practical.
-- Maintain clear boundaries, but prefer minimal designs. Split modules when responsibilities meaningfully diverge, not as a reflex.
-- If a tradeoff is unavoidable, call it out explicitly and choose the option with the lowest long-term correctness and maintenance risk.
-- When a fix doesn't work after one iteration, add a debug log before changing the approach again. Let the runtime tell you which term is wrong.
+- Prefer the smallest change that is correct and easy to reason about. Fail explicitly: surface invalid states instead of masking them with fallbacks.
+- Keep async flows and shared state race-safe: explicit sequencing, cancellation, idempotency or clear ownership.
+- When a fix doesn't work after one iteration, add a debug log before changing the approach again.
 - TypeScript strictness is non-negotiable. Validate untrusted API, config, payload and stored input at the boundary with Zod.
-- Keep code comments exceptionally rare. Add one only when it records non-obvious reasoning, an external constraint, or a deliberate tradeoff that names and structure cannot make clear; never narrate what the code already says.
-- Add a focused unit test for every normalizer, filter builder, and search-result mapper. Test behavior, not private implementation details.
-- Use accessible native controls, URL-backed browse and search state, server-only provider access, and responsive image dimensions.
-- Write every Tailwind class in its canonical form: `@container-size`, not `[container-type:size]`; `max-h-lh`, not `max-h-[1lh]`. `bun run lint` enforces this (`scripts/check-classes.ts`) and prints the canonical spelling for each offender. Never silence it with a raw arbitrary property when a utility exists.
-- Keep secrets server-only; do not log tokens, full raw API payloads, or user search queries.
+- Keep code comments exceptionally rare: only non-obvious reasoning, an external constraint or a deliberate tradeoff.
+- Add a focused unit test for every normalizer, filter builder and search-result mapper. Test behavior, not private implementation.
+- Use accessible native controls, URL-backed browse and search state, server-only provider access and responsive image dimensions.
+- Write every Tailwind class in its canonical form: `@container-size`, not `[container-type:size]`; `max-h-lh`, not `max-h-[1lh]`. `bun run lint` enforces this (`scripts/check-classes.ts`) and prints the canonical spelling for each offender.
+- Keep secrets server-only; never log tokens, full raw API payloads or user search queries.
 - Prefer the existing official SDKs. Add a dependency only when it removes meaningful production code; record why in an ADR if it changes the architecture.
 - Keep the changelog under `## Unreleased` in `Added` / `Changed` / `Removed` / `Fixed` groups, newest first, one past-tense line per change.
 
@@ -88,7 +82,7 @@ Run after a meaningful change and fix failures before handoff:
 bun run check   # wrangler types, svelte-kit sync, svelte-check, tsc on scripts/
 bun run lint    # prettier, eslint, canonical Tailwind classes
 bun run test    # vitest
-bun run build   # vite build; needs a release in static/search (bun run export:search)
+bun run build   # vite build; needs a release in static/search (bun run sync --export)
 ```
 
 `worker-configuration.d.ts` is generated, not committed: Wrangler's output depends on which env file it reads and on whether a built Worker entry already exists, so a committed copy could never match. `wrangler types` stays pinned to `--env-file=.env.example` so `Env` is identical everywhere; don't drop the flag.

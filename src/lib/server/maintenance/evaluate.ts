@@ -5,7 +5,7 @@ import { parseArchiveSearchRequest } from '$lib/search/request';
 import {
 	searchEvaluationCaseSchema,
 	type SearchEvaluationCase
-} from '$lib/server/search/evaluation';
+} from '$lib/server/release/evaluation';
 import type { ValidatedRelease } from './release';
 
 export const evaluationCasesSchema = z
@@ -17,7 +17,7 @@ export const evaluationCasesSchema = z
 	);
 export const queryVectorsSchema = z.record(z.string(), embeddingVectorSchema);
 
-export function evaluationRequest(testCase: SearchEvaluationCase) {
+function evaluationRequest(testCase: SearchEvaluationCase) {
 	const params = new URLSearchParams({ [ARCHIVE_SEARCH_PARAM.mode]: testCase.mode });
 	for (const [value, key] of [
 		[testCase.q, ARCHIVE_SEARCH_PARAM.query],

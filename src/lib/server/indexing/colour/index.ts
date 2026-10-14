@@ -21,7 +21,7 @@ export interface ColourStageOptions {
 	onProgress?: (done: number, total: number) => void;
 }
 
-export interface ColourFailure {
+interface ColourFailure {
 	blockId: string;
 	error: string;
 }

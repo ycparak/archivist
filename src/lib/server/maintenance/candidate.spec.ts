@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { toSearchDocument } from '$lib/domain/archive';
 import { EMBEDDING } from '$lib/search/embedding';
-import { buildSearchRelease, sha256 } from '$lib/server/search/release-builder';
+import { buildSearchRelease, sha256 } from '$lib/server/release/release-builder';
 import {
 	assertPromotion,
 	candidateOriginSchema,

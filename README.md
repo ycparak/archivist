@@ -59,7 +59,7 @@ API token. A sync also needs `ffmpeg` on your `PATH`.
 ```sh
 bun install
 cp .env.example .env   # then fill in the variables below
-bun run export:search  # build a local search release from the committed caches
+bun run sync --export  # build a local search release from the committed caches
 bun run dev
 ```
 
@@ -73,22 +73,21 @@ bun run dev
 | `CLOUDFLARE_DEPLOY_API_TOKEN`                   | Optional deploy token for `bun run hosted deploy` (otherwise `wrangler login`) |
 | `GITHUB_DEPLOY_TOKEN`                           | Trigger.dev production only: dispatching the site deploy                       |
 
-`bun run export:search` never generates vision text or writes to Are.na. The search assets it writes
+`bun run sync --export` never generates vision text or writes to Are.na. The search assets it writes
 to `static/search/` and the embedding cache in `.search-cache/` are ignored by Git.
 
 ## Commands
 
-| Command                                    | What it does                                                                                     |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `bun run dev`                              | Start the dev server                                                                             |
-| `bun run check` / `lint` / `test`          | Type-check, lint (Prettier, ESLint, canonical Tailwind classes) and run the unit tests           |
-| `bun run build`                            | Build the site; needs a release in `static/search/`                                              |
-| `bun run deploy`                           | Build and deploy the Worker and assets with Wrangler                                             |
-| `bun run export:search`                    | Publish a local release from the committed caches                                                |
-| `bun run sync --no-vision --no-push-arena` | Refresh the colour and connection caches, then publish a local release                           |
-| `bun run sync`                             | Also generate vision descriptions (spends OpenRouter credit) and write them back to Are.na       |
-| `bun run calibrate:colour`                 | Write a contact sheet of colour measurements for tuning thresholds (read-only)                   |
-| `bun run hosted <command>`                 | Drive hosted maintenance: sync, retry, deploy, coverage, vision backfills and search experiments |
+| Command                                    | What it does                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `bun run dev`                              | Start the dev server                                                                       |
+| `bun run check` / `lint` / `test`          | Type-check, lint (Prettier, ESLint, canonical Tailwind classes) and run the unit tests     |
+| `bun run build`                            | Build the site; needs a release in `static/search/`                                        |
+| `bun run deploy`                           | Build and deploy the Worker and assets with Wrangler                                       |
+| `bun run sync --export`                    | Publish a local release from the committed caches                                          |
+| `bun run sync --no-vision --no-push-arena` | Refresh the colour and connection caches, then publish a local release                     |
+| `bun run sync`                             | Also generate vision descriptions (spends OpenRouter credit) and write them back to Are.na |
+| `bun run hosted <command>`                 | Drive hosted maintenance: sync, retry, deploy, coverage and vision backfills               |
 
 The `hosted` commands are described in
 [docs/architecture.md](./docs/architecture.md#maintainer-cli).
@@ -103,7 +102,7 @@ Point `.env` at your own Are.na account, then change the settings that name this
 - `src/lib/components/filters.ts`: the first months of the date sliders.
 - `scripts/fixtures/search-cases.json`: the known searches a release must pass. They name blocks in
   this archive, so replace them with your own (at least ten).
-- The committed `*-cache.jsonl` files under `src/lib/server/indexing/` describe this archive; delete
+- The committed `*-cache.jsonl` files under `data/` describe this archive; delete
   their contents to start fresh.
 
 Hosted maintenance is optional: `bun run sync` and `bun run deploy` work on their own.

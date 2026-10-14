@@ -4,19 +4,36 @@
 	"version": "0.0.1",
 	"license": "MIT",
 	"type": "module",
+	"prettier": {
+		"useTabs": true,
+		"singleQuote": true,
+		"trailingComma": "none",
+		"printWidth": 100,
+		"plugins": [
+			"prettier-plugin-svelte",
+			"prettier-plugin-tailwindcss"
+		],
+		"tailwindStylesheet": "./src/routes/layout.css",
+		"overrides": [
+			{
+				"files": "*.svelte",
+				"options": {
+					"parser": "svelte"
+				}
+			}
+		]
+	},
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
 		"deploy": "vite build && wrangler deploy --env-file=.env.example",
-		"prepare": "wrangler types --env-file=.env.example || echo ''; svelte-kit sync || echo ''",
+		"prepare": "wrangler types --env-file=.env.example && svelte-kit sync",
 		"check": "wrangler types --env-file=.env.example && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit --project scripts/tsconfig.json",
 		"lint": "prettier --check . && eslint . && bun run scripts/check-classes.ts",
 		"format": "prettier --write .",
 		"test": "vitest run",
 		"sync": "bun run scripts/sync.ts",
-		"export:search": "bun run scripts/export-search.ts",
-		"calibrate:colour": "bun run scripts/calibrate-colour.ts",
 		"hosted": "bun run scripts/hosted-maintenance.ts"
 	},
 	"devDependencies": {

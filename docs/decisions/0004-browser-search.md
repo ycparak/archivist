@@ -12,7 +12,7 @@ MiniSearch replaces custom inverted-index/ranking/serialization code. Exact scan
 
 ## Boundaries and consequences
 
-Browser search is the sole backend; there is no opt-in switch or legacy fallback. Interactive search/filtering requires JavaScript; the default gallery is prerendered. `/api/search` is retired with HTTP 410, subject to the shared GET rate limiter. Query embeddings fail closed when their limiter is unavailable. Provider payloads and credentials remain server-only.
+Browser search is the sole backend; there is no opt-in switch or legacy fallback. Interactive search/filtering requires JavaScript; the default gallery is prerendered. `/api/search` was retired with HTTP 410 and has since been removed. Query embeddings fail closed when their limiter is unavailable. Provider payloads and credentials remain server-only.
 
 Chunking covers complete canonical text; maximum aggregation may favor long blocks. Physical mobile performance remains unverified.
 
