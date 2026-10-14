@@ -230,7 +230,7 @@ the heading, `foreground` for the text.
 - Top-row captions carry `data-top-annotation`. While one straddles the search field's right edge,
   the field shows a one-pixel `foreground-secondary-detail` hairline there.
 
-In the browser-search build, the default gallery is prerendered, but query/filter changes and infinite loading require JavaScript. A noscript notice makes this explicit. Search URLs, controls, busy feedback and announcements retain the same visual behavior.
+In the app, the default gallery is prerendered, but query/filter changes and infinite loading require JavaScript. A noscript notice makes this explicit. Search URLs, controls, busy feedback and announcements retain the same visual behavior.
 
 ## Motion
 
