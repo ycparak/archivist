@@ -17,12 +17,13 @@ Stack: SvelteKit + TypeScript, `@sveltejs/adapter-cloudflare`, MiniSearch and st
 - `src/lib/server/indexing/`: normalization, channel filtering, the channel manifest, sync orchestration, the colour stage (`colour/`), the connections stage (`connections/`), the vision stage (`vision/`), and CLI progress reporting (`progress/`). It also holds the four committed files the sync writes: `channel-manifest.json`, `colour-cache.jsonl`, `connections-cache.jsonl` and `vision-cache.jsonl`.
 - `src/lib/search/`: client-safe search validation, snapshot schemas, lexical/vector ranking, RRF, colour thresholds and the browser Web Worker/client. Keep provider normalization and credentials server-only.
 - `src/lib/server/search/`: public snapshot export, release building, query embedding validation and evaluation schemas.
+- `src/lib/server/maintenance/`: Node-only maintenance services: candidate validation, the R2 object store, the archive lease, hosted caches, hosted sync and deployment staging. Never import it from Worker routes.
 - `src/lib/server/rate-limit.ts`: edge rate limiting, wired in through `src/hooks.server.ts`.
 - `src/lib/components/`: client-safe presentation components. They never import `src/lib/server/**`, and they consume `SearchResult` / `ArchiveSearchState` rather than provider rows.
 - `src/routes/`: HTTP and UI composition only. Provider calls and ranking expressions do not belong in route files.
 - `src/styles/`: fonts, Tailwind theme tokens and the semantic colour roles.
-- `src/trigger/`: Trigger.dev task entrypoints; hello-world and synthetic validation tasks, with hosted maintenance workflows planned in [docs/specs/trigger-workflows.md](./docs/specs/trigger-workflows.md).
-- `scripts/`: the manual CLIs (`sync.ts`, `evaluate-search.ts`, `candidate-search.ts`, `calibrate-colour.ts`), the search evaluation fixture, and `worktree.sh`.
+- `src/trigger/`: Trigger.dev task entrypoints (hello-world, synthetic validation and the manual `archive-sync`); later maintenance workflows are planned in [docs/specs/trigger-workflows.md](./docs/specs/trigger-workflows.md).
+- `scripts/`: the manual CLIs (`sync.ts`, `evaluate-search.ts`, `candidate-search.ts`, `hosted-maintenance.ts`, `calibrate-colour.ts`), the search evaluation fixture, and `worktree.sh`.
 
 Full technical detail: [docs/architecture.md](./docs/architecture.md).
 
@@ -69,7 +70,7 @@ in `./docs/decisions/`.
 
 ## Scope
 
-Archivist is a public gallery and search surface for one maintainer's Are.na archive. The points below describe current behavior. The accepted maintenance scope and proposed implementation are in [Trigger.dev workflows](./docs/specs/trigger-workflows.md); phase 1 (local candidate validation) is implemented and later phases are not. Anything beyond them needs the maintainer's explicit go-ahead.
+Archivist is a public gallery and search surface for one maintainer's Are.na archive. The points below describe current behavior. The accepted maintenance scope and proposed implementation are in [Trigger.dev workflows](./docs/specs/trigger-workflows.md); phases 1–2 (candidate validation, hosted storage and manual sync) are implemented and later phases are not. Anything beyond them needs the maintainer's explicit go-ahead.
 
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
 - Query time is free of generative LLMs. Browser search uses Workers AI only to embed queries; the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.

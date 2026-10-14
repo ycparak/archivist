@@ -41,7 +41,15 @@ Free hosting/inference depends on Cloudflare allocations. A previous evaluation 
 
 ## Trigger.dev
 
-The SDK and Node 24 configuration are installed; `src/trigger/` contains the hello-world example and a non-mutating synthetic validation smoke task. Start development with `bunx trigger.dev@4.7.3 dev`. Local candidate validation is implemented; hosted archive maintenance remains in the [implementation plan](./docs/specs/trigger-workflows.md).
+The SDK and Node 24 configuration are installed. `src/trigger/` contains the hello-world example, a synthetic validation smoke task and the manual `archive-sync` task. Start development with `bunx trigger.dev@4.7.3 dev`. Hosted maintenance stores its state in a private R2 bucket ([ADR 0005](./docs/decisions/0005-hosted-maintenance-storage.md)). Fill in the `MAINTENANCE_R2_*` variables, then:
+
+```sh
+bun run hosted bootstrap
+bun run hosted sync --no-colour
+bun run hosted deploy <job-id> --dry-run
+```
+
+Hosted jobs never generate vision or write to Are.na. Deployment refuses failed, cancelled, superseded or source-mismatched candidates. Later phases are in the [implementation plan](./docs/specs/trigger-workflows.md).
 
 ## Validate a candidate release
 
