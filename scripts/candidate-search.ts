@@ -48,7 +48,8 @@ async function main() {
 				complete: true,
 				...identity,
 				baselineVersion: baseline?.release.version ?? null,
-				maxRankDrop: null
+				maxRankDrop: null,
+				job: null
 			}),
 			signal: abort.signal,
 			discover: () =>
