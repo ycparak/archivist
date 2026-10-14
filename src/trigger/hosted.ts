@@ -13,6 +13,8 @@ import {
 } from '../lib/server/maintenance/hosted-sync';
 import { LeaseHeldError } from '../lib/server/maintenance/lease';
 import { createR2Store } from '../lib/server/maintenance/r2';
+import { createVisionClient } from '../lib/server/indexing/vision/client';
+import { fetchModelPricing } from '../lib/server/maintenance/backfill';
 import { enrichBatchTask } from './batch';
 
 export const SITE_URL = 'https://archivist.yusufparak.com';
@@ -61,6 +63,15 @@ export function hostedDependencies(signal: AbortSignal): HostedSyncDependencies 
 		gzipSize: async (bytes) => gzipSync(bytes).length,
 		heapBytes: () => memoryUsage().heapUsed
 	};
+}
+
+/** The vision client and live pricing; pricing that cannot be fetched disables vision for the run. */
+export async function visionDependencies() {
+	const { OPENROUTER_API_KEY } = z
+		.object({ OPENROUTER_API_KEY: z.string().min(1) })
+		.parse(process.env);
+	const client = createVisionClient({ apiKey: OPENROUTER_API_KEY });
+	return { client, pricing: await fetchModelPricing(client.model) };
 }
 
 /** Configuration, lease and payload contradictions fail once; everything else may retry. */

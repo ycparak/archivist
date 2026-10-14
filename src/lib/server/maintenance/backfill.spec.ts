@@ -198,7 +198,7 @@ describe('spend limiter', () => {
 			budgetUsd: 1,
 			reservePerBlockUsd: 0.4,
 			ceilingPerCallUsd: 0.1,
-			initial: { spentUsd: 0.1, requests: 1, unknownCostRequests: 0, inFlightUsd: 0.4 }
+			initial: { spentUsd: 0.1, blocks: 1, requests: 1, unknownCostRequests: 0, inFlightUsd: 0.4 }
 		});
 		expect(limiter.ledger().spentUsd).toBeCloseTo(0.5);
 		expect(limiter.tryReserve()).not.toBeNull();

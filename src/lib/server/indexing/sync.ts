@@ -1,6 +1,7 @@
 import { toSearchDocument, type ArchiveBlock, type SearchDocument } from '$lib/domain/archive';
 import {
 	ArenaClient,
+	type ArenaBlockUpdate,
 	ArenaRequestError,
 	countBlockConnections,
 	delay,
@@ -28,7 +29,12 @@ import type { OutcomeSink } from './outcome';
 import { describeBlocks, type VisionStageSummary } from './vision';
 import { mergeVisionCache, type VisionCache, type VisionCacheEntry } from './vision/cache';
 import type { VisionClient } from './vision/client';
-import { applyWriteBack, planWriteBack, type WriteBackSummary } from './vision/writeback';
+import {
+	applyWriteBack,
+	planWriteBack,
+	type WriteBackPlan,
+	type WriteBackSummary
+} from './vision/writeback';
 
 export interface SyncOptions {
 	accessToken: string;
@@ -52,6 +58,11 @@ export interface SyncOptions {
 	vision?: VisionSyncOptions;
 	/** Write generated titles and descriptions back to Are.na. Off by default. */
 	pushArena?: boolean;
+	/** Hosted resumability: blocks already written by an earlier attempt, and a hook per write. */
+	writeBack?: {
+		skip?: ReadonlySet<string>;
+		onWritten?: (plan: WriteBackPlan) => Promise<void> | void;
+	};
 	/** Measured colour weights to index. Supplied on every run, for the same reason as `visionCache`. */
 	colourCache?: ColourCache;
 	/** Omit to index the existing colour cache without measuring anything new. */
@@ -82,6 +93,9 @@ export interface ColourSyncOptions {
 
 export interface VisionSyncOptions {
 	client: VisionClient;
+	concurrency?: number;
+	/** Every block that produced no entry, with why. */
+	onOutcome?: OutcomeSink;
 	/** Called as each entry lands, so a long run can checkpoint instead of losing work on a crash. */
 	onEntry?: (entry: VisionCacheEntry) => void;
 }
@@ -383,20 +397,52 @@ export async function enrichArchive(discovery: DiscoveredArchive, options: Enric
 		visionText = new Map(visionCache.map((entry) => [entry.block_id, entry]));
 	}
 
+	const written = new Map<string, ArenaBlockUpdate>();
 	if (pushArena) {
 		onEvent({ kind: 'phase', phase: 'writing-back' });
-		const { plans, skipped } = planWriteBack(blocks, visionText, { ownerId: discovery.ownerId });
+		const planned = planWriteBack(blocks, visionText, { ownerId: discovery.ownerId });
+		const plans = planned.plans.filter(({ blockId }) => !options.writeBack?.skip?.has(blockId));
 		log(`Are.na write-back: updating ${plans.length} block(s)`);
-		summary.writeBack = await applyWriteBack(plans, skipped, {
+		summary.writeBack = await applyWriteBack(plans, planned.skipped, {
 			updateBlock: (id, body) => client.updateBlock(id, body),
 			log,
-			signal
+			signal,
+			onWritten: async (plan) => {
+				written.set(plan.blockId, plan.update);
+				await options.writeBack?.onWritten?.(plan);
+			}
 		});
 	}
 
 	onEvent({ kind: 'phase', phase: 'building' });
-	const documents = buildDocuments(blocks, visionText, colourWeights, connectionTotals);
-	return { blocks, documents, channels, visionCache, colourCache, connectionCache, summary };
+	// Written titles and descriptions are what Are.na now holds, so this build uses them too.
+	const updated = applyWrittenBack(blocks, written);
+	const documents = buildDocuments(updated, visionText, colourWeights, connectionTotals);
+	return {
+		blocks: updated,
+		documents,
+		channels,
+		visionCache,
+		colourCache,
+		connectionCache,
+		summary
+	};
+}
+
+export function applyWrittenBack(
+	blocks: ArchiveBlock[],
+	written: ReadonlyMap<string, Pick<ArenaBlockUpdate, 'title' | 'description'>>
+): ArchiveBlock[] {
+	return blocks.map((block) => {
+		const update = written.get(block.id);
+		return update
+			? {
+					...block,
+					title: update.title ?? block.title,
+					description: update.description ?? block.description
+				}
+			: block;
+	});
 }
 
 export function buildDocuments(

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { buildChannelManifest } from '$lib/server/indexing/channel-manifest';
 import type { SyncEventSink } from '$lib/server/indexing/progress/events';
 import {
+	applyWrittenBack,
 	buildDocuments,
 	type DiscoveredArchive,
 	type EnrichmentOptions,
@@ -31,7 +32,24 @@ import { embedEvaluationQueries, evaluationCasesSchema, GATE_POLICIES } from './
 import { acquireLease } from './lease';
 import { loadValidatedRelease } from './release';
 import { getJson, putImmutable, putJson, type ObjectStore } from './store';
-import { discoverySchema, jobOutcomesSchema, storedOutcome, type JobOutcomes } from './job-schemas';
+import {
+	discoverySchema,
+	HostedJobConfigurationError,
+	jobOutcomesSchema,
+	storedOutcome,
+	type JobOutcomes
+} from './job-schemas';
+import {
+	budgetedVisionClient,
+	COST_ASSUMPTIONS,
+	createSpendLimiter,
+	estimateBackfillCost,
+	ledgerSchema,
+	MAX_BACKFILL_BLOCKS,
+	MAX_BACKFILL_BUDGET_USD,
+	type ModelPricing
+} from './backfill';
+import type { VisionClient } from '$lib/server/indexing/vision/client';
 import {
 	BATCH_STAGES,
 	chunk,
@@ -47,9 +65,20 @@ export const hostedSyncPayloadSchema = z
 	.object({
 		jobId: jobIdSchema,
 		stages: z.object({ colour: z.boolean(), connections: z.boolean() }).strict(),
-		/** Vision generation and Are.na write-back are not available to hosted jobs yet. */
-		vision: z.literal(false).default(false),
-		pushArena: z.literal(false).default(false),
+		/** Describe missing or stale blocks, within a per-run block cap and budget. */
+		vision: z
+			.union([
+				z.literal(false),
+				z
+					.object({
+						maxBlocks: z.number().int().positive().max(MAX_BACKFILL_BLOCKS),
+						budgetUsd: z.number().positive().max(MAX_BACKFILL_BUDGET_USD)
+					})
+					.strict()
+			])
+			.default(false),
+		/** Write generated titles and descriptions to the maintainer's own Are.na blocks. */
+		pushArena: z.boolean().default(false),
 		gate: z.enum(GATE_POLICIES).default('strict'),
 		/** Re-run only the blocks that job left retryable, on its pinned discovery, without pruning. */
 		retryOf: jobIdSchema.optional(),
@@ -63,13 +92,18 @@ export const hostedSyncPayloadSchema = z
 	.strict();
 export type HostedSyncPayload = z.infer<typeof hostedSyncPayloadSchema>;
 
-/** A payload or state contradiction that retrying cannot fix. */
-export class HostedJobConfigurationError extends Error {
-	override name = 'HostedJobConfigurationError';
-}
+export { HostedJobConfigurationError };
 
 const retryableCount = (outcomes: JobOutcomes | null) =>
-	outcomes ? [...outcomes.colour, ...outcomes.connections].filter((o) => o.retryable).length : 0;
+	outcomes
+		? [...outcomes.colour, ...outcomes.connections, ...outcomes.vision].filter((o) => o.retryable)
+				.length
+		: 0;
+const writtenSchema = z
+	.object({ blockId: z.string(), title: z.string().optional(), description: z.string().optional() })
+	.strict();
+/** Hosted vision describes a few blocks at a time; the local CLI's 32 suits a laptop backfill. */
+const HOSTED_VISION_CONCURRENCY = 4;
 
 const jobSchema = z
 	.object({
@@ -103,6 +137,8 @@ export interface HostedSyncDependencies {
 	 * set, a stage with more than `FAN_OUT_THRESHOLD` pending blocks fans out instead of running here.
 	 */
 	fanOut?: (jobId: string, stage: BatchStage, batches: string[][]) => Promise<void>;
+	/** Required when the payload enables vision. */
+	vision?: { client: VisionClient; pricing: ModelPricing | null };
 	now?: () => number;
 }
 
@@ -162,12 +198,25 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			records.connections = await loadRecords(store, payload.jobId, 'connections');
 			for (const entry of records.connections) caches.connections.set(entry.block_id, entry);
 		}
+		if (payload.vision) {
+			if (!deps.vision) throw new HostedJobConfigurationError('Vision needs a vision client');
+			records.vision = await loadRecords(store, payload.jobId, 'vision');
+			for (const entry of records.vision) caches.vision.set(entry.block_id, entry);
+		}
 
 		const merged = await getJson(
 			store,
 			keys.merged,
-			z.object({ at: z.string(), colour: z.unknown(), connections: z.unknown() })
+			z.object({
+				at: z.string(),
+				colour: z.unknown(),
+				connections: z.unknown(),
+				vision: z.unknown().optional(),
+				writeBack: z.unknown().optional(),
+				visionSpend: z.unknown().optional()
+			})
 		);
+		let visionSpend: unknown = merged?.value.visionSpend ?? null;
 		let summary: SyncSummary = discovery.summary;
 		let finalCaches: ArchiveCaches;
 		if (merged) {
@@ -175,12 +224,14 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			summary = {
 				...summary,
 				colour: (merged.value.colour ?? null) as SyncSummary['colour'],
-				connections: (merged.value.connections ?? null) as SyncSummary['connections']
+				connections: (merged.value.connections ?? null) as SyncSummary['connections'],
+				vision: (merged.value.vision ?? null) as SyncSummary['vision'],
+				writeBack: (merged.value.writeBack ?? null) as SyncSummary['writeBack']
 			};
 			finalCaches = (await loadCanonicalCaches(store)).caches;
 		} else {
 			const writes: Promise<void>[] = [];
-			const outcomes: JobOutcomes = { colour: [], connections: [] };
+			const outcomes: JobOutcomes = { colour: [], connections: [], vision: [] };
 			const onOutcome =
 				(stage: keyof JobOutcomes): OutcomeSink =>
 				(...args) =>
@@ -205,6 +256,32 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 				(stage) => deps.fanOut && pending[stage].length > FAN_OUT_THRESHOLD
 			);
 			const inProcess = (stage: BatchStage) => payload.stages[stage] && !fanned.includes(stage);
+			let saveLedger: (() => Promise<void>) | undefined;
+			let limiter: ReturnType<typeof createSpendLimiter> | undefined;
+			let visionClient: VisionClient | undefined;
+			if (payload.vision) {
+				const estimate = estimateBackfillCost({ image: 0, video: 1 }, deps.vision!.pricing);
+				if (estimate.known) {
+					const ledgerKey = `jobs/${payload.jobId}/spend.json`;
+					const spend = createSpendLimiter({
+						budgetUsd: payload.vision.budgetUsd,
+						maxBlocks: payload.vision.maxBlocks,
+						reservePerBlockUsd: estimate.ceilingPerCallUsd * COST_ASSUMPTIONS.attemptsPerBlock,
+						ceilingPerCallUsd: estimate.ceilingPerCallUsd,
+						initial: (await getJson(store, ledgerKey, ledgerSchema))?.value
+					});
+					let saving = Promise.resolve();
+					const save = () =>
+						(saving = saving.then(() => putJson(store, ledgerKey, spend.ledger()).then(() => {})));
+					limiter = spend;
+					saveLedger = save;
+					visionClient = budgetedVisionClient(deps.vision!.client, spend, save);
+				} else visionSpend = { skipped: 'Model pricing unavailable; no vision this run' };
+			}
+			const writtenPrefix = `jobs/${payload.jobId}/writeback/`;
+			const alreadyWritten = new Set(
+				(await store.list(writtenPrefix)).map((key) => key.slice(writtenPrefix.length, -5))
+			);
 			({ summary } = await deps.enrich(work, {
 				signal,
 				onEvent: deps.onEvent,
@@ -216,8 +293,36 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 					: undefined,
 				connections: inProcess('connections')
 					? { onEntry: onEntry('connections'), onOutcome: onOutcome('connections') }
-					: undefined
+					: undefined,
+				vision: visionClient && {
+					client: visionClient,
+					concurrency: HOSTED_VISION_CONCURRENCY,
+					onEntry: onEntry('vision'),
+					onOutcome: onOutcome('vision')
+				},
+				pushArena: payload.pushArena,
+				writeBack: {
+					skip: alreadyWritten,
+					onWritten: async ({ blockId, update }) => {
+						lease.assertHeld();
+						await putImmutable(
+							store,
+							`${writtenPrefix}${blockId}.json`,
+							new TextEncoder().encode(
+								JSON.stringify(
+									writtenSchema.parse({
+										blockId,
+										title: update.title,
+										description: update.description
+									})
+								)
+							)
+						);
+					}
+				}
 			}));
+			await saveLedger?.();
+			if (limiter) visionSpend = limiter.ledger();
 			// Every settled entry must be durable before the job can merge or report success.
 			await Promise.all(writes);
 			for (const stage of fanned) {
@@ -250,13 +355,21 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			await putJson(store, keys.merged, {
 				at: new Date().toISOString(),
 				colour: summary.colour,
-				connections: summary.connections
+				connections: summary.connections,
+				vision: summary.vision,
+				writeBack: summary.writeBack,
+				visionSpend
 			});
 		}
 
 		deps.onEvent?.({ kind: 'phase', phase: 'building' });
+		const written = new Map<string, z.infer<typeof writtenSchema>>();
+		for (const key of await store.list(`jobs/${payload.jobId}/writeback/`)) {
+			const record = await getJson(store, key, writtenSchema);
+			if (record) written.set(record.value.blockId, record.value);
+		}
 		const documents = buildDocuments(
-			discovery.blocks,
+			applyWrittenBack(discovery.blocks, written),
 			finalCaches.vision,
 			finalCaches.colour,
 			finalCaches.connections
@@ -330,7 +443,10 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			channels: discovery.channels.length,
 			stages: {
 				colour: summary.colour,
-				connections: summary.connections
+				connections: summary.connections,
+				vision: summary.vision,
+				visionSpend,
+				writeBack: summary.writeBack
 			},
 			completedAt: new Date().toISOString()
 		});

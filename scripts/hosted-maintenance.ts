@@ -54,6 +54,7 @@ const USAGE = `Usage:
   hosted-maintenance.ts bootstrap
   hosted-maintenance.ts pull
   hosted-maintenance.ts sync [--no-colour] [--no-connections] [--no-regression] [--resume <job-id>]
+                             [--vision-blocks N --vision-budget X] [--push-arena]
   hosted-maintenance.ts retry <job-id> [--no-regression]
   hosted-maintenance.ts deploy <job-id> [--dry-run]
   hosted-maintenance.ts identity
@@ -148,12 +149,21 @@ async function sync() {
 			noRegression: args.includes('--no-regression'),
 			resume: args.includes('--resume') ? args[args.indexOf('--resume') + 1] : undefined
 		});
+	const visionBlocks = option('--vision-blocks');
+	const visionBudget = option('--vision-budget');
+	if (Boolean(visionBlocks) !== Boolean(visionBudget))
+		throw new Error('Vision needs both --vision-blocks and --vision-budget');
 	const known = new Set([
 		'--no-colour',
 		'--no-connections',
 		'--no-regression',
+		'--push-arena',
 		'--resume',
-		flags.resume
+		'--vision-blocks',
+		'--vision-budget',
+		flags.resume,
+		visionBlocks,
+		visionBudget
 	]);
 	if (args.some((arg) => !known.has(arg))) throw new Error(USAGE);
 	requireCleanCheckout();
@@ -162,6 +172,10 @@ async function sync() {
 		jobId,
 		stages: { colour: flags.colour, connections: flags.connections },
 		gate: flags.noRegression ? 'no-regression' : 'strict',
+		vision: visionBlocks
+			? { maxBlocks: Number(visionBlocks), budgetUsd: Number(visionBudget) }
+			: false,
+		pushArena: args.includes('--push-arena'),
 		source: await sourceIdentity()
 	});
 	// A resumed job needs a fresh run key: reusing the original would return the exhausted run.

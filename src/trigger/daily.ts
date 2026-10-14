@@ -4,10 +4,17 @@ import { dispatchSiteDeploy } from '../lib/server/maintenance/github';
 import { HostedJobConfigurationError, runHostedSync } from '../lib/server/maintenance/hosted-sync';
 import { acquireLease, LeaseHeldError } from '../lib/server/maintenance/lease';
 import { pruneArtifacts } from '../lib/server/maintenance/retention';
-import { hostedDependencies, maintenanceQueue, rethrowForTrigger } from './hosted';
+import {
+	hostedDependencies,
+	maintenanceQueue,
+	rethrowForTrigger,
+	visionDependencies
+} from './hosted';
 import { SOURCE_IDENTITY } from './source-identity';
 
 const GITHUB_REPOSITORY = 'ycparak/archivist';
+/** Maintainer-chosen daily ceiling; blocks beyond it are described the next morning. */
+const DAILY_VISION = { maxBlocks: 50, budgetUsd: 0.5 };
 
 export const dailyArchiveSync = schedules.task({
 	id: 'daily-archive-sync',
@@ -29,11 +36,14 @@ export const dailyArchiveSync = schedules.task({
 
 			// One job per scheduled day: a duplicate fire or a retry resumes it instead of starting another.
 			const jobId = `daily-${payload.timestamp.toISOString().slice(0, 10).replaceAll('-', '')}`;
-			const deps = hostedDependencies(signal);
+			const deps = { ...hostedDependencies(signal), vision: await visionDependencies() };
+			// The hosted equivalent of `bun run sync`, with vision capped per day.
 			const report = await runHostedSync(
 				{
 					jobId,
 					stages: { colour: true, connections: true },
+					vision: DAILY_VISION,
+					pushArena: true,
 					gate: 'no-regression',
 					source
 				},
