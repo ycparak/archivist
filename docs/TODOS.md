@@ -14,7 +14,7 @@ _(none)_
 
 ## Needs Input
 
-- [ ] **Decide on lexical prefix matching.** It moves widget-grid onto the first page (rank 24, the last slot) but costs 2 of 200 held-out top-1 results; adopting it is a ranking-policy choice ([worksheet](./history/worksheets/worksheet-search-experiments.md)).
+_(none)_
 
 ## Backlog
 
@@ -22,6 +22,7 @@ _(none)_
 
 ## Done
 
+- [x] **Adopt lexical prefix matching.** Maintainer decision; with title exclusion, widget-grid ranks 14 and the fixture passes 15/15 ([worksheet](./history/worksheets/worksheet-search-experiments.md)).
 - [x] **Exclude uninformative titles from search text.** An experiment improved widget-grid from rank 90 to 63 with unchanged held-out results; adopted in `toSearchDocument` ([worksheet](./history/worksheets/worksheet-search-experiments.md)).
 - [x] **Isolated search experiment batches.** Implemented phase 6 of the [Trigger.dev plan](./specs/trigger-workflows.md) ([worksheet](./history/worksheets/worksheet-search-experiments.md)).
 - [x] **Targeted vision backfills and coverage reports.** Implemented phase 5 of the [Trigger.dev plan](./specs/trigger-workflows.md) ([worksheet](./history/worksheets/worksheet-vision-backfills.md)).

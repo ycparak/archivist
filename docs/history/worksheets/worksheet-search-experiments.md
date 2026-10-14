@@ -76,3 +76,18 @@ An experiment ran at source `940fb941` (spec hash `92f4e090`; the variant kind w
 - **Adopted:** dropping uninformative titles. It improved widget-grid with no fixture or held-out cost and a slightly smaller release, so `toSearchDocument` now omits such titles from `search_text` and the documented composition was updated.
 - **Embeddings:** the embedding version is unchanged (same model and chunking). The change produces a new content-hashed release through the next daily sync's no-regression gate, and about 1,400 changed chunks are embedded within the Workers AI free allocation.
 - **Still open:** widget-grid remains off the first page, because "widget" does not match "widgets" lexically. Lexical prefix would fix that, at a small held-out cost, which is a policy decision recorded under Needs Input.
+
+## Prefix matching adopted, 2026-10-14
+
+The maintainer chose to adopt lexical prefix matching, so `PRODUCTION_RANKING.prefix` is now `true`. It is a query-time option: the release format and embeddings are unchanged, and the browser worker and validation share the default.
+
+The combined production configuration (prefix matching plus title exclusion) was measured against exact matching on job `daily-20261014` with 200 held-out queries:
+
+| Variant                | Fixture | Fixture MRR | Held-out MRR | Held-out @1 | Widget-grid rank |
+| ---------------------- | ------- | ----------- | ------------ | ----------- | ---------------- |
+| production (prefix on) | 15/15   | 0.659       | 0.981        | 97.0%       | 14               |
+| exact matching         | 14/15   | 0.602       | 0.987        | 98.0%       | 63               |
+
+There were no invariant violations, and `vision-planner-ui` improved from rank 4 to 1. Together the two changes put widget-grid well inside the first page; prefix matching alone reached only rank 24.
+
+The daily decision now compares the source revision as well as the release, so this code-only change, and any future one, reaches the live site even when the search content is unchanged. The sample spec now tests `exact-lexical` against the new control.

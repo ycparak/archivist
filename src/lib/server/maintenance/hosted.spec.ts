@@ -652,21 +652,44 @@ describe('hosted deployment', () => {
 				? new Response(new Uint8Array(assets.get(file)!))
 				: new Response(null, { status: 404 });
 		};
-		const daily = (jobId: string, ids: string[]) =>
+		const daily = (jobId: string, ids: string[], sourceRevision = revision) =>
 			runHostedSync(
-				{ ...payload(jobId), gate: 'no-regression' },
+				{
+					...payload(jobId),
+					gate: 'no-regression',
+					source: { sourceRevision, sourceFingerprint: fingerprint }
+				},
 				dependencies(store, {
 					discover: async () => discovered(ids),
 					liveSite: { url: 'https://site.test', fetchFn: site }
 				})
 			);
-		expect((await daily('daily-same', ['1', '2'])).decision).toBe('unchanged');
+		// The adopted release's source is unknown, so even identical content deploys once.
+		expect((await daily('daily-same', ['1', '2'])).decision).toBe('deploy');
 		const pointer = await store.get(PRODUCTION_POINTER_KEY);
 		expect(JSON.parse(new TextDecoder().decode(pointer!.bytes))).toMatchObject({
 			version: release.version,
 			jobId: ADOPTED_LIVE_JOB_ID,
 			candidateFence: 0
 		});
+		const lease = await acquireLease(store, { holder: 'deploy', renew: false });
+		await recordHostedDeployment(
+			store,
+			lease,
+			ready(
+				await stageHostedDeployment({
+					store,
+					jobId: 'daily-same',
+					sourceRevision: revision,
+					sourceFingerprint: fingerprint,
+					fixture
+				})
+			)
+		);
+		await lease.release();
+		expect((await daily('daily-again', ['1', '2'])).decision).toBe('unchanged');
+		// New site code ships even when the search content is identical.
+		expect((await daily('daily-new-code', ['1', '2'], 'c'.repeat(40))).decision).toBe('deploy');
 		const added = await daily('daily-added', ['1', '2', '3']);
 		expect(added).toMatchObject({ decision: 'deploy', passed: true, sourceRevision: revision });
 		const rejected = await runHostedSync(
