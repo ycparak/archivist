@@ -6,7 +6,7 @@ import fixture from '../../scripts/fixtures/search-cases.json';
 import { parseSlugList } from '../lib/server/indexing/channel-filter';
 import type { SyncEvent } from '../lib/server/indexing/progress/events';
 import { discoverArchive, enrichArchive } from '../lib/server/indexing/sync';
-import { createCloudflareEmbedder } from '../lib/server/search/export';
+import { createCloudflareEmbedder } from '../lib/server/release/export';
 import {
 	HostedJobConfigurationError,
 	type HostedSyncDependencies
@@ -17,7 +17,7 @@ import { createVisionClient } from '../lib/server/indexing/vision/client';
 import { fetchModelPricing } from '../lib/server/maintenance/backfill';
 import { enrichBatchTask } from './batch';
 
-export const SITE_URL = 'https://archivist.yusufparak.com';
+const SITE_URL = 'https://archivist.yusufparak.com';
 
 /** Manual and scheduled syncs share one queue so they never run at once; the lease enforces it durably. */
 export const maintenanceQueue = queue({ name: 'archive-maintenance', concurrencyLimit: 1 });

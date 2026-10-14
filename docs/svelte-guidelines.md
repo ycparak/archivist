@@ -15,7 +15,7 @@ These mirror the architecture boundaries in [`AGENTS.md`](../AGENTS.md) — this
 
 - `src/lib/domain/`: plain TypeScript, no Svelte imports, no SvelteKit imports. If a domain file needs `$state`, it belongs somewhere else.
 - `src/lib/server/`: server-only. Never import a `src/lib/server/**` module from a `.svelte` file or any code that ships to the client — SvelteKit's server-only enforcement will fail the build, and that failure is correct, not a false positive to work around.
-- `src/routes/`: composition only. A `+page.svelte` renders `SearchResult`-shaped data from its `load` function; it does not fetch provider data or construct ranking expressions itself. The app delegates search/paging to `src/lib/search/` and retain route composition boundaries. A `+page.server.ts` / `+server.ts` calls into `src/lib/server/search/` or `src/lib/server/indexing/` rather than reimplementing adapter logic inline.
+- `src/routes/`: composition only. A `+page.svelte` renders `SearchResult`-shaped data from its `load` function; it does not fetch provider data or construct ranking expressions itself. The app delegates search/paging to `src/lib/search/` and retain route composition boundaries. A `+page.server.ts` / `+server.ts` calls into `src/lib/server/search/` (request-time) or `src/lib/server/indexing/` rather than reimplementing adapter logic inline.
 - `src/lib/components/`: shared presentation components. Client-safe by definition — never import `$lib/server/**` from one, not even a type. Types the UI needs (`SearchResult`, `ArchiveSearchState`) live in `src/lib/domain/`.
 
 ## Data Loading

@@ -30,11 +30,13 @@ flowchart LR
 | `src/lib/domain/`              | Framework-free types and transformations. `search.ts` owns the URL grammar and ships to the browser, so it has no runtime validation library; `archive.ts` builds `SearchDocument`s with Zod and is server-only; `titles.ts` spots titles that carry no information. |
 | `src/lib/search/`              | Client-safe search: request validation, snapshot schemas, ranking and RRF, colour thresholds, and the browser Web Worker and its client.                                                                                                                             |
 | `src/lib/components/`          | Presentation components and their pure helpers. Never import `src/lib/server/**`.                                                                                                                                                                                    |
-| `src/routes/`                  | HTTP and UI composition: the prerendered gallery, `/api/embedding` and the retired `/api/search`.                                                                                                                                                                    |
+| `src/routes/`                  | HTTP and UI composition: the prerendered gallery and `/api/embedding`.                                                                                                                                                                                               |
 | `src/lib/server/arena/`        | Are.na transport, payload schemas and pagination.                                                                                                                                                                                                                    |
-| `src/lib/server/indexing/`     | Normalization, channel filtering, sync orchestration, the colour, connections and vision stages, CLI progress, and the three committed caches (`*-cache.jsonl`).                                                                                                     |
-| `src/lib/server/search/`       | Release building, public document export, the Workers AI embedder, query embedding handling and the evaluation fixture schema.                                                                                                                                       |
-| `src/lib/server/maintenance/`  | Node-only hosted maintenance: candidate validation, the R2 store, the archive lease, hosted caches, sync, backfills, experiments and deployment staging. Never imported by Worker routes.                                                                            |
+| `src/lib/server/indexing/`     | Normalization, channel filtering, sync orchestration, the colour, connections and vision stages, CLI progress and the end-of-run summary.                                                                                                                            |
+| `data/`                        | The three committed enrichment caches (`*-cache.jsonl`): a portable seed for hosted maintenance and a reviewable record.                                                                                                                                             |
+| `src/lib/server/release/`      | Build-time release code: public document export, the release builder, the Workers AI embedder and the evaluation fixture schema.                                                                                                                                     |
+| `src/lib/server/search/`       | Request-time Worker code: the prerender bootstrap loader and query embedding handling.                                                                                                                                                                               |
+| `src/lib/server/maintenance/`  | Node-only hosted maintenance: candidate validation, the R2 store, the archive lease, hosted caches, sync, backfills and deployment staging. Never imported by Worker routes.                                                                                         |
 | `src/lib/server/rate-limit.ts` | Edge rate limiting, wired in through `src/hooks.server.ts`.                                                                                                                                                                                                          |
 | `src/styles/`                  | Fonts, Tailwind theme tokens and semantic colour roles ([design](./design.md)).                                                                                                                                                                                      |
 | `src/trigger/`                 | Trigger.dev task entrypoints. `source-identity.ts` is overwritten by CI.                                                                                                                                                                                             |
@@ -45,8 +47,8 @@ flowchart LR
 The default gallery is prerendered from the release's bootstrap file. After mount, the URL drives
 browser search and paging; interactive search and filtering require JavaScript. Public requests never
 reach Are.na. `/api/embedding` accepts at most 400 characters (a 4,096-byte JSON body) and returns a
-versioned, normalized Workers AI vector. `/api/search` is retired and returns 410. Both share one
-per-client rate limiter; embeddings fail closed when it is unavailable.
+versioned, normalized Workers AI vector. The endpoint is
+behind a per-client rate limiter and fails closed when it is unavailable.
 
 The search Worker downloads and verifies the release's assets lazily: metadata first, the lexical
 index for keyword modes, the vector shards for semantic modes. Every asset is checked against its
@@ -109,8 +111,9 @@ aborted, since a block in that channel only looks gone.
 
 Locally, `bun run sync` runs every stage and publishes a release; `--no-vision`, `--no-push-arena`,
 `--no-colour` and `--no-connections` skip stages. It saves each cache every 25 entries, so an
-interrupted run loses at most that many. `bun run export:search` publishes from the committed caches
-without generating vision text or writing to Are.na.
+interrupted run loses at most that many. `bun run sync --export` publishes from the committed caches
+without generating vision text, measuring colour or connections, or writing to Are.na, and refuses an
+incomplete archive.
 
 ### Vision indexing
 
@@ -187,7 +190,7 @@ with no model ([ADR 0001](./decisions/0001-colour-from-pixels.md)).
   colour's per-mille share of the opaque pixels. `mono` is 1000 minus the chromatic share.
 - **Cache.** `colour-cache.jsonl` is reused when block id, `image_src_hash` and `COLOUR_VERSION`
   match; bump the version when the classifier changes. 4 workers.
-- **Calibrating.** `bun run calibrate:colour` measures a stable sample of the local release and writes
+- **Calibrating.** `bun run scripts/calibrate-colour.ts` measures a stable sample of the local release and writes
   a contact sheet outside the repo. It is read-only.
 
 Colour filters are ANDed. On the default browse order, selected colours sort by descending weight
@@ -300,22 +303,6 @@ pricing. It spends nothing. `--run` requires an explicit `--max-blocks` (at most
 - takes the lease only to merge without pruning;
 - never writes to Are.na and does not build a candidate: the next daily sync publishes the new text.
 
-### Search experiments
-
-`bun run hosted experiment <spec.json>` runs a pinned, local experiment (an example spec is in
-`scripts/fixtures/experiments/`). The spec names a job's frozen corpus, a held-out set size and seed,
-and up to eight variants, each changing exactly one thing against production: RRF `k` (60), MiniSearch
-`prefix` (on) or `fuzzy` (off) matching, or embedding chunk bytes (384, at most 500). Everything is
-read through `readOnlyStore`, which refuses writes; new embeddings, query vectors and reports are kept
-in `.maintenance/experiments/<spec hash>/`, so a rerun reproduces identical scores without provider
-calls. Each variant is scored on fixture passes and ranks, MRR and recall, a held-out set of
-known-item queries drawn from unique informative titles, invariants (filters respected, no duplicates,
-exact browse order, determinism) and size and speed. The tool may suggest a variant that keeps every
-fixture pass and invariant and beats the control; it never changes production configuration.
-
-`bun run hosted investigate <case>` reports a fixture case's lexical, semantic and hybrid ranks,
-matched terms, and best chunk against the top results.
-
 ### Maintainer CLI
 
 `bun run hosted` (`scripts/hosted-maintenance.ts`) drives hosted maintenance from a clean checkout:
@@ -329,7 +316,6 @@ matched terms, and best chunk against the top results.
 | `deploy <job> [--dry-run]`      | Verifies the job report, checkout identity, supersession and recomputed evaluation, publishes only the deployed baseline and the candidate locally, then builds, deploys and records the production pointer. |
 | `identity`                      | Writes the checkout's source identity into the Trigger bundle; CI runs it.                                                                                                                                   |
 | `coverage`, `backfill`          | See [Vision backfills and coverage](#vision-backfills-and-coverage).                                                                                                                                         |
-| `experiment`, `investigate`     | See [Search experiments](#search-experiments).                                                                                                                                                               |
 
 ## Build and CI
 

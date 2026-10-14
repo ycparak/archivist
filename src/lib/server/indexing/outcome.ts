@@ -7,10 +7,10 @@ export type BlockOutcome<Entry> =
 	| { kind: 'skipped'; cause: SkipCause; reason: string; retryable: boolean }
 	| { kind: 'failed'; error: string };
 
-export type SkipCause = 'unsupported' | 'too-large' | 'unreachable';
+type SkipCause = 'unsupported' | 'too-large' | 'unreachable';
 
 /** The part of an outcome worth keeping once the entry itself has been persisted. */
-export type UnsettledOutcome = Exclude<BlockOutcome<never>, { kind: 'done' }>;
+type UnsettledOutcome = Exclude<BlockOutcome<never>, { kind: 'done' }>;
 
 export type OutcomeSink = (blockId: string, outcome: UnsettledOutcome) => void;
 

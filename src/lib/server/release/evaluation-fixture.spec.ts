@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { searchEvaluationCasesSchema } from '$lib/server/search/evaluation';
+import { searchEvaluationCasesSchema } from '$lib/server/release/evaluation';
 
 describe('search evaluation fixture', () => {
 	it('covers every retrieval scenario with cases that gate the run', async () => {

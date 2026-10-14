@@ -7,6 +7,8 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Changed
 
+- Split `src/lib/server/search/` so release-building code lives in `src/lib/server/release/` and only request-time Worker code stays in `search/`; moved the sync summary printing out of `scripts/sync.ts` into `progress/summary.ts`.
+- Moved the committed enrichment caches from `src/lib/server/indexing/` to `data/`.
 - Changed keyword search to match word prefixes, so a search for "widget" also finds "widgets".
 - Changed the daily sync to deploy new site code even when the search content is unchanged.
 - Changed search indexing to omit upload filenames and opaque tokens used as titles, which only diluted the text of the blocks that had them.
@@ -19,6 +21,9 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Removed
 
+- Trimmed the generic guidance in `AGENTS.md` and condensed the review protocol.
+- Removed the retired `/api/search` endpoint, the `hosted experiment` and `hosted investigate` commands, and the example experiment spec.
+- Removed the `export:search` and `calibrate:colour` package scripts: use `bun run sync --export`, and `bun run scripts/calibrate-colour.ts` for the read-only colour contact sheet.
 - Removed the local `prepare:search`, `validate:search`, `promote:search` and `evaluate:search` commands; `bun run hosted sync` and `hosted deploy` run the same validation.
 - Removed the `hello-world` and `validate-search-smoke` Trigger.dev tasks.
 - Removed the unused committed channel manifest and the always-empty private channel allow-list.

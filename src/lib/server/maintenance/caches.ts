@@ -21,7 +21,7 @@ import {
 	type VisionCacheEntry
 } from '$lib/server/indexing/vision/cache';
 import { EMBEDDING, embeddingVectorSchema } from '$lib/search/embedding';
-import { sha256 } from '$lib/server/search/release-builder';
+import { sha256 } from '$lib/server/release/release-builder';
 import { fencedPut, type Lease } from './lease';
 import { getJson, PreconditionFailedError, putImmutable, type ObjectStore } from './store';
 

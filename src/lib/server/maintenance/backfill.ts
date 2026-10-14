@@ -5,7 +5,7 @@ import { describeBlock } from '$lib/server/indexing/vision';
 import type { VisionCacheEntry } from '$lib/server/indexing/vision/cache';
 import type { VisionClient } from '$lib/server/indexing/vision/client';
 import { isAnimated } from '$lib/server/indexing/vision/video';
-import { sha256 } from '$lib/server/search/release-builder';
+import { sha256 } from '$lib/server/release/release-builder';
 import { loadCanonicalCaches, loadRecords, mergeJobRecords, persistRecord } from './caches';
 import { visionState, type VisionState } from './coverage';
 import { jobIdSchema, jobKeys } from './hosted-release';

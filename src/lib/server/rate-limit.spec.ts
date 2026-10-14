@@ -1,70 +1,56 @@
 import { describe, expect, it, vi } from 'vitest';
-import { enforcePublicSearchRateLimit } from './rate-limit';
+import { enforceEmbeddingRateLimit } from './rate-limit';
 
 function limiter(success: boolean) {
 	return { limit: vi.fn().mockResolvedValue({ success }) };
 }
 
-describe('enforcePublicSearchRateLimit', () => {
-	it('uses one client key for both public search surfaces', async () => {
-		const searchLimiter = limiter(true);
-		const headers = { 'cf-connecting-ip': '203.0.113.10' };
+function embeddingRequest(headers: Record<string, string> = {}) {
+	return new Request('https://archivist.test/api/embedding', { method: 'POST', headers });
+}
 
-		await enforcePublicSearchRateLimit(
-			new Request('https://archivist.test/api/search?q=felt', { headers }),
-			'/api/search',
-			searchLimiter
-		);
-		await enforcePublicSearchRateLimit(
-			new Request('https://archivist.test/api/embedding', { method: 'POST', headers }),
+describe('enforceEmbeddingRateLimit', () => {
+	it('keys the limit on the client address', async () => {
+		const embeddingLimiter = limiter(true);
+
+		await enforceEmbeddingRateLimit(
+			embeddingRequest({ 'cf-connecting-ip': '203.0.113.10' }),
 			'/api/embedding',
-			searchLimiter
+			embeddingLimiter
 		);
 
-		expect(searchLimiter.limit).toHaveBeenNthCalledWith(1, { key: 'archive-search:203.0.113.10' });
-		expect(searchLimiter.limit).toHaveBeenNthCalledWith(2, { key: 'archive-search:203.0.113.10' });
+		expect(embeddingLimiter.limit).toHaveBeenCalledWith({ key: 'archive-search:203.0.113.10' });
 	});
 
 	it('uses an anonymous key when Cloudflare does not supply a client address', async () => {
-		const searchLimiter = limiter(true);
+		const embeddingLimiter = limiter(true);
 
-		await enforcePublicSearchRateLimit(
-			new Request('https://archivist.test/api/search'),
-			'/api/search',
-			searchLimiter
-		);
+		await enforceEmbeddingRateLimit(embeddingRequest(), '/api/embedding', embeddingLimiter);
 
-		expect(searchLimiter.limit).toHaveBeenCalledWith({ key: 'archive-search:unknown' });
+		expect(embeddingLimiter.limit).toHaveBeenCalledWith({ key: 'archive-search:unknown' });
 	});
 
-	it('skips non-search routes, non-GET requests, and local requests without a binding', async () => {
-		const searchLimiter = limiter(true);
+	it('skips other routes and non-POST requests', async () => {
+		const embeddingLimiter = limiter(true);
 
 		await expect(
-			enforcePublicSearchRateLimit(new Request('https://archivist.test/'), '/', searchLimiter)
+			enforceEmbeddingRateLimit(new Request('https://archivist.test/'), '/', embeddingLimiter)
 		).resolves.toBeUndefined();
 		await expect(
-			enforcePublicSearchRateLimit(
-				new Request('https://archivist.test/api/search', { method: 'HEAD' }),
-				'/api/search',
-				searchLimiter
+			enforceEmbeddingRateLimit(
+				new Request('https://archivist.test/api/embedding'),
+				'/api/embedding',
+				embeddingLimiter
 			)
 		).resolves.toBeUndefined();
-		await expect(
-			enforcePublicSearchRateLimit(
-				new Request('https://archivist.test/api/search'),
-				'/api/search',
-				undefined
-			)
-		).resolves.toBeUndefined();
-		expect(searchLimiter.limit).not.toHaveBeenCalled();
+		expect(embeddingLimiter.limit).not.toHaveBeenCalled();
 	});
 
-	it('returns a cache-safe JSON response and reports an allowlisted event for a limited API search', async () => {
+	it('returns a cache-safe JSON 429 and reports an allowlisted event when limited', async () => {
 		const report = vi.fn();
-		const response = await enforcePublicSearchRateLimit(
-			new Request('https://archivist.test/api/search?q=private+felt'),
-			'/api/search',
+		const response = await enforceEmbeddingRateLimit(
+			embeddingRequest(),
+			'/api/embedding',
 			limiter(false),
 			report
 		);
@@ -78,53 +64,35 @@ describe('enforcePublicSearchRateLimit', () => {
 		});
 		expect(report).toHaveBeenCalledWith({
 			event: 'archive_search_rate_limited',
-			route: '/api/search',
+			route: '/api/embedding',
 			status: 429
 		});
 	});
 
-	it('fails open and reports no request detail when the limiter binding throws', async () => {
-		const report = vi.fn();
-		const searchLimiter = { limit: vi.fn().mockRejectedValue(new Error('binding failed')) };
+	it('fails closed without a binding', async () => {
+		const response = await enforceEmbeddingRateLimit(
+			embeddingRequest(),
+			'/api/embedding',
+			undefined,
+			() => {}
+		);
 
-		await expect(
-			enforcePublicSearchRateLimit(
-				new Request('https://archivist.test/api/search?q=private+felt'),
-				'/api/search',
-				searchLimiter,
-				report
-			)
-		).resolves.toBeUndefined();
+		expect(response?.status).toBe(503);
+	});
+
+	it('fails closed and reports no request detail when the limiter throws', async () => {
+		const report = vi.fn();
+		const response = await enforceEmbeddingRateLimit(
+			embeddingRequest(),
+			'/api/embedding',
+			{ limit: vi.fn().mockRejectedValue(new Error('binding failed')) },
+			report
+		);
+
+		expect(response?.status).toBe(503);
 		expect(report).toHaveBeenCalledWith({
 			event: 'archive_search_rate_limit_error',
-			route: '/api/search'
+			route: '/api/embedding'
 		});
-	});
-});
-
-describe('embedding rate limit', () => {
-	it('limits POST embeddings and fails closed without a working binding', async () => {
-		const request = new Request('https://archive.test/api/embedding', { method: 'POST' });
-		expect(
-			(await enforcePublicSearchRateLimit(request, '/api/embedding', limiter(false), () => {}))
-				?.status
-		).toBe(429);
-		expect(
-			(await enforcePublicSearchRateLimit(request, '/api/embedding', undefined, () => {}))?.status
-		).toBe(503);
-		expect(
-			(
-				await enforcePublicSearchRateLimit(
-					request,
-					'/api/embedding',
-					{
-						limit: async () => {
-							throw new Error('unavailable');
-						}
-					},
-					() => {}
-				)
-			)?.status
-		).toBe(503);
 	});
 });

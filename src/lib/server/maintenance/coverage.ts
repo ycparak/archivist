@@ -7,7 +7,7 @@ import { imageSourceHash } from '$lib/server/indexing/vision/rendition';
 import type { ArchiveCaches } from './caches';
 import type { JobOutcomes, StoredOutcome } from './job-schemas';
 
-export const VISION_STATES = [
+const VISION_STATES = [
 	'valid',
 	'missing',
 	'stale-source',

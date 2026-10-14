@@ -5,7 +5,7 @@ import type { ChannelManifestEntry } from '$lib/domain/search';
 import type { SearchRelease } from '$lib/search/snapshot';
 import { buildChannelManifest } from '$lib/server/indexing/channel-manifest';
 import { loadValidatedRelease } from '$lib/server/maintenance/release';
-import { buildSearchRelease, sha256 } from '$lib/server/search/release-builder';
+import { buildSearchRelease, sha256 } from '$lib/server/release/release-builder';
 import { withFileLock } from './file-lock';
 import { configuredEmbedder, localEmbeddingCache, searchOutput } from './maintenance-files';
 

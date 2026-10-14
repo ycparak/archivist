@@ -101,7 +101,7 @@ export interface VisionSyncOptions {
 	onEntry?: (entry: VisionCacheEntry) => void;
 }
 
-export interface ChannelSyncFailure {
+interface ChannelSyncFailure {
 	slug: string;
 	error: string;
 }

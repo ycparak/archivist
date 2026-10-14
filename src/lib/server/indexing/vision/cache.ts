@@ -29,7 +29,7 @@ export const visionResultSchema = z.object({
 export type VisionResult = z.infer<typeof visionResultSchema>;
 
 /** How the block was shown to the model. An animation read as a still is a different description. */
-export const VISION_INPUT_MODES = ['image', 'video'] as const;
+const VISION_INPUT_MODES = ['image', 'video'] as const;
 export type VisionInputMode = (typeof VISION_INPUT_MODES)[number];
 
 export const visionCacheEntrySchema = visionResultSchema.extend({
