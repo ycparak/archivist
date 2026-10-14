@@ -26,12 +26,3 @@ export const searchEvaluationCaseSchema = z.object({
 export const searchEvaluationCasesSchema = z.array(searchEvaluationCaseSchema).min(10);
 
 export type SearchEvaluationCase = z.infer<typeof searchEvaluationCaseSchema>;
-
-export function matchesEvaluationCase(
-	testCase: SearchEvaluationCase,
-	resultIds: Set<string>
-): boolean {
-	return testCase.expectedBlockIds.length
-		? testCase.expectedBlockIds.every((id) => resultIds.has(id))
-		: resultIds.size === 0;
-}

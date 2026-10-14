@@ -25,3 +25,5 @@ vite.config.ts.timestamp-*
 /static/search
 
 .trigger
+
+/.maintenance

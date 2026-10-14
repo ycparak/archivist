@@ -23,7 +23,10 @@
 		"calibrate:colour": "bun run scripts/calibrate-colour.ts",
 		"export:search": "bun run scripts/export-search.ts",
 		"build:browser": "bun run build",
-		"dev:browser": "bun run dev"
+		"dev:browser": "bun run dev",
+		"prepare:search": "bun run scripts/candidate-search.ts prepare",
+		"validate:search": "bun run scripts/candidate-search.ts validate",
+		"promote:search": "bun run scripts/candidate-search.ts promote"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
