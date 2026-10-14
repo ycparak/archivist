@@ -16,7 +16,7 @@ import { isAnimatedImage } from '$lib/domain/archive';
  * dynamically appear and update" is not something one frame can say.
  */
 
-export const VIDEO_MEDIA_TYPE = 'video/mp4';
+const VIDEO_MEDIA_TYPE = 'video/mp4';
 
 /** Shared prefix so a run can find and remove what an interrupted run left behind. */
 const TEMP_PREFIX = 'archivist-vision-';
@@ -27,11 +27,11 @@ const TARGET_FPS = 6;
 const TARGET_CRF = 32;
 
 /** Well above the 145 KB a 24 MB source produced, but a bound rather than a hope. */
-export const MAX_TRANSCODED_BYTES = 4 * 1024 * 1024;
+const MAX_TRANSCODED_BYTES = 4 * 1024 * 1024;
 /** A GIF this large is a download problem before it is a transcode problem. */
 export const MAX_SOURCE_BYTES = 64 * 1024 * 1024;
 
-export type TranscodeResult =
+type TranscodeResult =
 	| { kind: 'video'; dataUrl: string; bytes: number }
 	| { kind: 'skipped'; cause: 'unreachable' | 'too-large'; reason: string; retryable?: boolean };
 
@@ -140,7 +140,7 @@ export async function transcodeToVideoDataUrl(
  * megabytes of downloaded animations.
  */
 /** Old enough that no live run could still be using it. */
-export const STALE_TRANSCODE_AGE_MS = 60 * 60 * 1000;
+const STALE_TRANSCODE_AGE_MS = 60 * 60 * 1000;
 
 export async function cleanupStaleTranscodes(
 	directory = tmpdir(),

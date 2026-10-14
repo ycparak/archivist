@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ARCHIVE_BLOCK_TYPES, ARCHIVE_COLOURS, ARCHIVE_SORTS } from '$lib/domain/search';
-import { searchModeSchema } from './contracts';
+import { searchModeSchema } from '$lib/search/contracts';
 
 export const searchEvaluationCaseSchema = z.object({
 	id: z.string().min(1),

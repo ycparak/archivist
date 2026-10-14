@@ -10,7 +10,6 @@ const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
 
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
-	{ ignores: ['worker-configuration.d.ts'] },
 	js.configs.recommended,
 	ts.configs.recommended,
 	svelte.configs.recommended,
@@ -31,6 +30,5 @@ export default defineConfig(
 				parser: ts.parser
 			}
 		}
-	},
-	{ rules: {} }
+	}
 );

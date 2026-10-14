@@ -37,7 +37,7 @@ export const backfillSelectionSchema = z
 		include: z.array(z.enum(['missing', 'stale'])).min(1)
 	})
 	.strict();
-export type BackfillSelection = z.infer<typeof backfillSelectionSchema>;
+type BackfillSelection = z.infer<typeof backfillSelectionSchema>;
 
 export const visionBackfillPayloadSchema = z
 	.object({
@@ -50,7 +50,6 @@ export const visionBackfillPayloadSchema = z
 		concurrency: z.number().int().positive().max(16).default(4)
 	})
 	.strict();
-export type VisionBackfillPayload = z.infer<typeof visionBackfillPayloadSchema>;
 
 export function planVisionBackfill(options: {
 	blocks: ArchiveBlock[];
@@ -85,7 +84,7 @@ export function planVisionBackfill(options: {
 		image: selected.filter((b) => !isAnimated(b.imageContentType)).length
 	};
 }
-export type VisionBackfillPlan = ReturnType<typeof planVisionBackfill>;
+type VisionBackfillPlan = ReturnType<typeof planVisionBackfill>;
 
 export interface ModelPricing {
 	promptUsdPerToken: number;
@@ -221,7 +220,7 @@ export function createSpendLimiter(options: {
 	};
 }
 
-export class VisionBudgetExhaustedError extends Error {
+class VisionBudgetExhaustedError extends Error {
 	override name = 'VisionBudgetExhaustedError';
 	constructor() {
 		super('Vision budget or block cap reached for this run; the block waits for the next run');
@@ -260,7 +259,7 @@ export function budgetedVisionClient(
 	};
 }
 
-export interface VisionBackfillDependencies {
+interface VisionBackfillDependencies {
 	store: ObjectStore;
 	client: VisionClient;
 	signal: AbortSignal;
@@ -275,7 +274,7 @@ export interface VisionBackfillDependencies {
  * as it settles, then merges them without pruning. It holds the archive lease only for that merge,
  * so a long backfill never blocks the daily sync, and it never writes to Are.na.
  */
-export interface BackfillReport {
+interface BackfillReport {
 	format: 1;
 	jobId: string;
 	discoveryJobId: string;

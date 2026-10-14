@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const storeKeySchema = z
+const storeKeySchema = z
 	.string()
 	.regex(/^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)*$/i, 'Invalid artifact key');
 

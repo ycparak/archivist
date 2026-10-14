@@ -21,7 +21,7 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
  * prose where this code expects JSON — intermittently, which is worse than failing. The explicit
  * order also keeps runs reproducible; `require_parameters` is what actually enforces the contract.
  */
-export const DEFAULT_PROVIDER_ORDER = ['deepinfra', 'streamlake', 'venice'] as const;
+const DEFAULT_PROVIDER_ORDER = ['deepinfra', 'streamlake', 'venice'] as const;
 
 /**
  * The common denominator across providers that fetch the image themselves. Are.na's GIFs cannot be
@@ -95,7 +95,7 @@ const completionSchema = z.object({
 	provider: z.string().nullable().optional()
 });
 
-export interface VisionClientOptions {
+interface VisionClientOptions {
 	apiKey: string;
 	fetchFn?: typeof fetch;
 	model?: string;

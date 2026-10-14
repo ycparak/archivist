@@ -36,7 +36,7 @@ export function archiveCount(value: number, noun: string): string {
 	return `${count.format(value)} ${noun}${value === 1 ? '' : 's'}`;
 }
 
-export type ResultsStatusInput = {
+type ResultsStatusInput = {
 	kind: 'ok' | 'invalid' | 'unavailable';
 	state: ArchiveSearchState;
 	resultCount: number;

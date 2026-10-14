@@ -28,7 +28,6 @@ export const enrichBatchPayloadSchema = z
 		blockIds: z.array(z.string().min(1)).min(1).max(BATCH_SIZE)
 	})
 	.strict();
-export type EnrichBatchPayload = z.infer<typeof enrichBatchPayloadSchema>;
 
 const batchOutcomesSchema = z.array(storedOutcomeSchema);
 const outcomesPrefix = (jobId: string, stage: BatchStage) => `jobs/${jobId}/outcomes/${stage}/`;

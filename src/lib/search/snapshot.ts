@@ -40,7 +40,7 @@ export const metadataSchema = z.object({
 	channels: z.array(z.object({ slug: z.string().min(1), title: z.string().min(1) })),
 	vectorBlocks: z.array(z.number().int().nonnegative())
 });
-export type SearchMetadata = z.infer<typeof metadataSchema>;
+type SearchMetadata = z.infer<typeof metadataSchema>;
 export const bootstrapSchema = z.object({
 	results: z.array(searchResultSchema),
 	hasMore: z.boolean(),

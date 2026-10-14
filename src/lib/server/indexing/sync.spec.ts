@@ -82,10 +82,7 @@ describe('syncArchive', () => {
 			fetchFn,
 			channelDelayMs: 0,
 
-			channelFilter: {
-				ignore: new Set(['ignored-b', 'private-ignored']),
-				allowPrivate: new Set(['private-allowed', 'private-ignored'])
-			}
+			ignoreChannels: new Set(['ignored-b', 'private-ignored'])
 		});
 
 		expect(channels.map((c) => c.slug)).toEqual(['public-a', 'closed-e']);
@@ -830,7 +827,7 @@ describe('syncArchive — connections stage', () => {
 });
 
 describe('public-only export', () => {
-	it('never writes to either provider and excludes allow-listed private membership', async () => {
+	it('never writes to either provider and excludes private membership', async () => {
 		const fetchFn = routedFetch({
 			'/v3/me': () => meResponse(1, 'me'),
 			'/v3/users/1/contents': () =>
@@ -845,8 +842,7 @@ describe('public-only export', () => {
 			output: 'export',
 			fetchFn,
 
-			channelDelayMs: 0,
-			channelFilter: { ignore: new Set(), allowPrivate: new Set(['private']) }
+			channelDelayMs: 0
 		});
 
 		expect(result.channels).toEqual([{ slug: 'public', title: 'Public' }]);

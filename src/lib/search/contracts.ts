@@ -7,11 +7,8 @@ import {
 	ARCHIVE_MAX_OFFSET,
 	ARCHIVE_SEARCH_MODES,
 	ARCHIVE_SORTS,
-	type SearchResult,
-	type SearchTimings
+	type SearchResult
 } from '$lib/domain/search';
-
-export type { SearchResult, SearchTimings };
 
 export const searchResultSchema: z.ZodType<SearchResult> = z.object({
 	id: z.string(),
@@ -49,21 +46,3 @@ export const archiveSearchInputSchema = z.object({
 });
 
 export type ArchiveSearchInput = z.infer<typeof archiveSearchInputSchema>;
-
-export const searchSuccessResponseSchema = z.object({
-	results: z.array(searchResultSchema),
-	hasMore: z.boolean()
-});
-
-export interface SearchResponse {
-	results: SearchResult[];
-	timings: SearchTimings;
-}
-
-export interface SearchRepository {
-	search(input: ArchiveSearchInput): Promise<SearchResponse>;
-}
-
-export interface ArchiveSizeSource {
-	countBlocks(): Promise<number>;
-}

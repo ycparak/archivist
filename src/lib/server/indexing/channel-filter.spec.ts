@@ -12,17 +12,10 @@ describe('parseSlugList', () => {
 });
 
 describe('exclusionReason', () => {
-	const filter = { ignore: new Set(['ignored']), allowPrivate: new Set(['allowed', 'ignored']) };
+	const filter = new Set(['ignored']);
 
-	it('excludes private channels by default', () => {
+	it('excludes every private channel', () => {
 		expect(exclusionReason({ slug: 'x', visibility: 'private' }, filter)).toBe('private');
-	});
-
-	it('includes allow-listed private channels', () => {
-		expect(exclusionReason({ slug: 'allowed', visibility: 'private' }, filter)).toBeUndefined();
-	});
-
-	it('lets the ignore list win over the allow list', () => {
 		expect(exclusionReason({ slug: 'ignored', visibility: 'private' }, filter)).toBe('ignored');
 	});
 

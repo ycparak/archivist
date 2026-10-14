@@ -38,10 +38,7 @@ export function hostedDependencies(signal: AbortSignal): HostedSyncDependencies 
 			discoverArchive({
 				accessToken: env.ARENA_ACCESS_TOKEN,
 				signal: discoverySignal,
-				channelFilter: {
-					ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
-					allowPrivate: new Set()
-				},
+				ignoreChannels: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
 				onEvent: progress
 			}),
 		enrich: (discovery, options) =>

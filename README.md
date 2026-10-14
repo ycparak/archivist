@@ -1,69 +1,124 @@
 # Archivist
 
-A SvelteKit gallery and hybrid search for an Are.na archive, hosted on Cloudflare Workers. MiniSearch and static document vectors rank original blocks in a browser Worker; Workers AI generates query embeddings.
+A gallery and search engine for an [Are.na](https://www.are.na) archive. Live at
+[archivist.yusufparak.com](https://archivist.yusufparak.com).
 
-## Setup
+Most images saved to Are.na have a filename for a title and no description, so text search cannot
+find them. Archivist makes a personal archive of a few thousand blocks findable: by what an image
+shows, by what a phrase means, by colour, by when it was saved and by how often it was connected. It
+is built for one maintainer's archive, and needs only a few settings changed to run on another (see
+[Running your own](#running-your-own)).
 
-Install dependencies with bun install. Copy .env.example to .env and configure ARENA_ACCESS_TOKEN, CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (a Workers AI API token). Never commit credentials or private exports.
+- **Hybrid search.** "Exact words" (keyword), "Related ideas" (semantic) and "Best match" (both,
+  fused with reciprocal rank fusion).
+- **Filters and orders.** Channel, block type, colour, connected and created dates; browse by your
+  most or least connected, newest or oldest, or by total connections across Are.na.
+- **Images become searchable.** At sync time a vision model describes each image and animation, and
+  that description, OCR text and tags are indexed. Colour is measured from the pixels.
+- **No generative AI at query time.** Results are always the original Are.na blocks. The only
+  per-query server work is embedding the query text.
+- **Cheap to host.** Search runs entirely in the visitor's browser over static files, designed to fit
+  within Cloudflare's free allocations.
 
-Generate the public snapshot, then start the app:
+## How it works
+
+```mermaid
+flowchart LR
+  arena[("Are.na")] --> sync["Sync: enrich and build a release"]
+  sync --> release["Versioned static search release"]
+  release --> site["Cloudflare Worker"]
+  site --> browser["Browser: search in a Web Worker"]
+  browser -->|"query embedding"| site
+```
+
+1. **Sync.** A sync reads every public channel the account owns, normalizes and deduplicates the
+   blocks, and enriches them: colour weights from the pixels (ffmpeg), connection counts from Are.na,
+   and vision descriptions from a model on OpenRouter. Enrichment results live in committed JSONL
+   caches, so only new or changed blocks cost anything. Generated titles and descriptions can be
+   written back to the owner's own blocks.
+2. **Release.** The sync builds a content-hashed release: block metadata, a serialized
+   [MiniSearch](https://github.com/lucaong/minisearch) index, sentence embeddings of every block from
+   Workers AI (`bge-small-en-v1.5`), and a first page for the prerendered gallery.
+3. **Search.** The SvelteKit site serves the release as static assets. A Web Worker in the browser
+   downloads and verifies it, filters the corpus, ranks it lexically and by exact cosine similarity,
+   and fuses the two lists. The Worker's only API is a rate-limited endpoint that embeds the query.
+4. **Maintenance.** A [Trigger.dev](https://trigger.dev) job runs the sync every morning, validates the
+   new release against a fixture of known searches, and deploys it through GitHub Actions only if
+   nothing regresses. State lives in a private Cloudflare R2 bucket.
+
+[docs/architecture.md](./docs/architecture.md) covers each of these in detail.
+
+**Stack:** SvelteKit and Svelte 5, TypeScript, Tailwind CSS 4, Cloudflare Workers and Workers AI,
+MiniSearch, Zod, Trigger.dev, Cloudflare R2, Bun and Vitest.
+
+## Getting started
+
+You need [Bun](https://bun.sh), an Are.na access token, and a Cloudflare account with a Workers AI
+API token. A sync also needs `ffmpeg` on your `PATH`.
 
 ```sh
-bun run export:search
+bun install
+cp .env.example .env   # then fill in the variables below
+bun run export:search  # build a local search release from the committed caches
 bun run dev
 ```
 
-Export reads public/closed owned channels, skips all private channels and uses committed vision/colour/connections caches. It never generates vision text or writes to Are.na. Content-hashed static/search assets and .search-cache embeddings are ignored by Git. Unchanged embedding chunks are reused.
+| Variable                                        | Needed for                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------------ |
+| `ARENA_ACCESS_TOKEN`                            | Reading the archive (and write-back, which needs write scope)                  |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Workers AI embeddings for releases and for queries during `bun run dev`        |
+| `ARENA_IGNORE_CHANNELS`                         | Optional comma-separated channel slugs to leave out (private ones always are)  |
+| `OPENROUTER_API_KEY`                            | The vision stage of a sync                                                     |
+| `TRIGGER_SECRET_KEY`, `MAINTENANCE_R2_*`        | Hosted maintenance                                                             |
+| `CLOUDFLARE_DEPLOY_API_TOKEN`                   | Optional deploy token for `bun run hosted deploy` (otherwise `wrangler login`) |
+| `GITHUB_DEPLOY_TOKEN`                           | Trigger.dev production only: dispatching the site deploy                       |
 
-## Maintenance
+`bun run export:search` never generates vision text or writes to Are.na. The search assets it writes
+to `static/search/` and the embedding cache in `.search-cache/` are ignored by Git.
 
-```sh
-bun run evaluate:search
-bun run calibrate:colour
-bun run sync --no-vision --no-push-arena
-```
+## Commands
 
-Sync refreshes colour/connection caches and publishes static search assets. Plain sync also calls OpenRouter and writes generated titles/descriptions to Are.na; it is maintainer-only. Existing vision generation is separate from the free search architecture.
+| Command                                    | What it does                                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `bun run dev`                              | Start the dev server                                                                             |
+| `bun run check` / `lint` / `test`          | Type-check, lint (Prettier, ESLint, canonical Tailwind classes) and run the unit tests           |
+| `bun run build`                            | Build the site; needs a release in `static/search/`                                              |
+| `bun run deploy`                           | Build and deploy the Worker and assets with Wrangler                                             |
+| `bun run export:search`                    | Publish a local release from the committed caches                                                |
+| `bun run sync --no-vision --no-push-arena` | Refresh the colour and connection caches, then publish a local release                           |
+| `bun run sync`                             | Also generate vision descriptions (spends OpenRouter credit) and write them back to Are.na       |
+| `bun run calibrate:colour`                 | Write a contact sheet of colour measurements for tuning thresholds (read-only)                   |
+| `bun run hosted <command>`                 | Drive hosted maintenance: sync, retry, deploy, coverage, vision backfills and search experiments |
 
-## Build and deploy
+The `hosted` commands are described in
+[docs/architecture.md](./docs/architecture.md#maintainer-cli).
 
-```sh
-bun run check
-bun run lint
-bun run test
-bun run build
-bun run deploy
-```
+## Running your own
 
-A generated public snapshot must exist when building. CI prepares a small synthetic release with `bun run scripts/prepare-ci-search.ts` before the build, without credentials or external API calls. The script refuses to overwrite an existing export; its output is for CI validation only and must never be deployed. `bun run deploy` builds and publishes the Worker and static assets to https://archivist.yusufparak.com, with AI and ARCHIVE_SEARCH_RATE_LIMITER bindings. Authenticate first with `bunx wrangler login`. Deployment uses `.env.example` so the local Workers AI token does not override your deployment login or upload local credentials. Wrangler manages the custom domain's DNS and TLS in the configured Cloudflare account. REST API credentials are only needed locally; production query inference uses the AI binding. The default gallery is static; interactive search/filtering requires JavaScript. /api/search is retired with HTTP 410.
+Point `.env` at your own Are.na account, then change the settings that name this deployment:
 
-Free hosting/inference depends on Cloudflare allocations. A previous evaluation found the widget-grid expected block at rank 112; rerun the fixture to measure the current release. Physical mobile performance remains to be measured. See [architecture](./docs/architecture.md), [design](./docs/design.md) and [tasks](./docs/TODOS.md).
+- `wrangler.jsonc`: `account_id` and the custom domain route.
+- `trigger.config.ts`: the Trigger.dev project; `src/trigger/hosted.ts`: `SITE_URL`;
+  `src/trigger/daily.ts`: `GITHUB_REPOSITORY` and the daily vision cap.
+- `src/lib/components/filters.ts`: the first months of the date sliders.
+- `scripts/fixtures/search-cases.json`: the known searches a release must pass. They name blocks in
+  this archive, so replace them with your own (at least ten).
+- The committed `*-cache.jsonl` files under `src/lib/server/indexing/` describe this archive; delete
+  their contents to start fresh.
 
-## Trigger.dev
+Hosted maintenance is optional: `bun run sync` and `bun run deploy` work on their own.
 
-The SDK and Node 24 configuration are installed. `src/trigger/` contains the hello-world example, a synthetic validation smoke task and the manual `archive-sync` task. Start development with `bunx trigger.dev@4.7.3 dev`. Hosted maintenance stores its state in a private R2 bucket ([ADR 0005](./docs/decisions/0005-hosted-maintenance-storage.md)). Fill in the `MAINTENANCE_R2_*` variables, then:
+## Documentation
 
-```sh
-bun run hosted bootstrap
-bun run hosted sync --no-colour
-bun run hosted deploy <job-id> --dry-run
-bun run hosted retry <job-id>
-bun run hosted coverage
-bun run hosted backfill --plan --missing
-bun run hosted investigate vision-widget-grid
-bun run hosted experiment scripts/fixtures/experiments/ranking-and-chunking.json
-```
+- [Architecture](./docs/architecture.md): layout, query path, releases, enrichment, hosted maintenance
+- [Design](./docs/design.md): the visual system
+- [Decisions](./docs/decisions/): architecture decision records
+- [Svelte guidelines](./docs/svelte-guidelines.md) and [AGENTS.md](./AGENTS.md): conventions for
+  contributors, human or agent
+- [Changelog](./docs/CHANGELOG.md)
 
-A vision backfill (`backfill --run --missing --max-blocks 50 --budget-usd 1`) spends OpenRouter credit up to its explicit budget, and needs `OPENROUTER_API_KEY` in the Trigger environment that runs it.
+The design is modelled on Seth Thompson's [Library](https://library.seththompson.com/).
 
-In production, `daily-archive-sync` runs at 06:00 UTC and, when the candidate passes the no-regression gate, dispatches the `Deploy site` workflow. A push to `main` redeploys the Trigger tasks. The daily job is the hosted equivalent of `bun run sync`: it describes new images and animations (at most 50 blocks and $0.50 a day) and writes generated titles and descriptions back to your own Are.na blocks. Deployment refuses failed, cancelled, superseded or source-mismatched candidates. Later phases are in the [implementation plan](./docs/specs/trigger-workflows.md).
+## License
 
-## Validate a candidate release
-
-```sh
-bun run prepare:search .maintenance/candidate
-bun run validate:search .maintenance/candidate
-bun run promote:search .maintenance/candidate
-```
-
-Preparation uses existing enrichment caches and creates a separate candidate with no vision generation or Are.na write-back. Validation writes `validation.json` and `validation.md` with full rankings, baseline comparisons and size metrics. Promotion rejects failed checks, changed source/fixtures/assets or a changed active baseline; it updates only local assets. A failed fixture remains a failure—do not weaken it to permit publication. Node metrics do not establish mobile performance. Build/deployment remains separate.
+[MIT](./LICENSE)

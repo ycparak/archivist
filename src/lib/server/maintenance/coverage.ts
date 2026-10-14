@@ -18,7 +18,7 @@ export const VISION_STATES = [
 	'no-image'
 ] as const;
 export type VisionState = (typeof VISION_STATES)[number];
-export const COLOUR_STATES = [
+const COLOUR_STATES = [
 	'valid',
 	'missing',
 	'stale-source',
@@ -26,11 +26,11 @@ export const COLOUR_STATES = [
 	'unsupported',
 	'no-image'
 ] as const;
-export type ColourState = (typeof COLOUR_STATES)[number];
-export const CONNECTION_STATES = ['fresh', 'stale', 'missing'] as const;
-export type ConnectionState = (typeof CONNECTION_STATES)[number];
+type ColourState = (typeof COLOUR_STATES)[number];
+const CONNECTION_STATES = ['fresh', 'stale', 'missing'] as const;
+type ConnectionState = (typeof CONNECTION_STATES)[number];
 
-export interface VisionTarget {
+interface VisionTarget {
 	model: string;
 	promptVersion: number;
 }
@@ -53,10 +53,7 @@ export function visionState(
 	return 'valid';
 }
 
-export function colourState(
-	block: ArchiveBlock,
-	caches: Pick<ArchiveCaches, 'colour'>
-): ColourState {
+function colourState(block: ArchiveBlock, caches: Pick<ArchiveCaches, 'colour'>): ColourState {
 	if (!block.imageUrl) return 'no-image';
 	if (unsupportedFormatReason(block.imageContentType)) return 'unsupported';
 	const entry = caches.colour.get(block.id);
@@ -173,7 +170,7 @@ export function buildCoverageReport(options: {
 		byType: groupBy(blocks, (b) => [b.type], vision, colour)
 	};
 }
-export type CoverageReport = ReturnType<typeof buildCoverageReport>;
+type CoverageReport = ReturnType<typeof buildCoverageReport>;
 
 const percent = (part: number, whole: number) =>
 	whole ? `${((part / whole) * 100).toFixed(1)}%` : '—';

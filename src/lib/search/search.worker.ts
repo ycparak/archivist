@@ -83,7 +83,6 @@ async function queryEmbedding(query: string, signal: AbortSignal): Promise<numbe
 }
 async function search(params: URLSearchParams, signal: AbortSignal): Promise<BrowserSearchOutcome> {
 	const state = readArchiveSearchState(params);
-	const started = performance.now();
 	try {
 		const input = parseArchiveSearchRequest(params);
 		const instance = await engine();
@@ -94,19 +93,13 @@ async function search(params: URLSearchParams, signal: AbortSignal): Promise<Bro
 			[, vector] = await Promise.all([loadVectors(instance), queryEmbedding(input.query, signal)]);
 		}
 		signal.throwIfAborted();
-		const rankingStarted = performance.now();
 		const results = instance.search(input, vector);
 		const end = input.offset + input.limit;
 		return {
 			kind: 'ok',
 			state,
 			results: results.slice(input.offset, end),
-			hasMore: results.length > end && end <= ARCHIVE_MAX_OFFSET,
-			timings: {
-				totalMs: performance.now() - started,
-				queryMs: performance.now() - rankingStarted,
-				rerankMs: 0
-			}
+			hasMore: results.length > end && end <= ARCHIVE_MAX_OFFSET
 		};
 	} catch (error) {
 		if (signal.aborted) throw error;

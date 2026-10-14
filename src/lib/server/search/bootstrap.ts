@@ -10,11 +10,9 @@ export async function loadSearchBootstrap(fetchFn: typeof fetch) {
 	const bootstrap = bootstrapSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
 	if (bootstrap.blockCount !== release.blockCount) throw new Error('Bootstrap release mismatch');
 	return {
-		backend: 'browser' as const,
 		release,
 		kind: 'ok' as const,
 		state: readArchiveSearchState(new URLSearchParams()),
-		...bootstrap,
-		timings: { totalMs: 0, queryMs: 0, rerankMs: 0 }
+		...bootstrap
 	};
 }

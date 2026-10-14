@@ -60,7 +60,7 @@ export async function embedEvaluationQueries(
 }
 
 export const GATE_POLICIES = ['strict', 'no-regression'] as const;
-export type GatePolicy = (typeof GATE_POLICIES)[number];
+type GatePolicy = (typeof GATE_POLICIES)[number];
 
 /**
  * `strict` requires every non-pending case on the first page. `no-regression` also accepts a case
@@ -142,19 +142,4 @@ export function evaluationEvidence(results: ReturnType<typeof evaluateRelease>) 
 			passed
 		})
 	);
-}
-
-export function formatEvaluationResult(result: ReturnType<typeof evaluateRelease>[number]): string {
-	const status = result.pending
-		? result.firstPagePass
-			? 'PENDING CASE NOW PASSES — remove its pending field'
-			: 'pending'
-		: result.knownFailure
-			? result.passed
-				? 'known failure, no worse than baseline'
-				: 'FAILED (worse than baseline)'
-			: result.passed
-				? 'passed'
-				: 'FAILED';
-	return `${result.id}: ${status} (${result.ranks.map(({ id, rank }) => `${id}@${rank ?? 'missing'}`).join(', ')} of ${result.resultCount})`;
 }

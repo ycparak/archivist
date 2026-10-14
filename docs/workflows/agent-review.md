@@ -19,7 +19,7 @@ Why this matters: the implementing agent has already rationalized its design dec
 Concretely:
 
 - Spawn one sub-agent per activated persona.
-- Give each sub-agent: this file (agent-review.md), the TODO, human spec (if any), agent worksheet, and the diff.
+- Give each sub-agent: this file (agent-review.md), a short statement of the intended change, and the diff.
 - The sub-agent should load its own persona's owned docs (listed below), plus `git log --oneline -20` and the `git diff` for the target change set.
 - Do **not** pass the implementing agent's full investigation trail, chat history, or reasoning.
 
@@ -31,13 +31,13 @@ Activate only the personas relevant to the changed surface area. Each persona ow
   Owned docs: `docs/svelte-guidelines.md`.
 
 - **Search & Retrieval Expert**: snapshot integrity, filter-before-rank behavior, chunk aggregation, complete-list RRF, stable ties and release/embedding versioning.
-  Owned docs: `docs/architecture.md` (Retrieval behavior, Releases and sync), the Search Invariants section of `AGENTS.md`.
+  Owned docs: `docs/architecture.md` (Query path, Releases, Validation), the Search Invariants section of `AGENTS.md`.
 
 - **Data/Sync Expert**: Are.na V3 transport and pagination correctness, rate-limit/backoff handling, normalization and deduplication in `src/lib/server/indexing/`, sync idempotency.
-  Owned docs: `docs/architecture.md` (Releases and sync, Vision indexing, Connection counts).
+  Owned docs: `docs/architecture.md` (Sync and enrichment, Hosted maintenance).
 
 - **Systems Architect**: ownership boundaries between `src/lib/domain/`, `src/lib/server/*/`, and `src/routes/`; wrong-layer placement (provider calls or ranking logic leaking into routes); scope drift.
-  Owned docs: `AGENTS.md` (Architecture (Brief), Scope, Search Invariants).
+  Owned docs: `AGENTS.md` (Boundaries, Scope, Search Invariants), `docs/architecture.md` (Repository layout).
 
 - **QA Engineer**: coverage quality, regression risk, test adequacy and test selection. Validates that tests are legitimate (no hardcoded expected values, no skipped assertions) and exercise behavior, not implementation details.
   Owned docs: `*.spec.ts` files colocated under `src/`, `scripts/fixtures/`.
@@ -78,8 +78,7 @@ If there are no findings, explicitly say so and list residual risks/testing gaps
 - Maintenance retries preserve completed enrichment, incomplete discovery cannot prune caches or publish, and publication is tied to the evaluated candidate.
 - Relevant docs updated when behavior or rules changed.
 - Reviewers should recommend updates to their own persona's docs whenever they notice gaps, stale info, unclear language, or missing coverage.
-- Commit cadence verified: in loop mode, one commit per completed task (unless user explicitly requested batching).
-- For user-visible work, [`CHANGELOG.md`](../CHANGELOG.md) updated in the same task/commit.
+- For user-visible work, [`CHANGELOG.md`](../CHANGELOG.md) updated in the same commit.
 - `bun run check` and `bun run lint` pass.
 - `bun run test` passes; tests are appropriate for risk and scope, gaps are called out.
 - No unused variables or dead-code declarations remain in changed files.
