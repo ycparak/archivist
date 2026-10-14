@@ -12,11 +12,18 @@ export const productionPointerSchema = z
 		fence: z.number().int().positive(),
 		version: z.string().regex(/^[a-f0-9]{64}$/),
 		jobId: z.string().min(1),
-		candidateFence: z.number().int().positive(),
+		/** Zero for a release adopted from the live site rather than produced by a job. */
+		candidateFence: z.number().int().nonnegative(),
 		sourceRevision: z.string().min(1),
+		/** Retained so retention never removes the release open browser sessions may still use. */
+		previousVersion: z
+			.string()
+			.regex(/^[a-f0-9]{64}$/)
+			.nullable(),
 		deployedAt: z.iso.datetime()
 	})
 	.strict();
+export const ADOPTED_LIVE_JOB_ID = 'live-adopted';
 
 export const jobKeys = (jobId: string) => ({
 	job: `jobs/${jobId}/job.json`,
@@ -76,6 +83,9 @@ export const jobReportSchema = z
 		status: z.literal('completed'),
 		candidateVersion: z.string().regex(/^[a-f0-9]{64}$/),
 		passed: z.boolean(),
+		/** `deploy` only for a passing candidate that differs from the live release. */
+		decision: z.enum(['deploy', 'unchanged', 'rejected']),
+		sourceRevision: z.string().min(1),
 		blocks: z.number().int().nonnegative(),
 		channels: z.number().int().nonnegative(),
 		stages: z.record(z.string(), z.unknown()),
@@ -107,6 +117,7 @@ export async function stageHostedDeployment(options: {
 	if (origin.value.sourceRevision !== options.sourceRevision)
 		throw new Error('Check out the candidate source revision before deploying');
 	const production = await loadProduction(store);
+	if (production.pointer?.jobId === options.jobId) return { status: 'already-live' as const };
 	if (production.pointer && production.pointer.candidateFence >= origin.value.job.fence)
 		throw new Error('Candidate is superseded by the deployed release');
 	const candidate = await loadStoredRelease(store, report.value.candidateVersion);
@@ -119,6 +130,7 @@ export async function stageHostedDeployment(options: {
 		baseline: production.release
 	});
 	return {
+		status: 'ready' as const,
 		candidate,
 		origin: origin.value,
 		baseline: production.release,
@@ -126,10 +138,56 @@ export async function stageHostedDeployment(options: {
 	};
 }
 
+export type StagedDeployment = Extract<
+	Awaited<ReturnType<typeof stageHostedDeployment>>,
+	{ status: 'ready' }
+>;
+
+/**
+ * Adopts the release the public site already serves as the production baseline, verifying every
+ * asset against its manifest, so the first automatic deployment has something to compare against.
+ */
+export async function adoptLiveRelease(
+	store: ObjectStore,
+	lease: Lease,
+	siteUrl: string,
+	fetchFn: typeof fetch = fetch
+) {
+	const base = new URL('/search/', siteUrl);
+	const fetchBytes = async (url: URL) => {
+		const response = await fetchFn(url, { signal: AbortSignal.timeout(60_000) });
+		if (!response.ok) throw new Error(`Live release request failed (${response.status})`);
+		return new Uint8Array(await response.arrayBuffer());
+	};
+	const manifest: unknown = JSON.parse(
+		new TextDecoder().decode(await fetchBytes(new URL('manifest.json', base)))
+	);
+	const live = await loadValidatedRelease(manifest, (asset) =>
+		fetchBytes(new URL(`releases/${(manifest as SearchRelease).version}/${asset.file}`, base))
+	);
+	await persistRelease(store, live.release, live.assets);
+	await fencedPut(
+		store,
+		lease,
+		PRODUCTION_POINTER_KEY,
+		{
+			format: 1,
+			version: live.release.version,
+			jobId: ADOPTED_LIVE_JOB_ID,
+			candidateFence: 0,
+			sourceRevision: 'live-site',
+			previousVersion: null,
+			deployedAt: new Date().toISOString()
+		},
+		null
+	);
+	return live;
+}
+
 export async function recordHostedDeployment(
 	store: ObjectStore,
 	lease: Lease,
-	staged: Awaited<ReturnType<typeof stageHostedDeployment>>
+	staged: StagedDeployment
 ) {
 	const job = staged.origin.job!;
 	await fencedPut(
@@ -142,6 +200,7 @@ export async function recordHostedDeployment(
 			jobId: job.id,
 			candidateFence: job.fence,
 			sourceRevision: staged.origin.sourceRevision,
+			previousVersion: staged.baseline?.release.version ?? null,
 			deployedAt: new Date().toISOString()
 		},
 		staged.productionEtag

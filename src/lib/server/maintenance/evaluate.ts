@@ -59,12 +59,21 @@ export async function embedEvaluationQueries(
 	return queries;
 }
 
+export const GATE_POLICIES = ['strict', 'no-regression'] as const;
+export type GatePolicy = (typeof GATE_POLICIES)[number];
+
+/**
+ * `strict` requires every non-pending case on the first page. `no-regression` also accepts a case
+ * that already misses the first page on the baseline, as a reported known failure, provided its
+ * expected ranks drop by at most `maxRankDrop`; a case the baseline passes must still pass.
+ */
 export function evaluateRelease(
 	candidate: ValidatedRelease,
 	cases: SearchEvaluationCase[],
 	queries: Record<string, number[]>,
 	baseline?: ValidatedRelease,
-	maxRankDrop: number | null = null
+	maxRankDrop: number | null = null,
+	gate: GatePolicy = 'strict'
 ) {
 	return cases.map((testCase) => {
 		const input = evaluationRequest(testCase);
@@ -88,35 +97,51 @@ export function evaluateRelease(
 		const firstPagePass = ranks.length
 			? ranks.every(({ rank }) => rank !== null && rank <= ARCHIVE_RESULT_LIMIT)
 			: ranked.length === 0;
-		const regression =
-			maxRankDrop !== null &&
+		const baselineFirstPagePass = previous
+			? ranks.length
+				? ranks.every(
+						({ baselineRank }) => baselineRank !== null && baselineRank <= ARCHIVE_RESULT_LIMIT
+					)
+				: previous.length === 0
+			: null;
+		const knownFailure =
+			gate === 'no-regression' && baselineFirstPagePass === false && !firstPagePass;
+		const dropped = (limit: number) =>
 			ranks.some(
 				({ rank, baselineRank }) =>
-					baselineRank !== null && (rank === null || rank - baselineRank > maxRankDrop)
+					baselineRank !== null && (rank === null || rank - baselineRank > limit)
 			);
+		const regression = knownFailure
+			? dropped(maxRankDrop ?? 0)
+			: gate === 'strict' && maxRankDrop !== null && dropped(maxRankDrop);
 		return {
 			id: testCase.id,
 			pending: testCase.pending ?? null,
 			resultCount: ranked.length,
 			ranks,
 			firstPagePass,
+			knownFailure,
 			regression,
-			passed: Boolean(testCase.pending) || (firstPagePass && !regression),
+			passed:
+				Boolean(testCase.pending) || (knownFailure ? !regression : firstPagePass && !regression),
 			nodeSearchMs: elapsedMs
 		};
 	});
 }
 
 export function evaluationEvidence(results: ReturnType<typeof evaluateRelease>) {
-	return results.map(({ id, pending, resultCount, ranks, firstPagePass, regression, passed }) => ({
-		id,
-		pending,
-		resultCount,
-		ranks,
-		firstPagePass,
-		regression,
-		passed
-	}));
+	return results.map(
+		({ id, pending, resultCount, ranks, firstPagePass, knownFailure, regression, passed }) => ({
+			id,
+			pending,
+			resultCount,
+			ranks,
+			firstPagePass,
+			knownFailure,
+			regression,
+			passed
+		})
+	);
 }
 
 export function formatEvaluationResult(result: ReturnType<typeof evaluateRelease>[number]): string {
@@ -124,8 +149,12 @@ export function formatEvaluationResult(result: ReturnType<typeof evaluateRelease
 		? result.firstPagePass
 			? 'PENDING CASE NOW PASSES — remove its pending field'
 			: 'pending'
-		: result.passed
-			? 'passed'
-			: 'FAILED';
+		: result.knownFailure
+			? result.passed
+				? 'known failure, no worse than baseline'
+				: 'FAILED (worse than baseline)'
+			: result.passed
+				? 'passed'
+				: 'FAILED';
 	return `${result.id}: ${status} (${result.ranks.map(({ id, rank }) => `${id}@${rank ?? 'missing'}`).join(', ')} of ${result.resultCount})`;
 }
