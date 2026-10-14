@@ -1,15 +1,9 @@
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { gzipSync } from 'node:zlib';
-import { memoryUsage } from 'node:process';
 import { z } from 'zod';
 import { EMBEDDING, embeddingVectorSchema } from '$lib/search/embedding';
-import { releaseSchema } from '$lib/search/snapshot';
 import { sha256 } from '$lib/server/search/release-builder';
-import { loadValidatedRelease } from '$lib/server/maintenance/release';
-import { candidateOriginSchema, validateCandidate } from '$lib/server/maintenance/candidate';
-import { embedEvaluationQueries, evaluationCasesSchema } from '$lib/server/maintenance/evaluate';
 import { createCloudflareEmbedder } from '$lib/server/search/export';
 import { parseVisionCache } from '$lib/server/indexing/vision/cache';
 import { parseColourCache } from '$lib/server/indexing/colour/cache';
@@ -19,6 +13,12 @@ import { parseConnectionCache } from '$lib/server/indexing/connections/cache';
 export const searchOutput = new URL('../static/search/', import.meta.url);
 export const fixtureFile = new URL('./fixtures/search-cases.json', import.meta.url);
 export const workspace = new URL('../', import.meta.url);
+/** The committed enrichment caches: a portable seed for hosted maintenance and a reviewable record. */
+export const cacheFiles = {
+	colour: new URL('../src/lib/server/indexing/colour-cache.jsonl', import.meta.url),
+	connections: new URL('../src/lib/server/indexing/connections-cache.jsonl', import.meta.url),
+	vision: new URL('../src/lib/server/indexing/vision-cache.jsonl', import.meta.url)
+} as const;
 
 export async function optionalRead(url: URL): Promise<string | undefined> {
 	try {
@@ -39,19 +39,6 @@ export async function atomicWrite(file: URL, text: string) {
 		await rm(scratch, { recursive: true, force: true });
 	}
 }
-export async function loadLocalRelease(output: URL) {
-	const release = releaseSchema.parse(
-		JSON.parse(await readFile(new URL('manifest.json', output), 'utf8'))
-	);
-	return loadValidatedRelease(release, (asset) =>
-		readFile(new URL(`releases/${release.version}/${asset.file}`, output))
-	);
-}
-export async function loadOptionalRelease(output: URL) {
-	return (await optionalRead(new URL('manifest.json', output))) === undefined
-		? undefined
-		: loadLocalRelease(output);
-}
 export function configuredEmbedder() {
 	return createCloudflareEmbedder({
 		accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? '',
@@ -59,13 +46,10 @@ export function configuredEmbedder() {
 	});
 }
 export async function loadArchiveCaches() {
-	const root = new URL('../src/lib/server/indexing/', import.meta.url);
 	return {
-		visionCache: parseVisionCache(await readFile(new URL('vision-cache.jsonl', root), 'utf8')),
-		colourCache: parseColourCache(await readFile(new URL('colour-cache.jsonl', root), 'utf8')),
-		connectionCache: parseConnectionCache(
-			await readFile(new URL('connections-cache.jsonl', root), 'utf8')
-		)
+		visionCache: parseVisionCache((await optionalRead(cacheFiles.vision)) ?? ''),
+		colourCache: parseColourCache((await optionalRead(cacheFiles.colour)) ?? ''),
+		connectionCache: parseConnectionCache((await optionalRead(cacheFiles.connections)) ?? '')
 	};
 }
 export async function localEmbeddingCache(
@@ -128,22 +112,4 @@ export async function sourceIdentity() {
 		}).trim(),
 		sourceFingerprint: await sha256(new TextEncoder().encode(JSON.stringify(sources)))
 	};
-}
-export async function validateLocalCandidate(output: URL) {
-	const origin = candidateOriginSchema.parse(
-		JSON.parse(await readFile(new URL('origin.json', output), 'utf8'))
-	);
-	const candidate = await loadLocalRelease(output);
-	const baseline = await loadOptionalRelease(searchOutput);
-	const fixture = evaluationCasesSchema.parse(JSON.parse(await readFile(fixtureFile, 'utf8')));
-	const queries = await embedEvaluationQueries(fixture, configuredEmbedder());
-	return validateCandidate({
-		candidate,
-		origin,
-		fixture,
-		queryVectors: queries,
-		baseline,
-		gzipSize: async (bytes) => gzipSync(bytes).length,
-		heapBytes: () => memoryUsage().heapUsed
-	});
 }

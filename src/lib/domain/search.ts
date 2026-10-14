@@ -94,12 +94,6 @@ export type SearchResult = {
 	sourceTitle: string | null;
 };
 
-export type SearchTimings = {
-	totalMs: number;
-	queryMs: number;
-	rerankMs: number;
-};
-
 export type ChannelManifestEntry = {
 	slug: string;
 	title: string;
@@ -228,14 +222,6 @@ export function readArchiveSearchState(searchParams: URLSearchParams): ArchiveSe
 		createdTo: readDate(searchParams, ARCHIVE_SEARCH_PARAM.createdTo),
 		sort: isArchiveSort(requestedSort) ? requestedSort : ARCHIVE_DEFAULT_SORT
 	};
-}
-
-export function readArchiveSearchStateFromEntries(
-	entries: Iterable<[string, string]>
-): ArchiveSearchState {
-	const params = new URLSearchParams();
-	for (const [name, value] of entries) params.append(name, value);
-	return readArchiveSearchState(params);
 }
 
 export function hasActiveFilters(state: ArchiveSearchState): boolean {

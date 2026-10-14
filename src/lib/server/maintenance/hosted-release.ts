@@ -141,7 +141,7 @@ export async function stageHostedDeployment(options: {
 	};
 }
 
-export type StagedDeployment = Extract<
+type StagedDeployment = Extract<
 	Awaited<ReturnType<typeof stageHostedDeployment>>,
 	{ status: 'ready' }
 >;

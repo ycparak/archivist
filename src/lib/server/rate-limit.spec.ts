@@ -8,16 +8,16 @@ function limiter(success: boolean) {
 describe('enforcePublicSearchRateLimit', () => {
 	it('uses one client key for both public search surfaces', async () => {
 		const searchLimiter = limiter(true);
-		const request = new Request('https://archivist.test/?q=felt', {
-			headers: { 'cf-connecting-ip': '203.0.113.10' }
-		});
+		const headers = { 'cf-connecting-ip': '203.0.113.10' };
 
-		await enforcePublicSearchRateLimit(request, '/', searchLimiter);
 		await enforcePublicSearchRateLimit(
-			new Request('https://archivist.test/api/search?q=felt', {
-				headers: { 'cf-connecting-ip': '203.0.113.10' }
-			}),
+			new Request('https://archivist.test/api/search?q=felt', { headers }),
 			'/api/search',
+			searchLimiter
+		);
+		await enforcePublicSearchRateLimit(
+			new Request('https://archivist.test/api/embedding', { method: 'POST', headers }),
+			'/api/embedding',
 			searchLimiter
 		);
 
@@ -28,7 +28,11 @@ describe('enforcePublicSearchRateLimit', () => {
 	it('uses an anonymous key when Cloudflare does not supply a client address', async () => {
 		const searchLimiter = limiter(true);
 
-		await enforcePublicSearchRateLimit(new Request('https://archivist.test/'), '/', searchLimiter);
+		await enforcePublicSearchRateLimit(
+			new Request('https://archivist.test/api/search'),
+			'/api/search',
+			searchLimiter
+		);
 
 		expect(searchLimiter.limit).toHaveBeenCalledWith({ key: 'archive-search:unknown' });
 	});
@@ -37,21 +41,21 @@ describe('enforcePublicSearchRateLimit', () => {
 		const searchLimiter = limiter(true);
 
 		await expect(
+			enforcePublicSearchRateLimit(new Request('https://archivist.test/'), '/', searchLimiter)
+		).resolves.toBeUndefined();
+		await expect(
 			enforcePublicSearchRateLimit(
-				new Request('https://archivist.test/about'),
-				'/about',
+				new Request('https://archivist.test/api/search', { method: 'HEAD' }),
+				'/api/search',
 				searchLimiter
 			)
 		).resolves.toBeUndefined();
 		await expect(
 			enforcePublicSearchRateLimit(
-				new Request('https://archivist.test/', { method: 'HEAD' }),
-				'/',
-				searchLimiter
+				new Request('https://archivist.test/api/search'),
+				'/api/search',
+				undefined
 			)
-		).resolves.toBeUndefined();
-		await expect(
-			enforcePublicSearchRateLimit(new Request('https://archivist.test/'), '/', undefined)
 		).resolves.toBeUndefined();
 		expect(searchLimiter.limit).not.toHaveBeenCalled();
 	});
@@ -79,34 +83,22 @@ describe('enforcePublicSearchRateLimit', () => {
 		});
 	});
 
-	it('returns a cache-safe HTML response for a limited gallery request', async () => {
-		const response = await enforcePublicSearchRateLimit(
-			new Request('https://archivist.test/?q=felt'),
-			'/',
-			limiter(false),
-			() => {}
-		);
-
-		expect(response?.status).toBe(429);
-		expect(response?.headers.get('content-type')).toContain('text/html');
-		expect(response?.headers.get('cache-control')).toBe('no-store');
-		expect(response?.headers.get('retry-after')).toBe('60');
-		expect(await response?.text()).toContain('Try again soon');
-	});
-
 	it('fails open and reports no request detail when the limiter binding throws', async () => {
 		const report = vi.fn();
 		const searchLimiter = { limit: vi.fn().mockRejectedValue(new Error('binding failed')) };
 
 		await expect(
 			enforcePublicSearchRateLimit(
-				new Request('https://archivist.test/?q=private+felt'),
-				'/',
+				new Request('https://archivist.test/api/search?q=private+felt'),
+				'/api/search',
 				searchLimiter,
 				report
 			)
 		).resolves.toBeUndefined();
-		expect(report).toHaveBeenCalledWith({ event: 'archive_search_rate_limit_error', route: '/' });
+		expect(report).toHaveBeenCalledWith({
+			event: 'archive_search_rate_limit_error',
+			route: '/api/search'
+		});
 	});
 });
 

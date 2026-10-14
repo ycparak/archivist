@@ -11,7 +11,7 @@ import type { ColourWeights } from '$lib/server/indexing/colour/classify';
 import { measureImageColours } from '$lib/server/indexing/colour/extract';
 import { pool } from '$lib/server/indexing/pool';
 import { renditionUrl } from '$lib/server/indexing/vision/rendition';
-import { COLOUR_THRESHOLDS } from '$lib/server/search/colour-filter';
+import { COLOUR_THRESHOLDS } from '$lib/search/colour-filter';
 
 /**
  * Read-only. Lists blocks from the checked public snapshot, measures a sample's colours the way the sync does, and

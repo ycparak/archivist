@@ -1,9 +1,13 @@
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { sha256 } from '$lib/server/search/release-builder';
+import type { SearchDocument } from '$lib/domain/archive';
+import type { ChannelManifestEntry } from '$lib/domain/search';
 import type { SearchRelease } from '$lib/search/snapshot';
+import { buildChannelManifest } from '$lib/server/indexing/channel-manifest';
 import { loadValidatedRelease } from '$lib/server/maintenance/release';
+import { buildSearchRelease, sha256 } from '$lib/server/search/release-builder';
 import { withFileLock } from './file-lock';
+import { configuredEmbedder, localEmbeddingCache, searchOutput } from './maintenance-files';
 
 async function writeSearchRelease(
 	output: URL,
@@ -53,30 +57,46 @@ async function writeSearchRelease(
 	}
 }
 
-export async function withSearchPublication<T>(
-	output: URL,
-	action: (
-		publish: (release: SearchRelease, assets: ReadonlyMap<string, Uint8Array>) => Promise<void>
-	) => Promise<T>
-): Promise<T> {
-	await mkdir(output, { recursive: true });
-	const lock = new URL('.publication-lock/', output);
-	return withFileLock(lock, () =>
-		action(async (release, assets) => {
-			await loadValidatedRelease(release, async (asset) => {
-				const bytes = assets.get(asset.file);
-				if (!bytes) throw new Error('Missing publication asset');
-				return bytes;
-			});
-			await writeSearchRelease(output, release, assets);
-		})
-	);
-}
-
+/** Validates every asset, then stages the immutable release and swaps the manifest under one lock. */
 export async function publishSearchRelease(
 	output: URL,
 	release: SearchRelease,
 	assets: ReadonlyMap<string, Uint8Array>
 ) {
-	await withSearchPublication(output, (publish) => publish(release, assets));
+	await mkdir(output, { recursive: true });
+	await withFileLock(new URL('.publication-lock/', output), async () => {
+		await loadValidatedRelease(release, async (asset) => {
+			const bytes = assets.get(asset.file);
+			if (!bytes) throw new Error('Missing publication asset');
+			return bytes;
+		});
+		await writeSearchRelease(output, release, assets);
+	});
+}
+
+/** Builds a release from the documents, reusing cached chunk embeddings, and publishes it locally. */
+export async function publishArchiveSearch(
+	documents: SearchDocument[],
+	channels: ChannelManifestEntry[],
+	signal: AbortSignal
+) {
+	console.log(`Embedding ${documents.length} public blocks; unchanged chunks use the local cache`);
+	const { entries, checkpoint } = await localEmbeddingCache();
+	const embed = configuredEmbedder();
+	const { release, assets } = await buildSearchRelease(
+		documents,
+		buildChannelManifest(channels),
+		async (texts) => {
+			signal.throwIfAborted();
+			return embed(texts);
+		},
+		entries,
+		checkpoint
+	);
+	signal.throwIfAborted();
+	await publishSearchRelease(searchOutput, release, assets);
+	console.log(
+		`Exported ${release.blockCount} blocks, ${release.vectorCount} vectors in ${release.vectors.length} shards`
+	);
+	console.log(`Release: ${release.version}. Search assets and embedding cache are gitignored.`);
 }

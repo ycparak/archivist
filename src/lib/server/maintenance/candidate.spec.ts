@@ -9,7 +9,7 @@ import {
 	validateCandidate,
 	type CandidateOrigin
 } from './candidate';
-import { evaluateRelease } from './evaluate';
+import { embedEvaluationQueries, evaluateRelease } from './evaluate';
 import { loadValidatedRelease, releaseVersion } from './release';
 
 const channels = [{ slug: 'public', title: 'Public' }];
@@ -209,7 +209,7 @@ describe('promotion evidence', () => {
 			'identity'
 		);
 	});
-	it('rejects forged pass evidence and synthetic provenance', async () => {
+	it('rejects forged pass evidence and non-export provenance', async () => {
 		const candidate = await loaded(),
 			report = await reportFor(candidate);
 		const options = {
@@ -232,7 +232,7 @@ describe('promotion evidence', () => {
 				origin: fakeOrigin,
 				report: { ...report, originHash: await hashJson(fakeOrigin) }
 			})
-		).rejects.toThrow('Synthetic');
+		).rejects.toThrow();
 		const failingFixture = fixture.map((item) => ({
 			...item,
 			expectedBlockIds: ['block:missing']
@@ -251,7 +251,7 @@ describe('promotion evidence', () => {
 	});
 });
 
-it('rejects truncated public fixtures while supporting small synthetic smoke fixtures', async () => {
+it('rejects truncated public fixtures', async () => {
 	const candidate = await loaded();
 	await expect(
 		validateCandidate({
@@ -266,7 +266,6 @@ it('rejects truncated public fixtures while supporting small synthetic smoke fix
 });
 
 it('shares query embeddings across semantic/hybrid cases and detects changed vector evidence', async () => {
-	const { embedEvaluationQueries, formatEvaluationResult } = await import('./evaluate');
 	const candidate = await loaded();
 	const cases = fixture.map((testCase, i) => ({
 		...testCase,
@@ -300,11 +299,4 @@ it('shares query embeddings across semantic/hybrid cases and detects changed vec
 			sourceFingerprint: origin().sourceFingerprint
 		})
 	).rejects.toThrow('norm');
-	const result = evaluateRelease(
-		candidate,
-		[{ ...fixture[0], pending: 'Future target' }],
-		queries
-	)[0];
-	expect(formatEvaluationResult(result)).toContain('PENDING CASE NOW PASSES');
-	expect(formatEvaluationResult({ ...result, firstPagePass: false })).not.toContain('NOW PASSES');
 });

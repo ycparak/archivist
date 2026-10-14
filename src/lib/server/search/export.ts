@@ -1,10 +1,6 @@
 import { z } from 'zod';
 import type { SearchDocument } from '$lib/domain/archive';
-import {
-	ARCHIVE_COLOURS,
-	ARCHIVE_RESULT_LIMIT,
-	type ChannelManifestEntry
-} from '$lib/domain/search';
+import { ARCHIVE_COLOURS, type ChannelManifestEntry } from '$lib/domain/search';
 import { publicDocumentSchema, type PublicDocument } from '$lib/search/snapshot';
 import { normalizeVector, embeddingResponseSchema, EMBEDDING } from '$lib/search/embedding';
 
@@ -112,5 +108,3 @@ export function createCloudflareEmbedder(
 		return envelope.result.data.map(normalizeVector);
 	};
 }
-
-export { ARCHIVE_RESULT_LIMIT };

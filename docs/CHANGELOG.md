@@ -19,7 +19,10 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Removed
 
-- Removed superseded feature specs, completed worksheets and obsolete TODO history after consolidating current behavior into the owning docs.
+- Removed the local `prepare:search`, `validate:search`, `promote:search` and `evaluate:search` commands; `bun run hosted sync` and `hosted deploy` run the same validation.
+- Removed the `hello-world` and `validate-search-smoke` Trigger.dev tasks.
+- Removed the unused committed channel manifest and the always-empty private channel allow-list.
+- Removed the TODO list, feature specs, worksheets and the agent loop after consolidating current behavior into the owning docs.
 - Removed Turbopuffer and the backend opt-in switch, making browser search the sole backend and retiring `/api/search`.
 
 ### Added

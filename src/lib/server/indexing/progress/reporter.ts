@@ -17,7 +17,7 @@ export interface OutputStream {
 	columns?: number;
 }
 
-export interface SyncReporter {
+interface SyncReporter {
 	/** Detail worth keeping in the scroll-back. Scrolls above the status region, never into it. */
 	log(message: string): void;
 	emit(event: SyncEvent): void;
@@ -25,7 +25,7 @@ export interface SyncReporter {
 	stop(): void;
 }
 
-export interface ReporterOptions {
+interface ReporterOptions {
 	stream?: OutputStream;
 	env?: Record<string, string | undefined>;
 	now?: () => number;

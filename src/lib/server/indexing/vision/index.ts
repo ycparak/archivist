@@ -18,7 +18,7 @@ import {
 	type TranscodeOptions
 } from './video';
 
-export interface VisionStageOptions {
+interface VisionStageOptions {
 	client: VisionClient;
 	cache: VisionCache;
 	concurrency?: number;
@@ -53,7 +53,7 @@ export interface VisionStageSummary {
 	failed: VisionFailure[];
 }
 
-export interface VisionStageResult {
+interface VisionStageResult {
 	entries: VisionCacheEntry[];
 	summary: VisionStageSummary;
 }

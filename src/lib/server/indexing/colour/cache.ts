@@ -9,7 +9,7 @@ export const COLOUR_VERSION = 1;
 
 const perMilleSchema = z.number().int().min(0).max(1000);
 
-export const colourWeightsSchema = z.record(z.enum(ARCHIVE_COLOURS), perMilleSchema);
+const colourWeightsSchema = z.record(z.enum(ARCHIVE_COLOURS), perMilleSchema);
 
 export const colourCacheEntrySchema = z.object({
 	block_id: z.string().min(1),
@@ -25,7 +25,7 @@ export type ColourCacheEntry = z.infer<typeof colourCacheEntrySchema>;
 
 export type ColourCache = ReadonlyMap<string, ColourCacheEntry>;
 
-export interface ColourCacheKey {
+interface ColourCacheKey {
 	blockId: string;
 	imageSourceHash: string;
 	colourVersion: number;

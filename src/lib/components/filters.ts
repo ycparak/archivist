@@ -22,7 +22,7 @@ export function hrefWith(
 	return toArchiveSearchHref({ ...state, ...patch });
 }
 
-export function canAddColour(state: ArchiveSearchState, colour: ArchiveColour): boolean {
+function canAddColour(state: ArchiveSearchState, colour: ArchiveColour): boolean {
 	return state.colours.includes(colour) || state.colours.length < ARCHIVE_MAX_COLOURS;
 }
 

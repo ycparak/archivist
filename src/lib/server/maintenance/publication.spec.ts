@@ -3,16 +3,28 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { publishSearchRelease, withSearchPublication } from '../../../../scripts/search-files';
-import { loadLocalRelease } from '../../../../scripts/maintenance-files';
+import { withFileLock } from '../../../../scripts/file-lock';
+import { localEmbeddingCache } from '../../../../scripts/maintenance-files';
+import { publishSearchRelease } from '../../../../scripts/search-files';
 import { buildSearchRelease } from '$lib/server/search/release-builder';
 import { toSearchDocument } from '$lib/domain/archive';
 import { EMBEDDING } from '$lib/search/embedding';
+import { releaseSchema } from '$lib/search/snapshot';
+import { loadValidatedRelease } from './release';
 
 const directories: string[] = [];
 afterEach(async () => {
 	for (const dir of directories.splice(0)) await rm(dir, { recursive: true, force: true });
 });
+async function loadActiveRelease(root: URL) {
+	const release = releaseSchema.parse(
+		JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'))
+	);
+	return loadValidatedRelease(release, (asset) =>
+		readFile(new URL(`releases/${release.version}/${asset.file}`, root))
+	);
+}
+
 async function setup() {
 	const dir = await mkdtemp(join(tmpdir(), 'archivist-publication-'));
 	directories.push(dir);
@@ -51,21 +63,21 @@ describe('local publication', () => {
 		await mkdir(target);
 		await mkdir(new URL(candidate.release.metadata.file + '/', target));
 		await expect(publishSearchRelease(root, candidate.release, candidate.assets)).rejects.toThrow();
-		expect((await loadLocalRelease(root)).release.version).toBe(previous.release.version);
+		expect((await loadActiveRelease(root)).release.version).toBe(previous.release.version);
 	});
 	it('excludes every manifest writer and releases the lock after failure', async () => {
 		const { root, previous, candidate } = await setup();
 		await expect(
-			withSearchPublication(root, async () => {
+			withFileLock(new URL('.publication-lock/', root), async () => {
 				await expect(
 					publishSearchRelease(root, candidate.release, candidate.assets)
 				).rejects.toThrow('locked');
-				expect((await loadLocalRelease(root)).release.version).toBe(previous.release.version);
-				throw new Error('Promotion rejected');
+				expect((await loadActiveRelease(root)).release.version).toBe(previous.release.version);
+				throw new Error('Writer failed');
 			})
-		).rejects.toThrow('Promotion rejected');
+		).rejects.toThrow('Writer failed');
 		await publishSearchRelease(root, candidate.release, candidate.assets);
-		expect((await loadLocalRelease(root)).release.version).toBe(candidate.release.version);
+		expect((await loadActiveRelease(root)).release.version).toBe(candidate.release.version);
 		await publishSearchRelease(root, candidate.release, candidate.assets);
 		expect(JSON.parse(await readFile(new URL('manifest.json', root), 'utf8')).version).toBe(
 			candidate.release.version
@@ -75,7 +87,6 @@ describe('local publication', () => {
 
 it('merges interleaved embedding checkpoints without losing completed entries', async () => {
 	const { root } = await setup();
-	const { localEmbeddingCache } = await import('../../../../scripts/maintenance-files');
 	const first = await localEmbeddingCache(root),
 		second = await localEmbeddingCache(root);
 	const vector = Array.from({ length: EMBEDDING.dimensions }, (_, i) => Number(i === 0));

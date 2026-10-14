@@ -36,7 +36,7 @@ export interface ColourStageSummary {
 	failed: ColourFailure[];
 }
 
-export interface ColourStageResult {
+interface ColourStageResult {
 	entries: ColourCacheEntry[];
 	summary: ColourStageSummary;
 }

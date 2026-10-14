@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { getJson, PreconditionFailedError, putJson, type ObjectStore } from './store';
 
-export const LEASE_KEY = 'locks/archive.json';
+const LEASE_KEY = 'locks/archive.json';
 const leaseSchema = z
 	.object({
 		holder: z.string().min(1),

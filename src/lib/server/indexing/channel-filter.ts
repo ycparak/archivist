@@ -1,12 +1,5 @@
 import type { ArenaOwnedChannel } from '$lib/server/arena/schemas';
 
-export interface ChannelFilter {
-	ignore: ReadonlySet<string>;
-	allowPrivate: ReadonlySet<string>;
-}
-
-export const EMPTY_CHANNEL_FILTER: ChannelFilter = { ignore: new Set(), allowPrivate: new Set() };
-
 export function parseSlugList(value: string | undefined): Set<string> {
 	return new Set(
 		(value ?? '')
@@ -16,13 +9,12 @@ export function parseSlugList(value: string | undefined): Set<string> {
 	);
 }
 
-export type ChannelExclusion = 'ignored' | 'private';
-
+/** Private channels are never synced; any other channel is skipped only when listed in `ignore`. */
 export function exclusionReason(
 	channel: Pick<ArenaOwnedChannel, 'slug' | 'visibility'>,
-	filter: ChannelFilter
-): ChannelExclusion | undefined {
-	if (filter.ignore.has(channel.slug)) return 'ignored';
-	if (channel.visibility === 'private' && !filter.allowPrivate.has(channel.slug)) return 'private';
+	ignore: ReadonlySet<string>
+): 'ignored' | 'private' | undefined {
+	if (ignore.has(channel.slug)) return 'ignored';
+	if (channel.visibility === 'private') return 'private';
 	return undefined;
 }

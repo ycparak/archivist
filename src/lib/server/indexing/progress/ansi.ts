@@ -9,7 +9,7 @@ import type { Paint } from './format';
 export const CURSOR_HIDE = '\x1b[?25l';
 export const CURSOR_SHOW = '\x1b[?25h';
 export const CLEAR_TO_END = '\x1b[0J';
-export const RESET = '\x1b[0m';
+const RESET = '\x1b[0m';
 
 export function cursorUp(lines: number): string {
 	return lines > 0 ? `\x1b[${lines}A` : '';

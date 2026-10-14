@@ -36,7 +36,7 @@ export interface ConnectionStageSummary {
 	failed: ConnectionFailure[];
 }
 
-export interface ConnectionStageResult {
+interface ConnectionStageResult {
 	entries: ConnectionCacheEntry[];
 	summary: ConnectionStageSummary;
 }

@@ -75,7 +75,7 @@ export const stageCodecs: { [S in CacheStage]: StageCodec<StageEntries[S]> } = {
 export const CACHE_POINTER_KEY = 'caches/current.json';
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const snapshotSchema = z.object({ key: z.string(), sha256: hash, entries: z.number().int() });
-export const cachePointerSchema = z
+const cachePointerSchema = z
 	.object({
 		format: z.literal(1),
 		fence: z.number().int().positive(),
@@ -88,7 +88,7 @@ export const cachePointerSchema = z
 		})
 	})
 	.strict();
-export type CachePointer = z.infer<typeof cachePointerSchema>;
+type CachePointer = z.infer<typeof cachePointerSchema>;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -109,7 +109,7 @@ export async function loadCanonicalCaches(store: ObjectStore) {
 	return { caches, pointer: pointer.value, etag: pointer.etag };
 }
 
-export async function writeSnapshot<S extends CacheStage>(
+async function writeSnapshot<S extends CacheStage>(
 	store: ObjectStore,
 	stage: S,
 	entries: Iterable<StageEntries[S]>
@@ -239,7 +239,7 @@ export async function hostedEmbeddingCache(store: ObjectStore) {
 	};
 }
 
-export interface LocalImportChange {
+interface LocalImportChange {
 	added: number;
 	updated: number;
 	keptLocal: number;
