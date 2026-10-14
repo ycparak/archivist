@@ -62,3 +62,17 @@ The evidence points at the junk filename title, which is the recorded next task.
 ### Reproducibility
 
 The control ranked widget-grid at 90, while the standalone investigation ranked it at 116. The only difference was the batch the query was embedded in: Workers AI vectors vary slightly with batch composition. Experiments therefore persist query vectors, and first-page and held-out metrics are the signals to compare.
+
+## Follow-up: uninformative titles, 2026-10-14
+
+An experiment ran at source `940fb941` (spec hash `92f4e090`; the variant kind was removed after adoption, and that revision reproduces it). It dropped title and source-title lines that `titles.ts` classes as `filename` or `opaque`:
+
+| Variant                   | Fixture | Held-out MRR | Held-out @1 | Widget-grid rank | Vectors | Gzip bytes |
+| ------------------------- | ------- | ------------ | ----------- | ---------------- | ------- | ---------- |
+| control                   | 14/15   | 0.987        | 98.0%       | 90               | 8,564   | 13,288,781 |
+| drop uninformative titles | 14/15   | 0.987        | 98.0%       | 63               | 8,497   | 13,180,028 |
+| lexical prefix            | 15/15   | 0.982        | 97.0%       | 24               | 8,564   | 13,288,781 |
+
+- **Adopted:** dropping uninformative titles. It improved widget-grid with no fixture or held-out cost and a slightly smaller release, so `toSearchDocument` now omits such titles from `search_text` and the documented composition was updated.
+- **Embeddings:** the embedding version is unchanged (same model and chunking). The change produces a new content-hashed release through the next daily sync's no-regression gate, and about 1,400 changed chunks are embedded within the Workers AI free allocation.
+- **Still open:** widget-grid remains off the first page, because "widget" does not match "widgets" lexically. Lexical prefix would fix that, at a small held-out cost, which is a policy decision recorded under Needs Input.
