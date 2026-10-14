@@ -16,7 +16,7 @@ Public-only discovery excludes all private channels and refuses incomplete or em
 
 Run bun run export:search for cached descriptions/colours/connections without any Are.na write-back or vision generation. Full sync optionally refreshes these caches and writes generated descriptions back to Are.na, then publishes the same release format. Cloudflare REST credentials are local CLI inputs; deployed query inference uses the AI binding.
 
-See the [browser search decision](./decisions/0004-browser-search.md). Free operation depends on Workers/Workers AI allocations. A previous real-corpus evaluation placed the widget-grid expected block at rank 112; this is historical evidence, not a fresh measurement. Physical mobile performance has not been verified. These checks belong to the [planned release validation](./specs/trigger-workflows.md).
+See the [browser search decision](./decisions/0004-browser-search.md). Free operation depends on Workers/Workers AI allocations. Candidate validation on 2026-10-14 placed the widget-grid expected block at rank 116 of the 2,213-block public corpus, unchanged from the active baseline, so that candidate failed the gate and was not promoted. Physical mobile performance has not been verified.
 
 Document embeddings use `@cf/baai/bge-small-en-v1.5`, 384 dimensions and at most 384 UTF-8 bytes per chunk, covering the complete canonical text. The builder embeds missing unique chunks in batches of 32 and caches them by embedding version plus text hash. Query embeddings use the same model/version with the configured query prefix. The endpoint accepts at most 400 characters and a 4,096-byte JSON body.
 
@@ -96,9 +96,17 @@ Colour filters are ANDed. On the default browse order, selected colours sort lex
 
 `connections/` fetches every block's total Are.na connections with four workers. `connections-cache.jsonl` stores block ID, total and timestamp; entries are reused for seven days. Failures preserve old entries, and incomplete discovery prevents removal of unseen cached blocks. `connection_count` counts deduplicated owned-channel memberships; `total_connection_count` is at least that count even if the remote total is missing or stale. My most connected is the default browse order, followed by newest connected and ID; Most connected uses total count, newest created and ID.
 
+## Candidate validation
+
+Shared services under `src/lib/server/maintenance/` validate canonical release hashes, every asset's bytes/hash/schema, MiniSearch scoring/posting relationships, vector normalization/mappings and bootstrap equality with default browse. Evaluation uses complete rankings, reports expected-block ranks against a pinned baseline, and shares query embeddings across cases. Production fixtures retain the existing ten-case minimum and unique case IDs. Mobile performance remains explicitly unverified; Node timings/heap and gzip byte counts are diagnostic measurements.
+
+`bun run prepare:search .maintenance/<candidate>` discovers a complete public archive using existing caches and generates a separate candidate. It never generates vision or writes Are.na. `bun run validate:search .maintenance/<candidate>` writes JSON/Markdown reports, then fails if a mandatory fixture fails. `bun run promote:search .maintenance/<candidate>` revalidates all files and recomputes outcomes using saved query vectors before replacing the local active manifest; it checks working-tree source, fixture, origin and active baseline identity. This is local preparation evidence, not cryptographic attestation against someone with write access to the workspace.
+
+All manifest writers use an exclusive publication lock and fail explicitly on contention. A process killed without cleanup may leave `.publication-lock`; remove it only after verifying no writer is active. Embedding checkpoints use a separate lock, merge latest persisted entries and atomically write the union. Existing `sync`/`export:search` still publish directly locally; use candidate commands for the relevance gate. No command here deploys the site.
+
 ## Trigger.dev
 
-The current integration is SDK/build package 4.7.3, `trigger.config.ts` using Node 24, task discovery under `src/trigger/`, a 3,600-second maximum duration and three default attempts (also enabled in development). The only task is the typed `hello-world` example. No archive sync, enrichment, evaluation, hosted persistence or deployment task exists yet. Proposed work is in [Trigger.dev workflows](./specs/trigger-workflows.md); it is not current runtime behavior.
+The current integration is SDK/build package 4.7.3, `trigger.config.ts` using Node 24, task discovery under `src/trigger/`, a 3,600-second maximum duration and three default attempts (also enabled in development). Tasks include the typed `hello-world` example and a schema-validated `validate-search-smoke` task that checks a synthetic release without provider calls or publication. No hosted archive sync, enrichment, persistence or deployment task exists yet. Proposed work is in [Trigger.dev workflows](./specs/trigger-workflows.md); it is not current runtime behavior.
 
 ## Build and local binding emulation
 

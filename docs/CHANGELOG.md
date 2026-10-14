@@ -7,6 +7,7 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Changed
 
+- Changed search evaluation to report each expected block's rank in the complete ranking rather than the first page only.
 - Aligned documentation with the implemented browser search architecture and added the plan for manually triggered Trigger.dev maintenance workflows.
 - Changed search to submit on Enter or when the input lost focus instead of searching while typing.
 - Aligned sans typography, colour primitives, spacing, capsule actions and date-slider controls with Yusufparak while preserving Archivist serif styling.
@@ -19,6 +20,7 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Added
 
+- Added separate search candidate preparation, full-ranking validation reports and guarded local promotion, plus a non-mutating Trigger.dev validation smoke task.
 - Added the production deployment at archivist.yusufparak.com and the `bun run deploy` command.
 - Added Trigger.dev development support with a typed `hello-world` task.
 - Added public-only static releases with MiniSearch, chunked semantic browser search, Workers AI query embeddings and a prerendered default gallery.
