@@ -31,6 +31,12 @@ Task: phase 5 of [Trigger.dev workflows](../../specs/trigger-workflows.md#phase-
   - outcomes: not recorded, because the job predates phase 4.
 - `bun run hosted backfill --plan --missing`: 3 blocks (2 images, 1 animation), expected $0.0031, worst case $0.034. Nothing was spent.
 
-## Not yet run
+## First paid backfill, 2026-10-14
 
-No paid backfill has run. The first one needs the maintainer's approval and `OPENROUTER_API_KEY` in the Trigger environment that executes it.
+Approved by the maintainer: 3 blocks with a $0.10 budget, run in development (worker `20261014.16`, local `OPENROUTER_API_KEY`).
+
+- `bun run hosted backfill --run --missing --max-blocks 3 --budget-usd 0.1` started job `backfill-20261014155020-cmw0gi` (run `run_06gjm6s3uvasvscr28spfumb01`).
+- It completed in 40 s and generated 3 of 3 (2 images, 1 animation read as video), with no failures and none stopped by the budget.
+- It spent $0.001899 across 3 requests. All costs were reported by OpenRouter (0 unknown) and there were no retries. The estimate was $0.0031 expected and $0.034 worst case.
+- Coverage afterwards: vision 2,210 of 2,210 describable blocks valid (100%).
+- The merged text reaches the live site through the next daily sync's no-regression gate. No candidate was built by the backfill.
