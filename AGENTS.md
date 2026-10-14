@@ -71,7 +71,7 @@ in `./docs/decisions/`.
 
 ## Scope
 
-Archivist is a public gallery and search surface for one maintainer's Are.na archive. The points below describe current behavior. The accepted maintenance scope and proposed implementation are in [Trigger.dev workflows](./docs/specs/trigger-workflows.md); phases 1–2 (candidate validation, hosted storage and manual sync) are implemented. Phase 3 (a daily 06:00 UTC hosted sync with automatic regression-gated deployment) is implemented in code and activates once its production credentials are configured. Anything beyond them needs the maintainer's explicit go-ahead.
+Archivist is a public gallery and search surface for one maintainer's Are.na archive. The points below describe current behavior. The accepted maintenance scope and proposed implementation are in [Trigger.dev workflows](./docs/specs/trigger-workflows.md); phases 1–2 (candidate validation, hosted storage and manual sync) are implemented. Phase 3 (a daily 06:00 UTC hosted sync with automatic regression-gated deployment) is live in production. Anything beyond them needs the maintainer's explicit go-ahead.
 
 - Results are original Are.na blocks. Nothing generated is ever presented as a result.
 - Query time is free of generative LLMs. Browser search uses Workers AI only to embed queries; the sync-time vision stage, which describes blocks that are already synced and indexes that text (description, OCR, tags) for retrieval. Read [Vision indexing](./docs/architecture.md#vision-indexing) before touching `src/lib/server/indexing/vision/`; generated tags are indexed but not exposed in the UI.
