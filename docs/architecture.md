@@ -8,7 +8,7 @@ The default gallery is prerendered from a checked bootstrap snapshot. After moun
 
 ## Retrieval behavior
 
-Canonical search_text contains the normalized title, description, source text, cached vision description, OCR and tags. MiniSearch ranks lexical matches. Semantic retrieval computes exact cosine similarity over all eligible chunk vectors and aggregates the maximum score per original block. Hybrid fuses full ranked lists with RRF (k=60). Filter before ranking; preserve type/channel OR, colour AND, UTC dates, colour thresholds and stable ID tiebreaks. Paging uses the full ranking rather than a top-100 cap.
+Canonical `search_text` is assembled by `toSearchDocument` in `src/lib/domain/archive.ts`, in this order: block title, description, content, source title, deduplicated channel titles, cached vision description, bounded OCR, and normalized tags joined with commas. Each field has whitespace collapsed, empty fields are omitted, and fields are joined with newlines. Generated vision titles, medium and palette are not part of this text. Tags are lowercased, dehyphenated, deduplicated and sorted; OCR is capped at 6,000 characters and discarded when its bounded sample has at least 100 words but fewer than 10% unique words. MiniSearch ranks lexical matches. Semantic retrieval computes exact cosine similarity over all eligible chunk vectors and aggregates the maximum score per original block. Hybrid fuses full ranked lists with RRF (k=60). Filter before ranking; preserve type/channel OR, colour AND, UTC dates, colour thresholds and stable ID tiebreaks. Paging uses the full ranking rather than a top-100 cap.
 
 ## Releases and sync
 
@@ -16,13 +16,23 @@ Public-only discovery excludes all private channels and refuses incomplete or em
 
 Run bun run export:search for cached descriptions/colours/connections without any Are.na write-back or vision generation. Full sync optionally refreshes these caches and writes generated descriptions back to Are.na, then publishes the same release format. Cloudflare REST credentials are local CLI inputs; deployed query inference uses the AI binding.
 
-See [browser search decision](./decisions/0004-browser-search.md) and [removal decision](./decisions/0005-remove-turbopuffer.md). Free operation depends on Workers/Workers AI allocations. Current limitations: widget-grid fixture expected block ranks 112; physical mobile performance remains unmeasured.
+See the [browser search decision](./decisions/0004-browser-search.md). Free operation depends on Workers/Workers AI allocations. A previous real-corpus evaluation placed the widget-grid expected block at rank 112; this is historical evidence, not a fresh measurement. Physical mobile performance has not been verified. These checks belong to the [planned release validation](./specs/trigger-workflows.md).
+
+Document embeddings use `@cf/baai/bge-small-en-v1.5`, 384 dimensions and at most 384 UTF-8 bytes per chunk, covering the complete canonical text. The builder embeds missing unique chunks in batches of 32 and caches them by embedding version plus text hash. Query embeddings use the same model/version with the configured query prefix. The endpoint accepts at most 400 characters and a 4,096-byte JSON body.
+
+### Local publication and live deployment
+
+`scripts/publish-search.ts` writes to `static/search/` and `.search-cache/`; it does not deploy. `scripts/search-files.ts` stages immutable releases and atomically replaces the local manifest. The builder caps each asset at 25 MiB and vector shards at about 8 MiB. Metadata contains result fields, filter/sort metadata and vector-to-block mappings; the lexical file holds the searchable text index. Generated vision fields are absent from the result shape, but their indexed text is downloadable in the lexical asset.
+
+`bun run deploy` builds the app (including its prerendered bootstrap) and uploads the Worker and static assets together. Replacing a remote manifest alone is not the current publication model. Retain previous release directories in the build output to keep old sessions working; local publication does not delete them, but a fresh checkout will not recover them automatically.
+
+CI installs ffmpeg, runs check/lint/tests, then creates a synthetic search release for its build. This proves buildability, not real-corpus relevance; synthetic assets must never be deployed.
 
 ## Vision indexing
 
 Many image blocks have a filename for a title and no description. Text search cannot find them. The vision stage (`src/lib/server/indexing/vision/`) has a model describe each block that has an image. That text is indexed for search.
 
-It runs only during sync. Search itself uses no model, and a result is always the original Are.na block. The gallery never shows the `vision_*` fields. Generated text reaches a reader in one way: write-back puts it on the Are.na block, where it becomes the block's own title or description, and the next sync indexes and shows it like any other.
+It runs only during sync. Search itself uses no model, and a result is always the original Are.na block. The gallery never shows the `vision_*` fields. Generated titles/descriptions become visible gallery copy only through write-back: it puts them on the Are.na block, and the next sync indexes and shows them like other block metadata. Indexed vision description, OCR and tags are also present in downloadable lexical assets, even though the gallery does not render those fields.
 
 **Model.** `xiaomi/mimo-v2.5` through OpenRouter. The code uses plain `fetch` and Zod, with no SDK.
 
@@ -36,11 +46,11 @@ It runs only during sync. Search itself uses no model, and a result is always th
 
 - Stills are not downloaded. Are.na resizes images with a URL that holds a base64 JSON payload. `rendition.ts` rewrites it to fit inside 768 × 768 and the provider fetches that smaller image. A URL that is not an Are.na resizer URL is sent unchanged.
 - Skipped: a non-resizable image over 5 MB, and any type except JPEG, PNG, WebP or GIF. An unknown type is let through.
-- Animated blocks (`image/gif`) are read as motion. `video.ts` downloads the source and uses ffmpeg to make a silent MP4: at most 512 px wide, 6 fps, CRF 32, killed after 60 s. A source that fails to download or is over 64 MB is skipped, as is an MP4 over 4 MB. The MP4 is sent inline as a data URL.
+- Animated blocks (`image/gif`) are read as motion. `video.ts` downloads the source and uses ffmpeg to make a silent MP4: at most 512 px wide, 6 fps, CRF 32, killed after 60 s. A non-success HTTP response is skipped. The full source is currently buffered before rejecting sources over 64 MiB, and the output file is read before rejecting MP4s over 4 MiB. The source fetch currently has no timeout or cancellation signal; fetch exceptions become stage failures. These resource/cancellation gaps must be fixed before hosted media processing. The MP4 is sent inline as a data URL.
 - The scratch folder is deleted on every exit. A killed run can leave one behind. The next run with animations to describe deletes any that are over an hour old before it starts on them.
 - ffmpeg must be on `PATH`. Without it, each animated block fails with a message that names ffmpeg. The run goes on. Use `--no-vision` to skip the stage.
 
-**Prompt and output.** `prompt.ts` holds `PROMPT_VERSION`, the system prompt and a strict JSON schema:
+**Prompt and output.** `prompt.ts` holds `PROMPT_VERSION`, the system prompt and a structured-output schema. The prompt requests:
 
 - `title`: at most 70 characters, and never the title we supplied.
 - `description`: 200 to 500 characters.
@@ -49,9 +59,9 @@ It runs only during sync. Search itself uses no model, and a result is always th
 - `medium`: one of nine values.
 - `tags`: 3 to 8.
 
-The block's type, title, description and source title go along as context, each cut to 400 characters. They are fenced and labelled as untrusted text that must not be obeyed. A reply that copies the supplied title, or whose title is over 140 characters, is rejected. So is a reply that is not valid JSON or fails the schema. A rejected reply is retried within the same budget as a 5xx, and is never cached.
+The block's type, title, description and source title go along as context, each cut to 400 characters. They are fenced and labelled as untrusted text that must not be obeyed. These are prompt targets, not all enforced schema bounds: the cache schema accepts a nonempty title up to 200 characters, a nonempty description, arbitrary string arrays for palette/tags and one of nine media. The client rejects a copied title or a title over 140 characters and truncates descriptions to 500 characters. A reply that is not valid JSON or fails validation is rejected. A rejected reply is retried within the same budget as a 5xx, and is never cached.
 
-**Cache.** `vision-cache.jsonl` is the record of every description. It is committed, so a fresh clone or a namespace move costs nothing. It has one entry per block, in a fixed key order and sorted by block id, so an unchanged run leaves no diff.
+**Cache.** `vision-cache.jsonl` is the record of every description. It is committed, so a fresh clone can reuse existing descriptions. It has one entry per block, in a fixed key order and sorted by block id, so an unchanged run leaves no diff.
 
 An entry is reused only when all of these match: block id, `image_src_hash`, `prompt_version`, `model` and `input_mode`. The check happens before any network call. `image_src_hash` hashes the resizer payload's bucket and key, not the URL, so changing the width invalidates nothing. To redo one block, delete its line. Changing `PROMPT_VERSION` or the model redoes every block, so check the cost first.
 
@@ -71,7 +81,7 @@ When the cache is merged, entries for blocks that left the archive are dropped. 
 
 ## Colour indexing
 
-The colour stage (`src/lib/server/indexing/colour/`) measures how much of each image is each colour. It runs only during sync, uses no model, and costs nothing but downloads. The decision and its alternatives are in [ADR 0001](./decisions/0001-colour-from-pixels.md); calibration is in [the colour filter spec](./specs/colour-filter.md#calibration).
+The colour stage (`src/lib/server/indexing/colour/`) measures how much of each image is each colour. It runs only during sync, uses no model, and costs nothing but downloads. The decision and its alternatives are in [ADR 0001](./decisions/0001-colour-from-pixels.md).
 
 - **Input.** A still is fetched as a 128px Are.na rendition (`rendition.ts`); an animation on the CDN has no rendition, so its original is fetched. Every download is capped at 64 MB, by `content-length` and again while streaming. Video attachments and embeds are measured from their poster or thumbnail. Formats the vision stage skips are skipped here too.
 - **Nothing touches disk.** The bytes are piped to ffmpeg on stdin, which writes 64 × 64 RGBA frames to stdout: the first frame, then one a second, up to 8. Both buffers are dropped once weighed. `runFfmpeg` (`src/lib/server/indexing/ffmpeg.ts`) is shared with `video.ts`.
@@ -80,14 +90,15 @@ The colour stage (`src/lib/server/indexing/colour/`) measures how much of each i
 - **Running it.** 4 workers. A failed or skipped block gets no entry and is retried next run. ffmpeg must be on `PATH`; without it every block fails with a message naming ffmpeg and `--no-colour`.
 - **Calibrating.** `bun run calibrate:colour` lists blocks from the search snapshot, measures a stable sample and writes a contact sheet outside the repo. It is read-only.
 
-the search snapshot fails a query that filters or sorts on an attribute it has never had. The `colour_*` attributes are never requested in results, so only a `colour` request is affected, and only until the first sync that writes them. Sync before deploying code that sends `colour`.
+Colour filters are ANDed. On the default browse order, selected colours sort lexicographically by descending weight before connection count/date/ID; there is no sum. The leading colour needs weight 1, except mono; other chromatic thresholds are 10, grey/black/white 150 and mono 995. Other browse sorts and query modes use ordinary thresholds. The URL accepts at most five colours; the UI offers nine swatches.
 
-## Sources checked
+## Connection counts
 
-- [Are.na API documentation](https://www.are.na/developers/explore): authentication, tiers, pagination, caching, and rate limits.
-- [the search snapshot vector search](https://search snapshot.com/docs/vector): native embedding configuration and filtered ANN.
-- [the search snapshot query API](https://search snapshot.com/docs/query): filters and multi-query support.
-- [the search snapshot write API](https://search snapshot.com/docs/write): schema behavior, index costs, and migration constraint.
+`connections/` fetches every block's total Are.na connections with four workers. `connections-cache.jsonl` stores block ID, total and timestamp; entries are reused for seven days. Failures preserve old entries, and incomplete discovery prevents removal of unseen cached blocks. `connection_count` counts deduplicated owned-channel memberships; `total_connection_count` is at least that count even if the remote total is missing or stale. My most connected is the default browse order, followed by newest connected and ID; Most connected uses total count, newest created and ID.
+
+## Trigger.dev
+
+The current integration is SDK/build package 4.7.3, `trigger.config.ts` using Node 24, task discovery under `src/trigger/`, a 3,600-second maximum duration and three default attempts (also enabled in development). The only task is the typed `hello-world` example. No archive sync, enrichment, evaluation, hosted persistence or deployment task exists yet. Proposed work is in [Trigger.dev workflows](./specs/trigger-workflows.md); it is not current runtime behavior.
 
 ## Build and local binding emulation
 

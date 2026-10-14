@@ -98,19 +98,7 @@ Run an implementation review using the personas and process in [`agent-review.md
 4. Add follow-up TODOs if you found adjacent issues.
 5. Commit with a clear message — one commit per completed task. See the existing commit history for style.
 
-Example commit message:
-
-```
-Add hybrid search RRF query to SearchRepository
-
-Summary:
-- Added multiQuery BM25 + native-ANN request with rerank_by RRF
-- Mapped Turbopuffer rows to SearchResult in one place
-- Added unit tests for filter construction and result mapping
-
-Risks:
-- No end-to-end test against a live Turbopuffer namespace (unit-level only)
-```
+Example commit message: `Validate search releases before local publication`.
 
 ## Step 8: Repeat
 
@@ -138,6 +126,6 @@ This summary is how the human reviewer starts their day.
 
 - One commit per task. Do not batch unless explicitly asked.
 - Be concise. Follow existing code patterns. This is a maturing codebase — use established patterns instead of inventing new ones.
-- Keep the scope in `AGENTS.md` in mind: no auth, accounts, analytics, background queues, link crawling, query-time LLM, or chat UI without an explicit decision from the maintainer.
+- Keep the scope in `AGENTS.md` in mind: new auth/accounts, analytics, link crawling, query-time LLM or chat UI require an explicit maintainer decision; maintenance workflows are planned in `docs/specs/trigger-workflows.md`.
 - For UI changes, test in the browser via `bun run dev` before reporting the task as complete.
 - When in doubt about scope or intent, move to **Needs Input** rather than guessing — but this should be rare. The cost is a lost day.
