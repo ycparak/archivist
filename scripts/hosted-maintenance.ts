@@ -37,8 +37,9 @@ import { publishSearchRelease } from './search-files';
 const USAGE = `Usage:
   hosted-maintenance.ts bootstrap
   hosted-maintenance.ts pull
-  hosted-maintenance.ts sync [--no-colour] [--no-connections] [--resume <job-id>]
-  hosted-maintenance.ts deploy <job-id> [--dry-run]`;
+  hosted-maintenance.ts sync [--no-colour] [--no-connections] [--no-regression] [--resume <job-id>]
+  hosted-maintenance.ts deploy <job-id> [--dry-run]
+  hosted-maintenance.ts identity`;
 
 const [command, ...args] = process.argv.slice(2);
 const store = () => createR2Store(process.env);
@@ -115,13 +116,25 @@ async function pull() {
 
 async function sync() {
 	const flags = z
-		.object({ colour: z.boolean(), connections: z.boolean(), resume: jobIdSchema.optional() })
+		.object({
+			colour: z.boolean(),
+			connections: z.boolean(),
+			noRegression: z.boolean(),
+			resume: jobIdSchema.optional()
+		})
 		.parse({
 			colour: !args.includes('--no-colour'),
 			connections: !args.includes('--no-connections'),
+			noRegression: args.includes('--no-regression'),
 			resume: args.includes('--resume') ? args[args.indexOf('--resume') + 1] : undefined
 		});
-	const known = new Set(['--no-colour', '--no-connections', '--resume', flags.resume]);
+	const known = new Set([
+		'--no-colour',
+		'--no-connections',
+		'--no-regression',
+		'--resume',
+		flags.resume
+	]);
 	if (args.some((arg) => !known.has(arg))) throw new Error(USAGE);
 	requireCleanCheckout();
 	const jobId =
@@ -133,6 +146,7 @@ async function sync() {
 	const payload = hostedSyncPayloadSchema.parse({
 		jobId,
 		stages: { colour: flags.colour, connections: flags.connections },
+		gate: flags.noRegression ? 'no-regression' : 'strict',
 		source: await sourceIdentity()
 	});
 	// A resumed job needs a fresh run key: reusing the original would return the exhausted run.
@@ -151,13 +165,18 @@ async function deploy() {
 	const target = store();
 	const lease = await acquireLease(target, { holder: `deploy:${holder}` });
 	try {
-		const staged = await stageHostedDeployment({
+		const result = await stageHostedDeployment({
 			store: target,
 			jobId,
 			sourceRevision: git('rev-parse', 'HEAD'),
 			sourceFingerprint: (await sourceIdentity()).sourceFingerprint,
 			fixture: JSON.parse(await readFile(fixtureFile, 'utf8'))
 		});
+		if (result.status === 'already-live') {
+			console.log(`${jobId} is already live; nothing to deploy.`);
+			return;
+		}
+		const staged = result;
 		// Only the deployed baseline and the candidate ship; local or CI synthetic assets are set aside.
 		if (await optionalRead(new URL('manifest.json', searchOutput))) {
 			const aside = new URL(`.maintenance/static-search-${Date.now()}/`, workspace);
@@ -193,7 +212,19 @@ async function deploy() {
 	}
 }
 
-const commands: Record<string, () => Promise<void>> = { bootstrap, pull, sync, deploy };
+/** CI writes the checkout's identity into the Trigger bundle so scheduled jobs record their source. */
+async function identity() {
+	if (args.length) throw new Error(USAGE);
+	requireCleanCheckout();
+	const value = await sourceIdentity();
+	await writeFile(
+		new URL('src/trigger/source-identity.ts', workspace),
+		`export const SOURCE_IDENTITY: { sourceRevision: string; sourceFingerprint: string } | null = ${JSON.stringify(value)};\n`
+	);
+	console.log(`Recorded source identity ${value.sourceRevision}.`);
+}
+
+const commands: Record<string, () => Promise<void>> = { bootstrap, pull, sync, deploy, identity };
 await (commands[command ?? ''] ?? (async () => Promise.reject(new Error(USAGE))))().catch(
 	(error: unknown) => {
 		console.error({
