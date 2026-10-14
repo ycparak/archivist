@@ -2,8 +2,10 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promise
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { sha256 } from '$lib/server/search/release-builder';
 import type { SearchRelease } from '$lib/search/snapshot';
+import { loadValidatedRelease } from '$lib/server/maintenance/release';
+import { withFileLock } from './file-lock';
 
-export async function publishSearchRelease(
+async function writeSearchRelease(
 	output: URL,
 	release: SearchRelease,
 	assets: ReadonlyMap<string, Uint8Array>
@@ -49,4 +51,32 @@ export async function publishSearchRelease(
 	} finally {
 		await rm(pointer, { recursive: true, force: true });
 	}
+}
+
+export async function withSearchPublication<T>(
+	output: URL,
+	action: (
+		publish: (release: SearchRelease, assets: ReadonlyMap<string, Uint8Array>) => Promise<void>
+	) => Promise<T>
+): Promise<T> {
+	await mkdir(output, { recursive: true });
+	const lock = new URL('.publication-lock/', output);
+	return withFileLock(lock, () =>
+		action(async (release, assets) => {
+			await loadValidatedRelease(release, async (asset) => {
+				const bytes = assets.get(asset.file);
+				if (!bytes) throw new Error('Missing publication asset');
+				return bytes;
+			});
+			await writeSearchRelease(output, release, assets);
+		})
+	);
+}
+
+export async function publishSearchRelease(
+	output: URL,
+	release: SearchRelease,
+	assets: ReadonlyMap<string, Uint8Array>
+) {
+	await withSearchPublication(output, (publish) => publish(release, assets));
 }

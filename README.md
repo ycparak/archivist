@@ -41,4 +41,14 @@ Free hosting/inference depends on Cloudflare allocations. A previous evaluation 
 
 ## Trigger.dev
 
-The SDK and Node 24 configuration are installed; `src/trigger/example.ts` is the only current task. Start development with `bunx trigger.dev@4.7.3 dev`. Archive maintenance workflows are proposed in the [implementation plan](./docs/specs/trigger-workflows.md), not implemented yet.
+The SDK and Node 24 configuration are installed; `src/trigger/` contains the hello-world example and a non-mutating synthetic validation smoke task. Start development with `bunx trigger.dev@4.7.3 dev`. Local candidate validation is implemented; hosted archive maintenance remains in the [implementation plan](./docs/specs/trigger-workflows.md).
+
+## Validate a candidate release
+
+```sh
+bun run prepare:search .maintenance/candidate
+bun run validate:search .maintenance/candidate
+bun run promote:search .maintenance/candidate
+```
+
+Preparation uses existing enrichment caches and creates a separate candidate with no vision generation or Are.na write-back. Validation writes `validation.json` and `validation.md` with full rankings, baseline comparisons and size metrics. Promotion rejects failed checks, changed source/fixtures/assets or a changed active baseline; it updates only local assets. A failed fixture remains a failure—do not weaken it to permit publication. Node metrics do not establish mobile performance. Build/deployment remains separate.
