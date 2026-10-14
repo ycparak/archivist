@@ -8,7 +8,7 @@ The default gallery is prerendered from a checked bootstrap snapshot. After moun
 
 ## Retrieval behavior
 
-Canonical `search_text` is assembled by `toSearchDocument` in `src/lib/domain/archive.ts`, in this order: block title, description, content, source title (a title or source title that `titles.ts` classes as an upload filename or opaque token is omitted), deduplicated channel titles, cached vision description, bounded OCR, and normalized tags joined with commas. Each field has whitespace collapsed, empty fields are omitted, and fields are joined with newlines. Generated vision titles, medium and palette are not part of this text. Tags are lowercased, dehyphenated, deduplicated and sorted; OCR is capped at 6,000 characters and discarded when its bounded sample has at least 100 words but fewer than 10% unique words. MiniSearch ranks lexical matches. Semantic retrieval computes exact cosine similarity over all eligible chunk vectors and aggregates the maximum score per original block. Hybrid fuses full ranked lists with RRF (k=60). Filter before ranking; preserve type/channel OR, colour AND, UTC dates, colour thresholds and stable ID tiebreaks. Paging uses the full ranking rather than a top-100 cap.
+Canonical `search_text` is assembled by `toSearchDocument` in `src/lib/domain/archive.ts`, in this order: block title, description, content, source title (a title or source title that `titles.ts` classes as an upload filename or opaque token is omitted), deduplicated channel titles, cached vision description, bounded OCR, and normalized tags joined with commas. Each field has whitespace collapsed, empty fields are omitted, and fields are joined with newlines. Generated vision titles, medium and palette are not part of this text. Tags are lowercased, dehyphenated, deduplicated and sorted; OCR is capped at 6,000 characters and discarded when its bounded sample has at least 100 words but fewer than 10% unique words. MiniSearch ranks lexical matches with prefix matching (a query term matches indexed terms it begins, so "widget" finds "widgets"). Semantic retrieval computes exact cosine similarity over all eligible chunk vectors and aggregates the maximum score per original block. Hybrid fuses full ranked lists with RRF (k=60). Filter before ranking; preserve type/channel OR, colour AND, UTC dates, colour thresholds and stable ID tiebreaks. Paging uses the full ranking rather than a top-100 cap.
 
 ## Releases and sync
 
@@ -125,7 +125,7 @@ The current integration is SDK/build package 4.7.3, `trigger.config.ts` using No
 4. Merges those records into the latest canonical snapshot under the fence.
 5. Builds a candidate with hosted embedding deltas.
 6. Validates the candidate against the bundled fixture and the deployed baseline. When no production pointer exists, it first adopts the release the public site serves as that baseline, verifying every asset.
-7. Writes a final job report with a decision: `deploy` (passed, and differs from live), `unchanged` or `rejected`.
+7. Writes a final job report with a decision: `deploy` (passed, and its release or source revision differs from what is live, so code-only changes ship), `unchanged` or `rejected`.
 
 A restarted attempt reuses the pinned discovery, settled records and recorded stage results.
 
@@ -171,7 +171,7 @@ It refuses to run without pricing, never writes to Are.na, and does not build a 
 `bun run hosted experiment <spec.json>` runs a pinned, local experiment. The spec names a job's frozen corpus, a held-out set size and seed, and up to eight variants. Each variant changes exactly one thing against the production control:
 
 - RRF `k` (production 60);
-- MiniSearch `prefix` or `fuzzy` matching (production off);
+- MiniSearch `prefix` matching (production on since 2026-10-14) or `fuzzy` matching (production off);
 - embedding chunk bytes (production 384, at most 500).
 
 The corpus, canonical caches and embeddings are read through `readOnlyStore`, which refuses writes. New chunk embeddings, query vectors and reports are kept in `.maintenance/experiments/<spec hash>/`, so a rerun reproduces identical scores without provider calls. The report records the pinned corpus, caches, fixture, live baseline, source revision and embedding version.

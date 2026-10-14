@@ -13,7 +13,11 @@ export interface RankingOptions {
 	prefix: boolean;
 	fuzzy: number;
 }
-export const PRODUCTION_RANKING: RankingOptions = { rrfK: 60, prefix: false, fuzzy: 0 };
+/**
+ * Prefix matching lets "widget" find "widgets"; adopted after the 2026-10-14 experiment, which
+ * moved the widget-grid case onto the first page at a cost of 2 in 200 held-out top-1 results.
+ */
+export const PRODUCTION_RANKING: RankingOptions = { rrfK: 60, prefix: true, fuzzy: 0 };
 const compareIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 export function matchesFilters(document: PublicDocument, input: ArchiveSearchInput): boolean {
