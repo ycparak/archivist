@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { tasks } from '@trigger.dev/sdk';
 import { z } from 'zod';
 import {
@@ -179,7 +180,12 @@ async function deploy() {
 			env.CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_DEPLOY_API_TOKEN;
 		else delete env.CLOUDFLARE_API_TOKEN;
 		lease.assertHeld();
-		await run('bunx', ['wrangler', 'deploy', '--env-file=.env.example'], env);
+		// Not bunx: Bun would reload .env into the child and reintroduce the Workers AI token.
+		await run(
+			fileURLToPath(new URL('node_modules/.bin/wrangler', workspace)),
+			['deploy', '--env-file=.env.example'],
+			env
+		);
 		await recordHostedDeployment(target, lease, staged);
 		console.log(`Deployed candidate ${staged.candidate.release.version} from ${jobId}.`);
 	} finally {
