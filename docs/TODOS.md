@@ -10,7 +10,8 @@ _(none)_
 
 ## Up Next
 
-- [ ] **Block retries and hosted media processing.** Implement phase 3 of the [Trigger.dev plan](./specs/trigger-workflows.md#phase-3-block-retries-and-hosted-media-processing).
+- [ ] **Daily scheduled sync and automatic deployment.** Implement phase 3 of the [Trigger.dev plan](./specs/trigger-workflows.md#phase-3-daily-scheduled-sync-and-automatic-deployment).
+- [ ] **Block retries and hosted media processing.** Implement phase 4 of the [Trigger.dev plan](./specs/trigger-workflows.md#phase-4-block-retries-and-hosted-media-processing).
 
 ## Needs Input
 

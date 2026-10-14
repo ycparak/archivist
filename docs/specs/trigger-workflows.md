@@ -1,23 +1,33 @@
 # Trigger.dev maintenance workflows
 
-Status: phase 1 implemented locally; phase 2 implemented with a hosted development run (production Trigger environment not yet configured); phases 3–5 planned; scope selected by the maintainer on 2026-10-14.
+Status: phase 1 implemented locally; phase 2 implemented with a hosted development run (production Trigger environment not yet configured); phases 3–6 planned; scope selected by the maintainer on 2026-10-14 and revised the same day to add a daily scheduled sync with automatic deployment.
 The current runtime is described in [architecture](../architecture.md). Phase 1 provides local candidate commands and a synthetic Trigger validation task (evidence in the [phase 1 worksheet](../history/worksheets/worksheet-candidate-validation.md)); phase 2 code, its storage [ADR](../decisions/0005-hosted-maintenance-storage.md) and [worksheet](../history/worksheets/worksheet-hosted-sync.md) exist; remaining phases are proposed work.
 
 ## Outcome and scope
 
-Move long-running archive maintenance into manually triggered, observable jobs while preserving browser search, original Are.na results and public-only releases. Implement these selected ideas:
+Move archive maintenance into observable hosted jobs. Every morning a scheduled job syncs the archive and the site updates with new content, with no local sync and no manual deployment. Preserve browser search, original Are.na results and public-only releases. Implement these selected ideas:
 
-| Original idea | Deliverable                                                                      |
-| ------------- | -------------------------------------------------------------------------------- |
-| 1             | Manually triggered archive sync with explicit stage options and durable progress |
-| 2             | Candidate search release validation before promotion                             |
-| 3             | Retry failed enrichment blocks without repeating successful work                 |
-| 4             | Targeted, bounded vision backfills                                               |
-| 5             | Hosted colour measurement and animation preparation with ffmpeg                  |
-| 8             | Enrichment coverage and freshness reports                                        |
-| 9             | Isolated search experiment batches and comparison reports                        |
+| Original idea | Deliverable                                                                     |
+| ------------- | ------------------------------------------------------------------------------- |
+| 1             | Hosted archive sync with explicit stage options and durable progress, run daily |
+| —             | Automatic deployment of each regression-free daily release                      |
+| 2             | Candidate search release validation before promotion                            |
+| 3             | Retry failed enrichment blocks without repeating successful work                |
+| 4             | Targeted, bounded vision backfills                                              |
+| 5             | Hosted colour measurement and animation preparation with ffmpeg                 |
+| 8             | Enrichment coverage and freshness reports                                       |
+| 9             | Isolated search experiment batches and comparison reports                       |
 
-Automatic scheduled sync, Are.na write-back preview/approval UI, uptime monitoring, backup/pruning automation and a public admin interface are outside this plan. Keep existing owner-only write-back code, but disable it in the initial hosted tasks. This planning request does not execute paid vision, provision services or deploy anything.
+Are.na write-back preview/approval UI, uptime monitoring, backups and a public admin interface are outside this plan. Keep the existing owner-only write-back code, but disable it in hosted tasks. Scheduled jobs never generate paid vision. Release retention (phase 3) is the only automated pruning.
+
+Cost constraint: everything runs within free allowances:
+
+- the Trigger.dev Free plan ($5 monthly credit, runs blocked rather than billed when exhausted);
+- R2 free tier (10 GB storage, 1M Class A and 10M Class B operations a month);
+- GitHub Actions minutes for this private repository (2,000 a month);
+- the Workers AI free allocation.
+
+Prefer the smallest Trigger machine that works, schedule only blocks that need work, and batch child tasks rather than starting one per block.
 
 ## Code baseline and gaps
 
@@ -78,18 +88,83 @@ Implement idea 1 with cached vision and no Are.na write-back.
 
 Acceptance: a remote run survives restart without losing settled work, incomplete discovery cannot publish/prune, cancelled or superseded jobs cannot promote, and downloaded cache exports parse identically to local caches. Demonstrate one hosted development run before production activation.
 
-## Phase 3: Block retries and hosted media processing
+## Phase 3: Daily scheduled sync and automatic deployment
 
-Implement ideas 3 and 5 on the phase 2 persistence foundation.
+Requested by the maintainer on 2026-10-14: each morning the sync runs, and the site updates with new content. Decisions:
+
+- The schedule is 06:00 UTC daily.
+- Deployment requires intact files and no regression against the live release, rather than every fixture case passing. A pre-existing miss such as widget-grid is reported but does not block new content.
+
+1. **Schedule.** Add `daily-archive-sync` as a `schedules.task` with `cron: { pattern: "0 6 * * *", environments: ["PRODUCTION"] }`, so it never fires in development.
+   - It calls `runHostedSync` with colour and connections enabled. Vision and write-back stay disabled.
+   - The job ID is derived from the scheduled date (`daily-YYYYMMDD`), so a duplicate fire or a retry resumes the same job instead of starting a second one.
+   - It uses the `archive-maintenance` queue, so it cannot overlap a manual job; the lease already enforces this durably.
+   - Measure peak memory and use `small-2x` if it fits; otherwise keep `medium-1x`. One run is about 2 minutes, roughly $0.01 a day and $0.30 a month of the $5 credit.
+
+2. **Source identity without a local checkout.** A GitHub Actions workflow deploys the Trigger worker on every push to `main` (`trigger.dev deploy --external-id <sha>`, using a deploy-only `TRIGGER_ACCESS_TOKEN`).
+   - Before deploying, it writes a generated, gitignored `source-identity.json` (revision and fingerprint, computed by `sourceIdentity` at that commit) into the bundle.
+   - Scheduled jobs record that identity. A worker bundle without it may sync and validate but must not hand off a deployment.
+   - The manual `bun run hosted sync` keeps working, for ad-hoc runs from a clean checkout.
+
+3. **Colour every morning.** Install ffmpeg with Trigger's `ffmpeg()` build extension, keeping the shared subprocess implementation and its limits.
+   - Before enabling colour hosted, audit the colour download path. Add a content-length check, a streamed byte limit, a bounded timeout and cancellation if any are missing.
+   - Test the deployed binary with a tiny generated fixture.
+   - A daily run touches only new or changed images, so in-process stages suffice. Batched child tasks wait for phase 4.
+
+4. **Regression gate.** Extend validation with an explicit gate policy recorded in the candidate origin, so it is bound into the report identity. Under the `no-regression` policy:
+   - File, schema, mapping and bootstrap integrity remain mandatory.
+   - A case that passes on the live release must still pass on the first page.
+   - A case that already fails on the live release may keep failing, but its expected ranks may drop by at most a configured tolerance (default 10). It is reported as a known failure.
+   - A case missing from the baseline, or any missing baseline, falls back to strict.
+
+   Do not mark widget-grid `pending` or weaken its expectation. The local `promote:search` command keeps the strict policy.
+
+5. **Adopt the live release as baseline.** The live site serves release `4241d946…`, identical to the local release on 2026-10-14. When no production pointer exists, the job downloads the public `/search/manifest.json` and its assets from the site URL. It verifies them with `loadValidatedRelease`, stores them under `releases/`, and records them as the production baseline. This needs no manual deploy and no credentials.
+
+6. **Decide and hand off.** After validation:
+   - If the candidate version equals the live version, there is nothing to deploy: report `unchanged` and stop.
+   - If the gate fails, fail the run so Trigger's alert email fires (the free plan allows one destination), and leave the live site unchanged.
+   - Otherwise, dispatch the GitHub deploy workflow with the job ID. This uses a fine-grained GitHub token limited to Actions on this repository, stored in the Trigger production environment.
+
+7. **Deploy workflow** (`.github/workflows/deploy-site.yml`):
+   - Triggered by `workflow_dispatch` with a job ID input, under concurrency group `production-site` with no cancellation.
+   - It checks out the job's recorded revision and runs `bun run hosted deploy <job>`, which keeps every phase 2 check: lease, completed report, gate, supersession, source identity and recomputed evaluation. It then builds with the baseline and candidate assets only, deploys using a scoped `CLOUDFLARE_DEPLOY_API_TOKEN`, and records the production pointer.
+   - Secrets: `MAINTENANCE_R2_*`, `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_DEPLOY_API_TOKEN`. No Are.na or Workers AI credentials are needed, because the recorded query vectors are reused.
+   - It uses about 4 of the 2,000 monthly minutes per deploy. GitHub emails on failure.
+   - Site code changes reach production through the next morning's run, or through a manual workflow or `hosted sync` run.
+
+8. **Retention.** Daily candidates add about 19 MB each. Add `ObjectStore.delete`, and have the scheduled job prune after a successful run:
+   - Keep the production release, the previous production release and the 7 newest candidates.
+   - Keep 30 days of job directories.
+   - Never prune canonical caches or embedding deltas.
+
+   This keeps storage far below 10 GB.
+
+9. **Rollback.** Revert the cause on `main` and let the next run publish, or run the deploy workflow for an earlier successful job after explicitly resetting the production pointer with a maintainer command. Supersession otherwise rejects older candidates. For emergencies, `wrangler rollback` restores the previous Worker version.
+
+Acceptance:
+
+- A production schedule fire produces exactly one job, even if fired twice.
+- An unchanged archive deploys nothing.
+- A new block appears on the live site after a passing run, with no local action.
+- A regression or integrity failure leaves the site unchanged and sends an alert.
+- An older job cannot overwrite a newer deployment.
+- CI synthetic assets never ship.
+- Retention never removes the live or previous release.
+- Demonstrate one production scheduled run end to end, from schedule to live manifest, and record its cost.
+
+## Phase 4: Block retries and hosted media processing
+
+Implement idea 3 and the rest of idea 5 on the phase 2–3 foundation. Phase 3 already installs ffmpeg and runs colour measurement daily.
 
 1. Extract single-block execution from the existing vision/colour/connections stages with typed success/skip/failure outcomes; keep local batch APIs and behavior. Persist each success before acknowledging completion.
-2. Add bounded child tasks for colour measurement and connection counting. Install ffmpeg using Trigger's build extension, retaining the shared subprocess implementation and current download/output/time limits. Test the actual deployed binary with a tiny generated fixture.
+2. Add bounded, batched child tasks (for example 50 blocks each, not one task per block, to stay within the free plan) for colour measurement and connection counting, used when a run has many pending blocks. Each block's outcome is still recorded individually, so retries stay per block. Children run on `small-1x` unless measurements require more.
 3. Add vision media preparation for animations within the block task's scratch lifecycle. Preserve still rendition rules, GIF motion input, unsupported/oversize skips and cleanup on success/failure/cancellation. Keep image/video input-mode cache keys distinct. Before hosted use, fix the existing animation downloader: it currently buffers the entire response before its 64 MiB rejection and does not pass timeout/cancellation to fetch. Add content-length and streamed byte limits, a bounded download timeout, cancellation through body consumption, and cleanup tests; enforce the MP4 file-size limit before reading it into memory.
 4. Add retry-failed-blocks using original immutable inputs and verified current cache keys. Retry transient failures only; terminal skips appear in the report. Merge results through the coordinator, without rewriting successful entries or pruning the rest of the corpus.
 
 Acceptance: partial failure does not regenerate successful work; a duplicate child task cannot corrupt caches; retries respect provider budgets; real ffmpeg tests cover output limits, decode failure, timeout and cleanup.
 
-## Phase 4: Targeted vision backfills and coverage reports
+## Phase 5: Targeted vision backfills and coverage reports
 
 Implement ideas 4 and 8.
 
@@ -99,9 +174,9 @@ Implement ideas 4 and 8.
 4. Require explicit vision enablement, bounded selection/max-block count and a run budget. Stop scheduling at budget/call limits, including retry allowance and in-flight exposure. Do not bump the production prompt globally to select a subset. Reuse `planVisionWork`, schema validation and durable cache-key records.
 5. Persist successful backfill entries; build/validate a new candidate only as an explicit follow-on action. Generated tags/text stay retrieval inputs, not result fields. The coverage task makes no model calls or Are.na writes; it may reuse stored discovery or explicitly perform read-only discovery.
 
-Acceptance: a report explains why each gap exists; a backfill touches only its selected eligible blocks, preserves untargeted caches, observes limits and can resume; the default sync still generates no vision.
+Acceptance: a report explains why each gap exists; a backfill touches only its selected eligible blocks, preserves untargeted caches, observes limits and can resume; the scheduled sync still generates no vision. Backfills stay manually triggered because they spend OpenRouter credit.
 
-## Phase 5: Isolated search experiment batches
+## Phase 6: Isolated search experiment batches
 
 Implement idea 9 after reliable evaluation and backfills exist.
 
@@ -116,7 +191,7 @@ Acceptance: the same pinned inputs/config reproduce the comparison, experiment c
 
 For each vertical slice, run `bun run check`, `bun run lint`, `bun run test` and `bun run build`, plus focused tests for new normalizers/mappers and meaningful persistence/failure contracts. Exercise restart, duplicated scheduling, lease loss, old-job takeover, subset merges, task failure classification and promotion integrity using fake provider/storage dependencies; use real ffmpeg where subprocess behavior matters.
 
-Perform hosted smoke tests first on synthetic fixtures, then a small public subset, then a full cached-vision run. Never substitute synthetic CI evidence for real-corpus relevance. Record commands, source/candidate versions, provider calls and environments in each worksheet. Update architecture/docs alongside each implementation phase; keep proposed details here until they exist in code. Tasks remain manual; notification integrations and recurring runs need separate scope.
+Perform hosted smoke tests first on synthetic fixtures, then a small public subset, then a full cached-vision run. Never substitute synthetic CI evidence for real-corpus relevance. Record commands, source/candidate versions, provider calls and environments in each worksheet. Update architecture/docs alongside each implementation phase; keep proposed details here until they exist in code. The daily schedule and automatic deployment are the only recurring automation. Failure notification uses Trigger's built-in alert email and GitHub's workflow failure emails; any other notification integration needs separate scope.
 
 ## References checked
 
@@ -128,4 +203,8 @@ Trigger.dev docs checked on 2026-10-14. Use APIs supported by the installed 4.7.
 - [Idempotency](https://trigger.dev/docs/idempotency)
 - [FFmpeg build extension](https://trigger.dev/docs/config/extensions/ffmpeg)
 
-This plan proposes R2 and a deployment handoff; neither is provided automatically by Trigger's retry/task features.
+- [Scheduled tasks](https://trigger.dev/docs/tasks/scheduled)
+- [Deploying from GitHub Actions](https://trigger.dev/docs/github-actions)
+- [Pricing and machine sizes](https://trigger.dev/pricing), checked on 2026-10-14
+
+This plan uses R2 and a GitHub Actions deployment handoff; neither is provided automatically by Trigger's retry or task features.
