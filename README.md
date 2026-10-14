@@ -48,7 +48,11 @@ bun run hosted bootstrap
 bun run hosted sync --no-colour
 bun run hosted deploy <job-id> --dry-run
 bun run hosted retry <job-id>
+bun run hosted coverage
+bun run hosted backfill --plan --missing
 ```
+
+A vision backfill (`backfill --run --missing --max-blocks 50 --budget-usd 1`) spends OpenRouter credit up to its explicit budget, and needs `OPENROUTER_API_KEY` in the Trigger environment that runs it.
 
 In production, `daily-archive-sync` runs at 06:00 UTC and, when the candidate passes the no-regression gate, dispatches the `Deploy site` workflow. A push to `main` redeploys the Trigger tasks. Hosted jobs never generate vision or write to Are.na. Deployment refuses failed, cancelled, superseded or source-mismatched candidates. Later phases are in the [implementation plan](./docs/specs/trigger-workflows.md).
 
