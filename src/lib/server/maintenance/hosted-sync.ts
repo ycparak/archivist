@@ -435,7 +435,9 @@ export async function runHostedSync(rawPayload: unknown, deps: HostedSyncDepende
 			),
 			decision: !validation.passed
 				? 'rejected'
-				: production.pointer?.version === candidate.release.version
+				: // Site code ships with the assets, so a new source revision deploys even unchanged content.
+					production.pointer?.version === candidate.release.version &&
+					  production.pointer.sourceRevision === origin.sourceRevision
 					? 'unchanged'
 					: 'deploy',
 			sourceRevision: origin.sourceRevision,
