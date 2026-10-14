@@ -10,11 +10,11 @@ _(none)_
 
 ## Up Next
 
-- [ ] **Exclude uninformative titles from search text.** The widget-grid investigation found a junk filename title repeated in `search_text`; test excluding such titles in an experiment, then version the change if it helps ([worksheet](./history/worksheets/worksheet-search-experiments.md)).
+_(none)_
 
 ## Needs Input
 
-_(none)_
+- [ ] **Decide on lexical prefix matching.** It moves widget-grid onto the first page (rank 24, the last slot) but costs 2 of 200 held-out top-1 results; adopting it is a ranking-policy choice ([worksheet](./history/worksheets/worksheet-search-experiments.md)).
 
 ## Backlog
 
@@ -22,6 +22,7 @@ _(none)_
 
 ## Done
 
+- [x] **Exclude uninformative titles from search text.** An experiment improved widget-grid from rank 90 to 63 with unchanged held-out results; adopted in `toSearchDocument` ([worksheet](./history/worksheets/worksheet-search-experiments.md)).
 - [x] **Isolated search experiment batches.** Implemented phase 6 of the [Trigger.dev plan](./specs/trigger-workflows.md) ([worksheet](./history/worksheets/worksheet-search-experiments.md)).
 - [x] **Targeted vision backfills and coverage reports.** Implemented phase 5 of the [Trigger.dev plan](./specs/trigger-workflows.md) ([worksheet](./history/worksheets/worksheet-vision-backfills.md)).
 - [x] **Block retries and hosted media processing.** Implemented phase 4 of the [Trigger.dev plan](./specs/trigger-workflows.md): per-block outcomes, `hosted retry`, batched children and bounded animation downloads ([worksheet](./history/worksheets/worksheet-block-retries.md)).
