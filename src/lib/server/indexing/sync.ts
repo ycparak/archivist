@@ -8,9 +8,9 @@ import {
 	paginateChannelContents,
 	paginateOwnedChannels
 } from '$lib/server/arena/client';
-import { EMPTY_CHANNEL_FILTER, exclusionReason, type ChannelFilter } from './channel-filter';
+import { exclusionReason } from './channel-filter';
 import type { SyncEventSink } from './progress/events';
-import type { ChannelManifestEntry } from './channel-manifest';
+import type { ChannelManifestEntry } from '$lib/domain/search';
 import { measureBlocks, type ColourStageOptions, type ColourStageSummary } from './colour';
 import { mergeColourCache, type ColourCache, type ColourCacheEntry } from './colour/cache';
 import {
@@ -47,7 +47,8 @@ export interface SyncOptions {
 	channelDelayMs?: number;
 	delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
 	maxLeadingChannelFailures?: number;
-	channelFilter?: ChannelFilter;
+	/** Slugs of public or closed channels to leave out; private channels are always left out. */
+	ignoreChannels?: ReadonlySet<string>;
 	/**
 	 * Generated text to index. Supplied on every run, not only when the stage is enabled — a sync
 	 * without `vision` must still index what previous runs generated, or it would silently strip
@@ -73,7 +74,7 @@ export interface SyncOptions {
 	connections?: ConnectionsSyncOptions;
 }
 
-export interface ConnectionsSyncOptions {
+interface ConnectionsSyncOptions {
 	/** Called as each entry lands, so an interrupted run keeps what it counted. */
 	onEntry?: (entry: ConnectionCacheEntry) => void;
 	/** Replaces asking Are.na for a block's total; for tests. */
@@ -82,7 +83,7 @@ export interface ConnectionsSyncOptions {
 	onOutcome?: OutcomeSink;
 }
 
-export interface ColourSyncOptions {
+interface ColourSyncOptions {
 	/** Called as each entry lands, so an interrupted run keeps what it measured. */
 	onEntry?: (entry: ColourCacheEntry) => void;
 	/** Replaces fetching and decoding each image; for tests. */
@@ -177,7 +178,7 @@ export type DiscoveryOptions = Pick<
 	| 'channelDelayMs'
 	| 'delayFn'
 	| 'maxLeadingChannelFailures'
-	| 'channelFilter'
+	| 'ignoreChannels'
 >;
 
 export interface DiscoveredArchive {
@@ -199,7 +200,7 @@ export async function discoverArchive(options: DiscoveryOptions): Promise<Discov
 		channelDelayMs = DEFAULT_CHANNEL_DELAY_MS,
 		delayFn = delay,
 		maxLeadingChannelFailures = DEFAULT_MAX_LEADING_CHANNEL_FAILURES,
-		channelFilter = EMPTY_CHANNEL_FILTER
+		ignoreChannels = new Set<string>()
 	} = options;
 	const client = new ArenaClient({ accessToken, fetchFn });
 
@@ -227,7 +228,7 @@ export async function discoverArchive(options: DiscoveryOptions): Promise<Discov
 	for await (const page of paginateOwnedChannels(client, me.id, { signal })) {
 		for (const channel of page.data) {
 			summary.channelsDiscovered += 1;
-			const reason = exclusionReason(channel, { ...channelFilter, allowPrivate: new Set() });
+			const reason = exclusionReason(channel, ignoreChannels);
 			if (reason === 'ignored') summary.channelsIgnored += 1;
 			else if (reason === 'private') summary.channelsPrivateSkipped += 1;
 			else channels.push({ slug: channel.slug, title: channel.title });

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ARCHIVE_COLOURS, type ArchiveBlockType, type ArchiveColour } from './search';
 import { lowQualityTitleReason } from './titles';
 
-export const blockTypeSchema = z.string().trim().min(1);
+const blockTypeSchema = z.string().trim().min(1);
 
 export const archiveBlockSchema = z.object({
 	id: z.union([z.string(), z.number()]).transform(String),
@@ -41,7 +41,7 @@ export type ArchiveBlock = z.infer<typeof archiveBlockSchema>;
  * Generated text for one block, structurally matching a vision cache entry. Declared here rather
  * than imported so the domain layer stays independent of the indexing pipeline.
  */
-export type BlockVisionText = {
+type BlockVisionText = {
 	title: string;
 	description: string;
 	ocr: string;
@@ -50,11 +50,11 @@ export type BlockVisionText = {
 };
 
 /** Per-mille share of the image in each colour, structurally matching a colour cache entry's weights. */
-export type BlockColourWeights = Record<ArchiveColour, number>;
+type BlockColourWeights = Record<ArchiveColour, number>;
 
 export type ColourAttribute = `colour_${ArchiveColour}`;
 
-export function colourAttribute(colour: ArchiveColour): ColourAttribute {
+function colourAttribute(colour: ArchiveColour): ColourAttribute {
 	return `colour_${colour}`;
 }
 

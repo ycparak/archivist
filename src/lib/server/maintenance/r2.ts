@@ -10,7 +10,7 @@ import {
 import { z } from 'zod';
 import { PreconditionFailedError, type ObjectStore } from './store';
 
-export const r2CredentialsSchema = z.object({
+const r2CredentialsSchema = z.object({
 	CLOUDFLARE_ACCOUNT_ID: z.string().regex(/^[a-f0-9]{32}$/i),
 	MAINTENANCE_R2_BUCKET: z.string().min(3),
 	MAINTENANCE_R2_ACCESS_KEY_ID: z.string().min(1),

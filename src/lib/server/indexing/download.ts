@@ -1,11 +1,11 @@
-export const DOWNLOAD_TIMEOUT_MS = 60_000;
+const DOWNLOAD_TIMEOUT_MS = 60_000;
 
-export type CappedDownload =
+type CappedDownload =
 	| { kind: 'ok'; bytes: Uint8Array }
 	| { kind: 'unreachable'; reason: string; status: number }
 	| { kind: 'too-large'; reason: string };
 
-export interface CappedDownloadOptions {
+interface CappedDownloadOptions {
 	fetchFn?: typeof fetch;
 	maxBytes: number;
 	signal?: AbortSignal;

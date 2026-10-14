@@ -1,6 +1,6 @@
 import type { SearchRelease, SnapshotAsset } from './snapshot';
 
-export function releaseAssetPath(release: SearchRelease, asset: SnapshotAsset): string {
+function releaseAssetPath(release: SearchRelease, asset: SnapshotAsset): string {
 	return `/search/releases/${release.version}/${asset.file}`;
 }
 

@@ -14,7 +14,7 @@ import { EMBEDDING, normalizeVector } from '$lib/search/embedding';
 import type { SearchEvaluationCase } from '$lib/server/search/evaluation';
 import { EMBEDDING_CHUNK_BYTES, embeddingChunks } from '$lib/server/search/export';
 import { buildSearchRelease, sha256 } from '$lib/server/search/release-builder';
-import type { ChannelManifestEntry } from '$lib/server/indexing/channel-manifest';
+import type { ChannelManifestEntry } from '$lib/domain/search';
 import { evaluateRelease, evaluationRequest } from './evaluate';
 import { jobIdSchema } from './hosted-release';
 import { loadValidatedRelease, releaseAssets, type ValidatedRelease } from './release';
@@ -27,7 +27,7 @@ const changeSchema = z.discriminatedUnion('kind', [
 	// The embedding model reads at most 512 tokens and WordPiece never emits more tokens than bytes.
 	z.object({ kind: z.literal('chunk-bytes'), value: z.number().int().min(128).max(500) }).strict()
 ]);
-export type ExperimentChange = z.infer<typeof changeSchema>;
+type ExperimentChange = z.infer<typeof changeSchema>;
 
 /** Each variant changes exactly one thing against the production control. */
 export const experimentSpecSchema = z
@@ -48,7 +48,6 @@ export const experimentSpecSchema = z
 		({ variants }) => new Set(variants.map(({ name }) => name)).size === variants.length,
 		'Variant names must be unique'
 	);
-export type ExperimentSpec = z.infer<typeof experimentSpecSchema>;
 
 /** Refuses every write, so an experiment cannot alter production state even by mistake. */
 export function readOnlyStore(store: ObjectStore): ObjectStore {
@@ -135,7 +134,7 @@ const mean = (values: number[]) =>
 	values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
 
 /** Filters, uniqueness, exact browse order and determinism must hold for every variant. */
-export function checkInvariants(
+function checkInvariants(
 	release: ValidatedRelease,
 	cases: SearchEvaluationCase[],
 	queries: Record<string, number[]>
@@ -370,7 +369,7 @@ export async function runExperiment(rawSpec: unknown, deps: ExperimentDependenci
 		mobile: 'unverified' as const
 	};
 }
-export type ExperimentReport = Awaited<ReturnType<typeof runExperiment>>;
+type ExperimentReport = Awaited<ReturnType<typeof runExperiment>>;
 
 /**
  * Evidence for one fixture case before anyone proposes a ranking change: where the expected block

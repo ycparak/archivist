@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const SITE_DEPLOY_WORKFLOW = 'deploy-site.yml';
+const SITE_DEPLOY_WORKFLOW = 'deploy-site.yml';
 
 const dispatchSchema = z.object({
 	token: z.string().min(1),

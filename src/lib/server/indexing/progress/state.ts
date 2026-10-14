@@ -1,6 +1,6 @@
 import { VISION_WORK_STAGES, type SyncEvent, type SyncPhase, type VisionWorkStage } from './events';
 
-export interface InFlightGroup {
+interface InFlightGroup {
 	stage: VisionWorkStage;
 	count: number;
 }

@@ -47,7 +47,7 @@ const toLinear = (channel: number) => {
 };
 
 /** sRGB to OKLCH: lightness 0-1, chroma 0-~0.37, hue in degrees. */
-export function toOklch(r: number, g: number, b: number): { l: number; c: number; h: number } {
+function toOklch(r: number, g: number, b: number): { l: number; c: number; h: number } {
 	const lr = toLinear(r);
 	const lg = toLinear(g);
 	const lb = toLinear(b);

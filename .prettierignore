@@ -1,12 +1,2 @@
-package-lock.json
-pnpm-lock.yaml
-yarn.lock
 bun.lock
-bun.lockb
-
 /static/
-worker-configuration.d.ts
-
-# Third-party agent skills, kept byte-for-byte as installed
-/.agents/
-skills-lock.json

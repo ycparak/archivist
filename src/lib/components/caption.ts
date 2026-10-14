@@ -2,14 +2,14 @@ import type { SearchResult } from '$lib/domain/search';
 import { lowQualityTitleReason } from '$lib/domain/titles';
 import { blockDisplayTitle } from './format';
 
-export type CaptionSegment = { text: string; mark: boolean };
+type CaptionSegment = { text: string; mark: boolean };
 
 function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** Whole-word, case-insensitive matches for the phrase, or failing that for each word of it. */
-export function keywordPattern(query: string): RegExp | null {
+function keywordPattern(query: string): RegExp | null {
 	const phrase = query.trim();
 	if (!phrase) return null;
 	const words = phrase.split(/\s+/).filter((word) => word.length > 1);

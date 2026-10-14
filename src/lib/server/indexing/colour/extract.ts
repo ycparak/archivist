@@ -9,7 +9,7 @@ import { weighColours, type ColourWeights } from './classify';
  * Colour share needs no detail: 64 × 64 is 4,096 samples, and the 128px rendition it is scaled from
  * is a few kilobytes. Neither the download nor the raster is ever written to disk.
  */
-export const RASTER_SIZE = 64;
+const RASTER_SIZE = 64;
 export const COLOUR_RENDITION_WIDTH = 128;
 /** An animation is sampled once a second, from its first frame, up to this many frames. */
 export const MAX_FRAMES = 8;
@@ -21,13 +21,13 @@ export type MeasureResult =
 	| { kind: 'measured'; weights: ColourWeights; frames: number }
 	| { kind: 'skipped'; cause: 'unreachable' | 'too-large'; reason: string; retryable?: boolean };
 
-export interface MeasureOptions extends Omit<PipeFfmpegOptions, 'input' | 'maxOutputBytes'> {
+interface MeasureOptions extends Omit<PipeFfmpegOptions, 'input' | 'maxOutputBytes'> {
 	fetchFn?: typeof fetch;
 	maxSourceBytes?: number;
 }
 
 /** The ffmpeg arguments that turn whatever arrives on stdin into RGBA frames on stdout. */
-export const RASTER_ARGS = [
+const RASTER_ARGS = [
 	'-loglevel',
 	'error',
 	'-i',

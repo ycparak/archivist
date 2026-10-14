@@ -1,35 +1,16 @@
-import { publishArchiveSearch } from './publish-search';
-import { readFile, writeFile } from 'node:fs/promises';
-import {
-	buildChannelManifest,
-	serializeChannelManifest
-} from '$lib/server/indexing/channel-manifest';
+import { publishArchiveSearch } from './search-files';
+import { writeFile } from 'node:fs/promises';
 import { parseSlugList } from '$lib/server/indexing/channel-filter';
+import { serializeColourCache, type ColourCacheEntry } from '$lib/server/indexing/colour/cache';
 import {
-	parseColourCache,
-	serializeColourCache,
-	type ColourCacheEntry
-} from '$lib/server/indexing/colour/cache';
-import {
-	parseConnectionCache,
 	serializeConnectionCache,
 	type ConnectionCacheEntry
 } from '$lib/server/indexing/connections/cache';
 import { createSyncReporter } from '$lib/server/indexing/progress/reporter';
 import { syncArchive, type VisionSyncOptions } from '$lib/server/indexing/sync';
 import { createVisionClient } from '$lib/server/indexing/vision/client';
-import {
-	parseVisionCache,
-	serializeVisionCache,
-	type VisionCacheEntry
-} from '$lib/server/indexing/vision/cache';
-
-const VISION_CACHE_URL = new URL('../src/lib/server/indexing/vision-cache.jsonl', import.meta.url);
-const COLOUR_CACHE_URL = new URL('../src/lib/server/indexing/colour-cache.jsonl', import.meta.url);
-const CONNECTIONS_CACHE_URL = new URL(
-	'../src/lib/server/indexing/connections-cache.jsonl',
-	import.meta.url
-);
+import { serializeVisionCache, type VisionCacheEntry } from '$lib/server/indexing/vision/cache';
+import { cacheFiles, loadArchiveCaches } from './maintenance-files';
 
 /**
  * Vision and Are.na write-back are on by default, so a mistyped opt-out (`--no-vison`) must not be
@@ -49,18 +30,6 @@ if (unknownFlags.length > 0) {
 
 function hasFlag(name: string): boolean {
 	return process.argv.includes(`--${name}`);
-}
-
-async function readCache<T>(
-	url: URL,
-	parse: (contents: string) => Map<string, T>
-): Promise<Map<string, T>> {
-	try {
-		return parse(await readFile(url, 'utf8'));
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Map();
-		throw error;
-	}
 }
 
 function resolveVisionOptions(): Omit<VisionSyncOptions, 'onEntry'> | undefined {
@@ -87,9 +56,7 @@ const vision = resolveVisionOptions();
 const pushArena = !hasFlag('no-push-arena');
 const measureColour = !hasFlag('no-colour');
 const countConnections = !hasFlag('no-connections');
-const visionCache = await readCache(VISION_CACHE_URL, parseVisionCache);
-const colourCache = await readCache(COLOUR_CACHE_URL, parseColourCache);
-const connectionCache = await readCache(CONNECTIONS_CACHE_URL, parseConnectionCache);
+const { visionCache, colourCache, connectionCache } = await loadArchiveCaches();
 const reporter = createSyncReporter();
 const abort = new AbortController();
 
@@ -139,15 +106,15 @@ function cacheWriter<T extends { block_id: string }>(
 }
 
 async function writeVisionCache(entries: Iterable<VisionCacheEntry>) {
-	await writeFile(VISION_CACHE_URL, serializeVisionCache(entries));
+	await writeFile(cacheFiles.vision, serializeVisionCache(entries));
 }
 
 async function writeColourCache(entries: Iterable<ColourCacheEntry>) {
-	await writeFile(COLOUR_CACHE_URL, serializeColourCache(entries));
+	await writeFile(cacheFiles.colour, serializeColourCache(entries));
 }
 
 async function writeConnectionCache(entries: Iterable<ConnectionCacheEntry>) {
-	await writeFile(CONNECTIONS_CACHE_URL, serializeConnectionCache(entries));
+	await writeFile(cacheFiles.connections, serializeConnectionCache(entries));
 }
 
 const visionWriter = cacheWriter(visionCache, writeVisionCache);
@@ -174,10 +141,7 @@ try {
 		colour: measureColour ? { onEntry: colourWriter.onEntry } : undefined,
 		connectionCache,
 		connections: countConnections ? { onEntry: connectionWriter.onEntry } : undefined,
-		channelFilter: {
-			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
-			allowPrivate: new Set()
-		}
+		ignoreChannels: parseSlugList(process.env.ARENA_IGNORE_CHANNELS)
 	});
 
 	// Before anything is printed: the summary is the part people copy, and it must not be written
@@ -201,10 +165,6 @@ try {
 	if (summary.channelsFailed.length || abort.signal.aborted || !documents.length)
 		throw new Error('Cannot publish an incomplete archive');
 	await publishArchiveSearch(documents, channels, abort.signal);
-	const manifest = buildChannelManifest(channels);
-	const manifestPath = new URL('../src/lib/server/indexing/channel-manifest.json', import.meta.url);
-	await writeFile(manifestPath, serializeChannelManifest(manifest));
-	console.log(`Wrote channel manifest: ${manifest.length} channel(s)`);
 
 	console.log('');
 	console.log('Sync summary:');

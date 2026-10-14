@@ -1,4 +1,4 @@
-import { publishArchiveSearch } from './publish-search';
+import { publishArchiveSearch } from './search-files';
 import { z } from 'zod';
 import { syncArchive } from '$lib/server/indexing/sync';
 import { parseSlugList } from '$lib/server/indexing/channel-filter';
@@ -27,10 +27,7 @@ async function main() {
 		output: 'export',
 		signal: abort.signal,
 		...(await loadArchiveCaches()),
-		channelFilter: {
-			ignore: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
-			allowPrivate: new Set()
-		},
+		ignoreChannels: parseSlugList(process.env.ARENA_IGNORE_CHANNELS),
 		log: (message) => console.log(message)
 	});
 	await publishArchiveSearch(documents, channels, abort.signal);

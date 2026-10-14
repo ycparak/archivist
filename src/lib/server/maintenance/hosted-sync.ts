@@ -90,7 +90,7 @@ export const hostedSyncPayloadSchema = z
 			.strict()
 	})
 	.strict();
-export type HostedSyncPayload = z.infer<typeof hostedSyncPayloadSchema>;
+type HostedSyncPayload = z.infer<typeof hostedSyncPayloadSchema>;
 
 export { HostedJobConfigurationError };
 
@@ -114,7 +114,7 @@ const jobSchema = z
 	})
 	.strict();
 /** How far a known failure's expected ranks may slip before the no-regression gate rejects it. */
-export const NO_REGRESSION_RANK_TOLERANCE = 10;
+const NO_REGRESSION_RANK_TOLERANCE = 10;
 
 export interface HostedSyncDependencies {
 	store: ObjectStore;

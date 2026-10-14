@@ -15,7 +15,7 @@ const hash = z.string().regex(/^[a-f0-9]{64}$/);
 export const candidateOriginSchema = z
 	.object({
 		format: z.literal(1),
-		kind: z.enum(['public-export', 'synthetic']),
+		kind: z.literal('public-export'),
 		complete: z.literal(true),
 		sourceRevision: z.string().min(1),
 		sourceFingerprint: hash,
@@ -81,7 +81,7 @@ export const validationReportSchema = z
 		mobile: z.literal('unverified')
 	})
 	.strict();
-export type ValidationReport = z.infer<typeof validationReportSchema>;
+type ValidationReport = z.infer<typeof validationReportSchema>;
 export const hashJson = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)));
 
 export async function validateCandidate(options: {
@@ -97,11 +97,7 @@ export async function validateCandidate(options: {
 	const origin = candidateOriginSchema.parse(options.origin);
 	if (origin.baselineVersion !== (baseline?.release.version ?? null))
 		throw new Error('Pinned baseline mismatch');
-	const cases = evaluationCasesSchema.parse(
-		origin.kind === 'public-export'
-			? searchEvaluationCasesSchema.parse(options.fixture)
-			: options.fixture
-	);
+	const cases = evaluationCasesSchema.parse(searchEvaluationCasesSchema.parse(options.fixture));
 	const queries = queryVectorsSchema.parse(options.queryVectors);
 	const results = evaluateRelease(
 		candidate,
@@ -147,7 +143,6 @@ export async function assertPromotion(options: {
 }) {
 	const origin = candidateOriginSchema.parse(options.origin);
 	const report = validationReportSchema.parse(options.report);
-	if (origin.kind !== 'public-export') throw new Error('Synthetic candidates cannot be promoted');
 	if (origin.sourceFingerprint !== options.sourceFingerprint)
 		throw new Error('Source fingerprint changed; validate a fresh candidate');
 	if (origin.baselineVersion !== (options.baseline?.release.version ?? null))
@@ -157,11 +152,7 @@ export async function assertPromotion(options: {
 		report.originHash !== (await hashJson(origin))
 	)
 		throw new Error('Candidate/report identity mismatch');
-	const cases = evaluationCasesSchema.parse(
-		origin.kind === 'public-export'
-			? searchEvaluationCasesSchema.parse(options.fixture)
-			: options.fixture
-	);
+	const cases = evaluationCasesSchema.parse(searchEvaluationCasesSchema.parse(options.fixture));
 	if (report.fixtureHash !== (await hashJson(cases))) throw new Error('Evaluation fixture changed');
 	const results = evaluateRelease(
 		options.candidate,

@@ -57,6 +57,7 @@ import { searchEvaluationCasesSchema } from '$lib/server/search/evaluation';
 import { buildSearchRelease, sha256 } from '$lib/server/search/release-builder';
 import {
 	atomicWrite,
+	cacheFiles,
 	configuredEmbedder,
 	fixtureFile,
 	loadArchiveCaches,
@@ -85,12 +86,6 @@ const USAGE = `Usage:
 const [command, ...args] = process.argv.slice(2);
 const store = () => createR2Store(process.env);
 const holder = `cli:${hostname()}:${process.pid}`;
-const cacheRoot = new URL('../src/lib/server/indexing/', import.meta.url);
-const cacheFiles = {
-	colour: 'colour-cache.jsonl',
-	connections: 'connections-cache.jsonl',
-	vision: 'vision-cache.jsonl'
-} as const;
 
 function git(...gitArgs: string[]) {
 	return execFileSync('git', gitArgs, { cwd: workspace, encoding: 'utf8' }).trim();
@@ -140,7 +135,7 @@ async function pull() {
 	const { caches, pointer } = await loadCanonicalCaches(store());
 	const changes: Record<string, unknown> = {};
 	for (const stage of CACHE_STAGES) {
-		const file = new URL(cacheFiles[stage], cacheRoot);
+		const file = cacheFiles[stage];
 		const local = stageCodecs[stage].parse((await optionalRead(file)) ?? '');
 		const { text, change } = importIntoLocal(stage, local as never, caches[stage] as never);
 		await writeFile(file, text);

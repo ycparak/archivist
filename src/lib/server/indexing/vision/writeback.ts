@@ -114,7 +114,7 @@ export interface WriteBackSummary {
 	skipped: WriteBackSkips;
 }
 
-export interface ApplyWriteBackOptions {
+interface ApplyWriteBackOptions {
 	updateBlock: (id: number, body: ArenaBlockUpdate) => Promise<void>;
 	/** Are.na is rate-limited and this is a write path; requests are paced, not parallelised. */
 	delayMs?: number;
