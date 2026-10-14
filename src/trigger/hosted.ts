@@ -16,8 +16,7 @@ import { createR2Store } from '../lib/server/maintenance/r2';
 import { createVisionClient } from '../lib/server/indexing/vision/client';
 import { fetchModelPricing } from '../lib/server/maintenance/backfill';
 import { enrichBatchTask } from './batch';
-
-const SITE_URL = 'https://archivist.yusufparak.com';
+import { siteConfig } from '../../site.config';
 
 /** Manual and scheduled syncs share one queue so they never run at once; the lease enforces it durably. */
 export const maintenanceQueue = queue({ name: 'archive-maintenance', concurrencyLimit: 1 });
@@ -48,7 +47,7 @@ export function hostedDependencies(signal: AbortSignal): HostedSyncDependencies 
 			apiToken: env.CLOUDFLARE_API_TOKEN
 		}),
 		onEvent: progress,
-		liveSite: { url: SITE_URL },
+		liveSite: { url: siteConfig.siteUrl },
 		fanOut: async (jobId, stage, batches) => {
 			const result = await enrichBatchTask.batchTriggerAndWait(
 				batches.map((blockIds, batch) => ({ payload: { jobId, stage, batch, blockIds } }))

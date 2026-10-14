@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * Generated descriptions are expensive to recreate and cheap to store, so the JSONL file is the
- * system of record — committed, portable, and outliving any the search snapshot namespace migration. The
+ * system of record — portable, and outliving any search snapshot namespace migration. The
  * skip key below is what guarantees `bun run sync` never pays for the same block twice.
  */
 export const VISION_MEDIUMS = [
@@ -126,7 +126,7 @@ export function isCacheHit(entry: VisionCacheEntry | undefined, key: VisionCache
 }
 
 /**
- * Entries for blocks that are no longer in the archive are dropped, so the committed file tracks
+ * Entries for blocks that are no longer in the archive are dropped, so the file tracks
  * the archive rather than accumulating orphans. Blocks that failed this run keep their previous
  * entry — a transient model failure must not discard work already paid for.
  */

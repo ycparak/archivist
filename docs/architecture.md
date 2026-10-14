@@ -33,12 +33,12 @@ flowchart LR
 | `src/routes/`                  | HTTP and UI composition: the prerendered gallery and `/api/embedding`.                                                                                                                                                                                               |
 | `src/lib/server/arena/`        | Are.na transport, payload schemas and pagination.                                                                                                                                                                                                                    |
 | `src/lib/server/indexing/`     | Normalization, channel filtering, sync orchestration, the colour, connections and vision stages, CLI progress and the end-of-run summary.                                                                                                                            |
-| `data/`                        | The three committed enrichment caches (`*-cache.jsonl`): a portable seed for hosted maintenance and a reviewable record.                                                                                                                                             |
+| `data/`                        | The three local enrichment caches (`*-cache.jsonl`), git-ignored: they describe one archive, so they stay out of the repository.                                                                                                                                     |
 | `src/lib/server/release/`      | Build-time release code: public document export, the release builder, the Workers AI embedder and the evaluation fixture schema.                                                                                                                                     |
 | `src/lib/server/search/`       | Request-time Worker code: the prerender bootstrap loader and query embedding handling.                                                                                                                                                                               |
 | `src/lib/server/maintenance/`  | Node-only hosted maintenance: candidate validation, the R2 store, the archive lease, hosted caches, sync, backfills and deployment staging. Never imported by Worker routes.                                                                                         |
 | `src/lib/server/rate-limit.ts` | Edge rate limiting, wired in through `src/hooks.server.ts`.                                                                                                                                                                                                          |
-| `src/styles/`                  | Fonts, Tailwind theme tokens and semantic colour roles.                                                                                                                                                                                      |
+| `src/styles/`                  | Fonts, Tailwind theme tokens and semantic colour roles.                                                                                                                                                                                                              |
 | `src/trigger/`                 | Trigger.dev task entrypoints. `source-identity.ts` is overwritten by CI.                                                                                                                                                                                             |
 | `scripts/`                     | Maintainer CLIs, the search evaluation fixture, the CI fixture builder and `worktree.sh`. Type-checked separately because they need Node globals.                                                                                                                    |
 
@@ -101,7 +101,7 @@ Workers and Workers AI allocations; physical mobile performance has not been mea
 ## Sync and enrichment
 
 `syncArchive` in `src/lib/server/indexing/sync.ts` is discovery (`discoverArchive`) followed by
-enrichment (`enrichArchive`). Each enrichment stage reads a committed JSONL cache, keyed so unchanged
+enrichment (`enrichArchive`). Each enrichment stage reads a local JSONL cache, keyed so unchanged
 blocks cost nothing, and is built from one-block functions (`measureBlock`, `countBlock`,
 `describeBlock`). These return a `done` entry, a terminal `skipped` outcome (unsupported, too large,
 or unreachable with a 4xx), or a retryable outcome (a thrown error, or a source that answered 5xx or
@@ -109,9 +109,10 @@ or unreachable with a 4xx), or a retryable outcome (a thrown error, or a source 
 merged, entries for blocks that left the archive are dropped, unless a channel failed or the run was
 aborted, since a block in that channel only looks gone.
 
-Locally, `bun run sync` runs every stage and publishes a release; `--no-vision`, `--no-push-arena`,
-`--no-colour` and `--no-connections` skip stages. It saves each cache every 25 entries, so an
-interrupted run loses at most that many. `bun run sync --export` publishes from the committed caches
+Locally, `bun run sync` is read-only toward Are.na: it measures colour and connections and publishes
+a release. `--vision` adds the vision stage (it spends OpenRouter credit), `--push-arena` writes
+generated titles and descriptions to your own blocks, and `--no-colour` and `--no-connections` skip
+stages. It saves each cache every 25 entries, so an interrupted run loses at most that many. `bun run sync --export` publishes from the local caches
 without generating vision text, measuring colour or connections, or writing to Are.na, and refuses an
 incomplete archive.
 
@@ -263,7 +264,7 @@ across runs; compare first-page results.
 ### Daily sync and deployment
 
 `daily-archive-sync` runs at 06:00 UTC in production only, as job `daily-YYYYMMDD`, so a duplicate fire
-or retry resumes the same job. It is the hosted equivalent of `bun run sync`:
+or retry resumes the same job. It is the hosted equivalent of `bun run sync --vision --push-arena`:
 
 - **Enrichment:** colour (ffmpeg comes from the Trigger build extension) and connections.
 - **Vision:** describes missing or stale blocks within a spend limit of 50 blocks and $0.50 a day. If
@@ -309,8 +310,8 @@ pricing. It spends nothing. `--run` requires an explicit `--max-blocks` (at most
 
 | Command                         | Effect                                                                                                                                                                                                       |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `bootstrap`                     | Imports the committed caches and the local embedding cache into R2, once.                                                                                                                                    |
-| `pull`                          | Imports hosted caches into the committed files without replacing newer local entries, and writes `.maintenance/cache-changes.json`.                                                                          |
+| `bootstrap`                     | Imports the local caches and the local embedding cache into R2, once.                                                                                                                                        |
+| `pull`                          | Imports hosted caches into the local cache files without replacing newer local entries, and writes `.maintenance/cache-changes.json`.                                                                        |
 | `sync [flags]`                  | Triggers `archive-sync`. Flags: `--no-colour`, `--no-connections`, `--no-regression`, `--resume <job>`, `--vision-blocks N --vision-budget X`, `--push-arena`.                                               |
 | `retry <job> [--no-regression]` | Re-runs only a job's retryable blocks on its pinned discovery, merging without pruning.                                                                                                                      |
 | `deploy <job> [--dry-run]`      | Verifies the job report, checkout identity, supersession and recomputed evaluation, publishes only the deployed baseline and the candidate locally, then builds, deploys and records the production pointer. |

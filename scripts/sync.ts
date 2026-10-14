@@ -14,16 +14,10 @@ import { serializeVisionCache, type VisionCacheEntry } from '$lib/server/indexin
 import { cacheFiles, loadArchiveCaches } from './maintenance-files';
 
 /**
- * Vision and Are.na write-back are on by default, so a mistyped opt-out (`--no-vison`) must not be
- * ignored: it would run the stage, and write to the maintainer's archive, anyway.
+ * Vision (which spends credit) and Are.na write-back (which edits your blocks) are opt-in, so a
+ * mistyped flag must fail instead of being ignored: a stage you asked for would silently not run.
  */
-const KNOWN_FLAGS = new Set([
-	'export',
-	'no-vision',
-	'no-push-arena',
-	'no-colour',
-	'no-connections'
-]);
+const KNOWN_FLAGS = new Set(['export', 'vision', 'push-arena', 'no-colour', 'no-connections']);
 
 const unknownFlags = process.argv
 	.slice(2)
@@ -40,18 +34,18 @@ function hasFlag(name: string): boolean {
 }
 
 /**
- * `--export` publishes a release from the committed caches alone: no vision, no Are.na write-back and
+ * `--export` publishes a release from the local caches alone: no vision, no Are.na write-back and
  * no fresh colour or connection measurement. The sync refuses an incomplete archive in this mode.
  */
 const exportOnly = hasFlag('export');
 
 function resolveVisionOptions(): Omit<VisionSyncOptions, 'onEntry'> | undefined {
-	if (exportOnly || hasFlag('no-vision')) return undefined;
+	if (exportOnly || !hasFlag('vision')) return undefined;
 
 	const apiKey = process.env.OPENROUTER_API_KEY;
 	if (!apiKey) {
 		console.error(
-			'OPENROUTER_API_KEY must be set to run the vision stage. Copy .env.example to .env and fill it in, or pass --no-vision.'
+			'OPENROUTER_API_KEY must be set to run the vision stage. Copy .env.example to .env and fill it in, or leave out --vision.'
 		);
 		process.exit(1);
 	}
@@ -73,7 +67,7 @@ if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_API_TOKEN) {
 }
 
 const vision = resolveVisionOptions();
-const pushArena = !exportOnly && !hasFlag('no-push-arena');
+const pushArena = !exportOnly && hasFlag('push-arena');
 const measureColour = !exportOnly && !hasFlag('no-colour');
 const countConnections = !exportOnly && !hasFlag('no-connections');
 const { visionCache, colourCache, connectionCache } = await loadArchiveCaches();

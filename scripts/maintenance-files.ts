@@ -13,7 +13,7 @@ import { parseConnectionCache } from '$lib/server/indexing/connections/cache';
 export const searchOutput = new URL('../static/search/', import.meta.url);
 export const fixtureFile = new URL('./fixtures/search-cases.json', import.meta.url);
 export const workspace = new URL('../', import.meta.url);
-/** The committed enrichment caches: a portable seed for hosted maintenance and a reviewable record. */
+/** The local enrichment caches: git-ignored, portable to hosted maintenance through `bun run hosted bootstrap`. */
 export const cacheFiles = {
 	colour: new URL('../data/colour-cache.jsonl', import.meta.url),
 	connections: new URL('../data/connections-cache.jsonl', import.meta.url),
@@ -81,6 +81,7 @@ export async function sourceIdentity() {
 		'package.json',
 		'bun.lock',
 		'trigger.config.ts',
+		'site.config.ts',
 		'tsconfig.json',
 		'wrangler.jsonc',
 		'vite.config.ts'
