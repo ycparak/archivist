@@ -20,6 +20,7 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Added
 
+- Added per-block enrichment outcomes, `bun run hosted retry` for failed blocks only, and batched child tasks for large backlogs.
 - Added a daily 06:00 UTC hosted archive sync that deploys the site through GitHub Actions when the new release introduces no search regressions.
 - Added the manually triggered `archive-sync` Trigger.dev task with leased, resumable R2-backed caches and a `bun run hosted` CLI for bootstrap, cache import, sync and guarded deployment.
 - Added separate search candidate preparation, full-ranking validation reports and guarded local promotion, plus a non-mutating Trigger.dev validation smoke task.
@@ -33,5 +34,6 @@ Superseded unreleased implementation notes were consolidated on 2026-10-14; Git 
 
 ### Fixed
 
+- Fixed animation downloads buffering oversized sources and ignoring timeouts and cancellation.
 - Fixed CI builds by generating synthetic search assets without provider credentials and disabling remote binding emulation during builds.
 - Stabilized local development with remote Workers AI and disabled persisted platform-proxy state.

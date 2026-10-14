@@ -112,6 +112,7 @@ The current integration is SDK/build package 4.7.3, `trigger.config.ts` using No
 - `validate-search-smoke`, which checks a synthetic release with no provider calls or publication.
 - `archive-sync`, the manual hosted sync.
 - `daily-archive-sync`, the scheduled production sync.
+- `archive-enrich-batch`, a 50-block child used when a stage has a large backlog.
 
 ### Hosted maintenance
 
@@ -125,7 +126,15 @@ The current integration is SDK/build package 4.7.3, `trigger.config.ts` using No
 6. Validates the candidate against the bundled fixture and the deployed baseline. When no production pointer exists, it first adopts the release the public site serves as that baseline, verifying every asset.
 7. Writes a final job report with a decision: `deploy` (passed, and differs from live), `unchanged` or `rejected`.
 
-A restarted attempt reuses the pinned discovery, settled records and recorded stage results. Progress is exposed as run metadata (`phase`, `position`). Lease conflicts, invalid configuration and reused job IDs fail without retry.
+A restarted attempt reuses the pinned discovery, settled records and recorded stage results.
+
+Each enrichment stage is built from one-block functions (`measureBlock`, `countBlock`, `describeBlock`). These return a `done` entry, a terminal `skipped` outcome (unsupported, too large, or unreachable with a 4xx), or a retryable outcome (a thrown error, or a source that answered 5xx or 429). Hosted jobs persist every non-done outcome in `outcomes.json` and report the retryable count.
+
+`bun run hosted retry <job>` re-runs only that job's retryable blocks on its pinned discovery. It merges without pruning, and builds and validates a candidate as usual.
+
+A stage with more than 500 pending blocks fans out into 50-block `archive-enrich-batch` children (`small-1x`, two at a time). The children only add job records and outcomes; a retried colour batch skips blocks already recorded. The parent merges under the lease, which it explicitly renews after the wait, since Trigger may suspend a waiting parent. While a parent waits, its queue slot is released, so another maintenance job fails on the lease rather than overlapping.
+
+Media downloads share `downloadCapped`, which refuses a declared or streamed body over the limit without buffering it and applies the timeout and cancellation to the whole body. The animation transcoder checks the encoded size on disk before reading it, and ffmpeg reports timeouts distinctly. Progress is exposed as run metadata (`phase`, `position`). Lease conflicts, invalid configuration and reused job IDs fail without retry.
 
 Validation uses one of two gate policies, recorded in the candidate origin:
 
@@ -146,6 +155,7 @@ The job refuses to run without the source identity that CI bakes into `src/trigg
 
 - `bootstrap` imports committed caches and the local embedding cache once.
 - `pull` imports hosted caches locally without replacing newer local entries, and writes `.maintenance/cache-changes.json`.
+- `retry <job> [--no-regression]` re-runs only a job's retryable blocks.
 - `sync` triggers a job from a clean checkout, with `--no-colour`, `--no-connections`, `--no-regression`, and `--resume <job>` (which uses a fresh run key).
 - `identity` writes the clean checkout's source identity into the Trigger bundle; CI runs it.
 - `deploy <job> [--dry-run]` stages and deploys a job's candidate. It verifies the job report, checkout identity, supersession and recomputed evaluation, moves existing local search assets aside, and publishes only the deployed baseline and the candidate. It then builds, deploys, and records the production pointer.

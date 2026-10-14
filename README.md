@@ -47,6 +47,7 @@ The SDK and Node 24 configuration are installed. `src/trigger/` contains the hel
 bun run hosted bootstrap
 bun run hosted sync --no-colour
 bun run hosted deploy <job-id> --dry-run
+bun run hosted retry <job-id>
 ```
 
 In production, `daily-archive-sync` runs at 06:00 UTC and, when the candidate passes the no-regression gate, dispatches the `Deploy site` workflow. A push to `main` redeploys the Trigger tasks. Hosted jobs never generate vision or write to Are.na. Deployment refuses failed, cancelled, superseded or source-mismatched candidates. Later phases are in the [implementation plan](./docs/specs/trigger-workflows.md).
