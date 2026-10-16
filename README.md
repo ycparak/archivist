@@ -11,7 +11,7 @@ Are.na is a place to save things you find: images, links, text, videos. The trou
 have thousands of saved items. Most images have a file name like `IMG_2041.jpg` as their title and no
 description. Normal text search cannot find them, because there is no text to match.
 
-Archivist fixes this by using an AI vision model to describe blocks, and providing a search engine to search that description. You can find a block by:
+Archivist fixes this by using an AI vision model to describe blocks, and provides a search engine to find blocks based on that description. For instance, you can find a block by:
 
 - **What an image shows.** Search "red chair in an empty room" and get that picture, even if its title is `IMG_2041.jpg`.
 - **What a phrase means.** Search "feeling nostalgic" and get related blocks, even if they never use those words.
